@@ -1,7 +1,15 @@
 import numpy as np
 import torch
+import os
+from torch import nn
+from torch.utils.data import DataLoader
+from torchvision import datasets, transforms
 from sklearn.utils import murmurhash3_32 as mmh3
 from utils import *
+
+device = get_best_device()
+print("Using device:", device)
+
 
 def assign_buckets(train_size, r, B):
     index = np.zeros(train_size, dtype=int) # from 0 to train_size-1
