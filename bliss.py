@@ -1,9 +1,10 @@
 import numpy as np
 import torch
 from sklearn.utils import murmurhash3_32 as mmh3
+from utils import *
 
 def assign_buckets(train_size, r, B):
-    index = np.zeros(train_size)
+    index = np.zeros(train_size, dtype=int) # from 0 to train_size-1
     counts = np.zeros(B)
 
     for i in range(train_size):
@@ -13,12 +14,16 @@ def assign_buckets(train_size, r, B):
     
     return index, counts
 
-# make ground truth labels
-# for each vector:
-#   initialize label of 0's
-#   look up bucket of each NN in index
-#   if bucket is 0 in label, change to 1
-#   put label somewhere
+def make_ground_truth_labels(B, neighbours, index):
+    size = len(index)
+    labels = np.zeros((B, size), dtype=bool)
+
+    for i in range(size):
+        for neighbour in neighbours[i]:
+            bucket = index[neighbour]
+            labels[bucket, i] = True
+    
+    return labels
 
 if __name__ == "__main__":
     index, counts = assign_buckets(1000000, 4, 1024)

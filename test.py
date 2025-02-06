@@ -4,6 +4,8 @@ import sklearn.datasets
 from sklearn.model_selection import train_test_split as sklearn_train_test_split
 from sklearn.neighbors import NearestNeighbors
 import h5py
+from utils import *
+from bliss import *
 
 def generate_random_array(size: int, dimensions: int, centers: int):
     '''
@@ -31,18 +33,16 @@ def make_train_test_tensors(train, test):
     return t_train, t_test
 
 
-def get_nearest_neighbors(train, amount):
-    nbrs = NearestNeighbors(n_neighbors=amount, metric="euclidean", algorithm='brute').fit(train)
-    I = nbrs.kneighbors(train, return_distance=False)
-    return I
-
 if __name__ == "__main__":
     dimension = 128
-    train, test = generate_random_array(20, dimension, 1)
+    train, test = generate_random_array(100, dimension, 1)
     t_train, t_test = make_train_test_tensors(train, test)
     print(t_train)
     print(t_test)
     train_NN = get_nearest_neighbors(train, 5)
     train_pairs = zip(t_train, train_NN)
-    
+    nr_buckets = 5
+    index, counts = assign_buckets(len(train), 2, nr_buckets)
+    labels = make_ground_truth_labels(nr_buckets, train_NN, index)
+    print(labels)
 
