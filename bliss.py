@@ -1,4 +1,5 @@
 import numpy as np
+import math 
 import torch
 import os
 import pandas as pd
@@ -8,11 +9,13 @@ from torch.utils.data import DataLoader, Dataset
 from torchvision import datasets, transforms
 from sklearn.utils import murmurhash3_32 as mmh3
 from utils import *
+from test import *
 
 device = get_best_device()
 print("Using device:", device)
+SIZE = 10000
 DIMENSION = 128
-B = 1024
+B = int(math.sqrt(SIZE))
 BATCH_SIZE = 32
 
 data = []
@@ -110,5 +113,16 @@ def make_ground_truth_labels(B, neighbours, index):
     return labels
 
 if __name__ == "__main__":
-    index, counts = assign_initital_buckets(1000000, 4, 1024)
-    print(index)
+    SIZE = 1000
+    train, _ = generate_random_array(SIZE, dimensions=DIMENSION, centers=1)
+    index, counts = assign_initital_buckets(len(train), 1, B)
+    neighbours = get_nearest_neighbors(train, 10)
+    labels = make_ground_truth_labels(B, neighbours=neighbours, index=index)
+    print(neighbours)
+    print(labels)
+    dataset = Dataset(train, labels)
+    # for vector, labels in dataset:
+    #     print("vector__________________________")
+    #     print(vector)
+    #     print("labels__________________________")
+    #     print(labels)
