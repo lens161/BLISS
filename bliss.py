@@ -13,6 +13,7 @@ device = get_best_device()
 print("Using device:", device)
 DIMENSION = 128
 B = 1024
+BATCH_SIZE = 32
 
 data = []
 labels = []
@@ -26,12 +27,12 @@ class Dataset(Dataset):
         return len(self.data)
     
     def __getitem__(self, idx):
-        vector = self.data[idx]
+        # turn nd.array into tensor when fetched from the Dataset
+        vector = torch.from_numpy(self.data[idx])
         label = self.data[idx]
         return vector, label
 
 dataset = Dataset(data, labels)
-dataloader = DataLoader(dataset, batch_size=4, shuffle=True, num_workers=2)
 
 class BLISS_NN(nn.Module):
     def __init__(self):
@@ -52,6 +53,7 @@ def train():
     model = BLISS_NN()
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=0.001)
+    dataloader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=2)
 
     num_epochs = 5
 
@@ -76,7 +78,16 @@ def train():
         # TO-DO:
         # reassignment of labels after 5 epochs
 
-def assign_buckets(train_size, r, B):
+def reassign_buckets(model, dataset, batch_size = BATCH_SIZE):
+    model.eval()
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
+
+def assign_initital_buckets(train_size, r, B):
+    '''
+    assign bucket labels to vectors (indeces in the nd.array) using a hash function.
+    the hash fucntion used here is the same as in the original code from the BLISS github.
+    TO-DO: add reference link
+    '''
     index = np.zeros(train_size, dtype=int) # from 0 to train_size-1
     counts = np.zeros(B)
 
@@ -89,15 +100,15 @@ def assign_buckets(train_size, r, B):
 
 def make_ground_truth_labels(B, neighbours, index):
     size = len(index)
-    labels = np.zeros((B, size), dtype=bool)
+    labels = np.zeros((size, B), dtype=bool)
 
     for i in range(size):
         for neighbour in neighbours[i]:
             bucket = index[neighbour]
-            labels[bucket, i] = True
+            labels[i, bucket] = True
     
     return labels
 
 if __name__ == "__main__":
-    index, counts = assign_buckets(1000000, 4, 1024)
+    index, counts = assign_initital_buckets(1000000, 4, 1024)
     print(index)

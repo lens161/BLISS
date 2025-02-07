@@ -1,6 +1,6 @@
 # Created by https://www.toptal.com/developers/gitignore/api/visualstudiocode,python
 # Edit at https://www.toptal.com/developers/gitignore?templates=visualstudiocode,python
-
+notebook.ipynb
 ### Python ###
 # Byte-compiled / optimized / DLL files
 __pycache__/
