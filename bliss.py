@@ -17,9 +17,7 @@ SIZE = 10000
 DIMENSION = 128
 B = int(math.sqrt(SIZE))
 BATCH_SIZE = 32
-
-data = []
-labels = []
+EPOCHS = 5
 
 class Dataset(Dataset):
     def __init__(self, data, labels):
@@ -31,40 +29,43 @@ class Dataset(Dataset):
     
     def __getitem__(self, idx):
         # turn nd.array into tensor when fetched from the Dataset
-        vector = torch.from_numpy(self.data[idx])
-        label = self.data[idx]
+        vector = torch.from_numpy(self.data[idx]).float()
+        label = self.labels[idx]
         return vector, label
 
-dataset = Dataset(data, labels)
+dataset = Dataset(train, labels)
+vector, label = dataset.__getitem__(0)
 
 class BLISS_NN(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.linear_relu_stack = nn.Sequential(
-            nn.Linear(DIMENSION, 512),
-            nn.ReLU(),
-            nn.Linear(512, 512),
-            nn.ReLU(),
-            nn.Linear(512, B),
-        )
+    def __init__(self, input_size, output_size):
+        super(BLISS_NN, self).__init__()
+        # takes input and projects it to 512 hidden neurons
+        self.fc1 = nn.Linear(input_size, 512)
+        # activation function
+        self.relu = nn.ReLU()
+        # output layer maps 512 hidden neurons to output neurons (representing the buckets)
+        self.fc2 = nn.Linear(512, output_size)
+        # turns all output values into softmax values that sum to 1 -> probabilities
+        self.softmax = nn.Softmax(dim=1)
 
-    def forward(self, vector):
-        logits = self.linear_relu_stack(vector)
-        return logits
-    
-def train():
-    model = BLISS_NN()
+    def forward(self, x):
+        # x is  training vector?
+        x = self.fc1(x)
+        x = self.relu(x)
+        x = self.fc2(x)
+
+        output = torch.softmax(x, dim=1)
+        return output
+
+def train(model, dataset, iterations, epochs_per_iteration=EPOCHS):
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=0.001)
     dataloader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=2)
 
-    num_epochs = 5
-
-    for i in range(20):
-        for epoch in range(num_epochs):
+    for i in range(iterations):
+        for epoch in range(epochs_per_iteration):
             for batch_data, batch_labels in dataloader:
                 # Convert numpy arrays to torch tensors
-                batch_data = torch.tensor(batch_data)
                 batch_labels = torch.tensor(batch_labels)
                 
                 # Zero the parameter gradients
@@ -114,10 +115,10 @@ def make_ground_truth_labels(B, neighbours, index):
 
 if __name__ == "__main__":
     SIZE = 1000
-    train, _ = generate_random_array(SIZE, dimensions=DIMENSION, centers=1)
+    train, test = generate_random_array(size=SIZE, dimensions=DIMENSION, centers=1)
     index, counts = assign_initital_buckets(len(train), 1, B)
     neighbours = get_nearest_neighbors(train, 10)
-    labels = make_ground_truth_labels(B, neighbours=neighbours, index=index)
+    labels = make_ground_truth_labels(B=B, neighbours=neighbours, index=index)
     print(neighbours)
     print(labels)
     dataset = Dataset(train, labels)
