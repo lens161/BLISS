@@ -11,6 +11,7 @@ import sklearn.datasets
 from sklearn.model_selection import train_test_split as sklearn_train_test_split
 from sklearn.neighbors import NearestNeighbors
 from utils import *
+import sys
 import math
 # import importlib
 # importlib.reload(utils) 
@@ -18,13 +19,11 @@ device = get_best_device()
 # device = "cpu"
 print("Using device:", device)
 
-
-
 SIZE = 0
 DIMENSION = 0
 B = 0
-BATCH_SIZE = 0
-EPOCHS = 0
+BATCH_SIZE = 256
+EPOCHS = 5
 
 class Dataset(Dataset):
     def __init__(self, data, labels):
@@ -37,7 +36,7 @@ class Dataset(Dataset):
     def __getitem__(self, idx):
         # turn nd.array into tensor when fetched from the Dataset
         vector = torch.from_numpy(self.data[idx]).float()
-        label = self.labels[idx]
+        label = torch.from_numpy(self.labels[idx]).float()
         return vector, label
 
 class BLISS_NN(nn.Module):
@@ -62,35 +61,53 @@ class BLISS_NN(nn.Module):
         output = torch.softmax(x, dim=1)
         return output
 
-def train(model, dataset, iterations, epochs_per_iteration=EPOCHS):
-    criterion = nn.CrossEntropyLoss()
+def train_model(model, dataset, index, iterations, k, bucket_sizes, neighbours, epochs_per_iteration=EPOCHS):
+    criterion = nn.BCEWithLogitsLoss()
     optimizer = optim.Adam(model.parameters(), lr=0.001)
-    dataloader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=2)
+    train_loader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=2)
 
     for i in range(iterations):
+        model.train()
         for epoch in range(epochs_per_iteration):
-            for batch_data, batch_labels in dataloader:
-                # Convert numpy arrays to torch tensors
-                batch_labels = torch.tensor(batch_labels)
-                
+            print(f"training epoch ({i}, {epoch})")
+            for batch_data, batch_labels in train_loader:
                 # Zero the parameter gradients
                 optimizer.zero_grad()
-                
                 # Forward pass
-                outputs = model(batch_data)
-                loss = criterion(outputs, batch_labels)
-                
+                probabilities = model(batch_data)
+                loss = criterion(probabilities, batch_labels)
                 # Backward pass and optimization
                 loss.backward()
                 optimizer.step()
-                
+        reassign_buckets(model, dataset, k, index, bucket_sizes, neighbours, batch_size=BATCH_SIZE)
+
         # TO-DO:
         # reassignment of labels after 5 epochs
 
-def reassign_buckets(model, dataset, batch_size = BATCH_SIZE):
+def reassign_buckets(model, dataset, k, index, bucket_sizes, neighbours, batch_size = BATCH_SIZE):
     model.eval()
-    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
+    reassign_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
+    item_index = 0
 
+    for batch_data, batch_labels in reassign_loader:
+        bucket_probabilities = model(batch_data)
+
+        for probability in bucket_probabilities:
+            value, idx = torch.topk(probability, k)
+            smallest_bucket = 0
+            for i in idx:
+                old_bucket = index[item_index]
+                size = bucket_sizes[i]
+                smallest_bucket = i if bucket_sizes[smallest_bucket] > size else smallest_bucket
+                index[item_index] = smallest_bucket
+                bucket_sizes[old_bucket] -=1
+                bucket_sizes[smallest_bucket] +=1
+                item_index+=1
+
+    new_labels = make_ground_truth_labels(B, neighbours, index)
+    dataset.labels = new_labels
+    
+            
 def assign_initital_buckets(train_size, r, B):
     '''
     assign bucket labels to vectors (indeces in the nd.array) using a hash function.
@@ -98,14 +115,14 @@ def assign_initital_buckets(train_size, r, B):
     TO-DO: add reference link
     '''
     index = np.zeros(train_size, dtype=int) # from 0 to train_size-1
-    counts = np.zeros(B)
+    bucket_sizes = np.zeros(B)
 
     for i in range(train_size):
         bucket = mmh3(i,seed=r)%B
         index[i] = bucket
-        counts[bucket] += 1
+        bucket_sizes[bucket] += 1
     
-    return index, counts
+    return index, bucket_sizes
 
 def make_ground_truth_labels(B, neighbours, index):
     size = len(index)
@@ -118,34 +135,33 @@ def make_ground_truth_labels(B, neighbours, index):
     
     return labels
 
-if __name__ == "__main__":
-    train, _, _ = read_dataset("mnist-784-euclidean")
-    print("training data_________________________")
-    print(np.shape(train))
+# if __name__ == "__main__":
+#     train, _, _ = read_dataset("mnist-784-euclidean")
+#     print("training data_________________________")
+#     print(np.shape(train))
 
-    SIZE, DIMENSION = np.shape(train)
-    B = get_B(SIZE)
-    print(B)
-    nearest_pow_2 = B
-    BATCH_SIZE = 256
+#     SIZE, DIMENSION = np.shape(train)
+#     B = get_B(SIZE)
+#     print(B)
+#     BATCH_SIZE = 256
 
-    index, _ = assign_initital_buckets(len(train), 1, B)
+#     index, counts = assign_initital_buckets(len(train), 1, B)
 
-    neighbours = get_nearest_neighbours_faiss(train, 100)
-    labels = make_ground_truth_labels(B, neighbours=neighbours, index=index)
+#     neighbours = get_nearest_neighbours_faiss(train, 100)
+#     labels = make_ground_truth_labels(B, neighbours=neighbours, index=index)
 
-    dataset = Dataset(train, labels)
-    model = BLISS_NN(DIMENSION, B)
+#     dataset = Dataset(train, labels)
+#     model = BLISS_NN(DIMENSION, B)
 
-    train_loader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True)
+#     train_loader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True)
 
-    model.to(device)
-    model.eval()
-    for data, labels in train_loader:
-        data = data.to(device)
-        labels = labels.to(device)
-        outputs = model(data)
-        print(outputs)
+    # model.to(device)
+    # model.eval()
+    # for data, labels in train_loader:
+    #     data = data.to(device)
+    #     labels = labels.to(device)
+    #     outputs = model(data)
+    #     # print(outputs)
 
 
     # for vector, labels in dataset:
