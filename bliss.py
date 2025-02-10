@@ -1,5 +1,4 @@
 import numpy as np
-import math 
 import torch
 import os
 import pandas as pd
@@ -8,16 +7,24 @@ import torch.optim as optim
 from torch.utils.data import DataLoader, Dataset
 from torchvision import datasets, transforms
 from sklearn.utils import murmurhash3_32 as mmh3
+import sklearn.datasets
+from sklearn.model_selection import train_test_split as sklearn_train_test_split
+from sklearn.neighbors import NearestNeighbors
 from utils import *
-from test import *
-
+import math
+# import importlib
+# importlib.reload(utils) 
 device = get_best_device()
+# device = "cpu"
 print("Using device:", device)
-SIZE = 10000
-DIMENSION = 128
-B = int(math.sqrt(SIZE))
-BATCH_SIZE = 32
-EPOCHS = 5
+
+
+
+SIZE = 0
+DIMENSION = 0
+B = 0
+BATCH_SIZE = 0
+EPOCHS = 0
 
 class Dataset(Dataset):
     def __init__(self, data, labels):
@@ -37,6 +44,7 @@ class BLISS_NN(nn.Module):
     def __init__(self, input_size, output_size):
         super(BLISS_NN, self).__init__()
         # takes input and projects it to 512 hidden neurons
+        # fc stands for fully connected, referring to a fully connected matrix being created
         self.fc1 = nn.Linear(input_size, 512)
         # activation function
         self.relu = nn.ReLU()
@@ -111,14 +119,35 @@ def make_ground_truth_labels(B, neighbours, index):
     return labels
 
 if __name__ == "__main__":
-    SIZE = 1000
-    train, test = generate_random_array(size=SIZE, dimensions=DIMENSION, centers=1)
-    index, counts = assign_initital_buckets(len(train), 1, B)
-    neighbours = get_nearest_neighbours_faiss(train, 5)
-    labels = make_ground_truth_labels(B=B, neighbours=neighbours, index=index)
-    print(neighbours)
-    print(labels)
+    train, _, _ = read_dataset("mnist-784-euclidean")
+    print("training data_________________________")
+    print(np.shape(train))
+
+    SIZE, DIMENSION = np.shape(train)
+    B = get_B(SIZE)
+    print(B)
+    nearest_pow_2 = B
+    BATCH_SIZE = 256
+
+    index, _ = assign_initital_buckets(len(train), 1, B)
+
+    neighbours = get_nearest_neighbours_faiss(train, 100)
+    labels = make_ground_truth_labels(B, neighbours=neighbours, index=index)
+
     dataset = Dataset(train, labels)
+    model = BLISS_NN(DIMENSION, B)
+
+    train_loader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True)
+
+    model.to(device)
+    model.eval()
+    for data, labels in train_loader:
+        data = data.to(device)
+        labels = labels.to(device)
+        outputs = model(data)
+        print(outputs)
+
+
     # for vector, labels in dataset:
     #     print("vector__________________________")
     #     print(vector)
