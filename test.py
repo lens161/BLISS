@@ -35,12 +35,13 @@ if __name__ == "__main__":
     dimension = 128
     train, test = generate_random_array(100, dimension, 1)
     t_train, t_test = make_train_test_tensors(train, test)
-    print(t_train)
-    print(t_test)
-    train_NNs = get_nearest_neighbors(train, 5)
+    # print(t_train)
+    # print(t_test)
+    train_NNs = get_nearest_neighbours_faiss(train, 5)
+    print(train_NNs)
     train_pairs = zip(t_train, train_NNs)
     nr_buckets = 5
     index, counts = assign_initital_buckets(train_size= len(train), r=2, B=nr_buckets)
     labels = make_ground_truth_labels(B = nr_buckets, neighbours=train_NNs, index=index)
-    print(labels) 
+    # print(labels) 
 

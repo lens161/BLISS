@@ -33,9 +33,6 @@ class Dataset(Dataset):
         label = self.labels[idx]
         return vector, label
 
-dataset = Dataset(train, labels)
-vector, label = dataset.__getitem__(0)
-
 class BLISS_NN(nn.Module):
     def __init__(self, input_size, output_size):
         super(BLISS_NN, self).__init__()
@@ -117,7 +114,7 @@ if __name__ == "__main__":
     SIZE = 1000
     train, test = generate_random_array(size=SIZE, dimensions=DIMENSION, centers=1)
     index, counts = assign_initital_buckets(len(train), 1, B)
-    neighbours = get_nearest_neighbors(train, 10)
+    neighbours = get_nearest_neighbours_faiss(train, 5)
     labels = make_ground_truth_labels(B=B, neighbours=neighbours, index=index)
     print(neighbours)
     print(labels)
