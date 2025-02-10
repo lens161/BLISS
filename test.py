@@ -3,7 +3,6 @@ import torch
 import sklearn.datasets
 from sklearn.model_selection import train_test_split as sklearn_train_test_split
 from sklearn.neighbors import NearestNeighbors
-import h5py
 from utils import *
 from bliss import *
 
@@ -32,17 +31,17 @@ def make_train_test_tensors(train, test):
         t_test.append(torch.from_numpy(vector))
     return t_train, t_test
 
-
 if __name__ == "__main__":
     dimension = 128
     train, test = generate_random_array(100, dimension, 1)
     t_train, t_test = make_train_test_tensors(train, test)
-    print(t_train)
-    print(t_test)
-    train_NN = get_nearest_neighbors(train, 5)
-    train_pairs = zip(t_train, train_NN)
+    # print(t_train)
+    # print(t_test)
+    train_NNs = get_nearest_neighbours_faiss(train, 5)
+    print(train_NNs)
+    train_pairs = zip(t_train, train_NNs)
     nr_buckets = 5
-    index, counts = assign_buckets(len(train), 2, nr_buckets)
-    labels = make_ground_truth_labels(nr_buckets, train_NN, index)
-    print(labels)
+    index, counts = assign_initital_buckets(train_size= len(train), r=2, B=nr_buckets)
+    labels = make_ground_truth_labels(B = nr_buckets, neighbours=train_NNs, index=index)
+    # print(labels) 
 
