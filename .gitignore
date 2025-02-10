@@ -6,6 +6,8 @@ notebook.ipynb
 __pycache__/
 *.py[cod]
 *$py.class
+*.hdf5
+data/
 
 # C extensions
 *.so
