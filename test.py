@@ -31,6 +31,7 @@ def make_train_test_tensors(train, test):
         t_test.append(torch.from_numpy(vector))
     return t_train, t_test
 
+
 if __name__ == "__main__":
     dimension = 128
     train, test = generate_random_array(100, dimension, 1)
@@ -44,4 +45,3 @@ if __name__ == "__main__":
     index, counts = assign_initital_buckets(train_size= len(train), r=2, B=nr_buckets)
     labels = make_ground_truth_labels(B = nr_buckets, neighbours=train_NNs, index=index)
     # print(labels) 
-
