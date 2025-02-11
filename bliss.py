@@ -19,9 +19,9 @@ device = get_best_device()
 # device = "cpu"
 print("Using device:", device)
 
-SIZE = 0
-DIMENSION = 0
-B = 0
+# SIZE = 0
+# DIMENSION = 0
+# B = 0
 BATCH_SIZE = 256
 EPOCHS = 5
 
@@ -50,7 +50,7 @@ class BLISS_NN(nn.Module):
         # output layer maps 512 hidden neurons to output neurons (representing the buckets)
         self.fc2 = nn.Linear(512, output_size)
         # turns all output values into softmax values that sum to 1 -> probabilities
-        self.softmax = nn.Softmax(dim=1)
+        # self.sigmoid = nn.Sigmoid(dim=1)
 
     def forward(self, x):
         # x is  training vector?
@@ -58,8 +58,7 @@ class BLISS_NN(nn.Module):
         x = self.relu(x)
         x = self.fc2(x)
 
-        output = torch.softmax(x, dim=1)
-        return output
+        return x
 
 def train_model(model, dataset, index, iterations, k, bucket_sizes, neighbours, epochs_per_iteration=EPOCHS):
     criterion = nn.BCEWithLogitsLoss()
@@ -80,6 +79,7 @@ def train_model(model, dataset, index, iterations, k, bucket_sizes, neighbours, 
                 loss.backward()
                 optimizer.step()
         reassign_buckets(model, dataset, k, index, bucket_sizes, neighbours, batch_size=BATCH_SIZE)
+        print(f"index after iteration {i} = {index}")
 
         # TO-DO:
         # reassignment of labels after 5 epochs
@@ -90,20 +90,24 @@ def reassign_buckets(model, dataset, k, index, bucket_sizes, neighbours, batch_s
     item_index = 0
 
     for batch_data, batch_labels in reassign_loader:
-        bucket_probabilities = model(batch_data)
+        bucket_probabilities = torch.sigmoid(model(batch_data))
 
-        for probability in bucket_probabilities:
-            value, idx = torch.topk(probability, k)
+        for probability_vector in bucket_probabilities:
+            value, indices_of_topk_buckets = torch.topk(probability_vector, k)
+            print(f"indices = {indices_of_topk_buckets}")
             smallest_bucket = 0
-            for i in idx:
-                old_bucket = index[item_index]
+            smallest_bucket_size = SIZE
+            old_bucket = index[item_index]
+            for i in indices_of_topk_buckets:
                 size = bucket_sizes[i]
-                smallest_bucket = i if bucket_sizes[smallest_bucket] > size else smallest_bucket
-                index[item_index] = smallest_bucket
-                bucket_sizes[old_bucket] -=1
-                bucket_sizes[smallest_bucket] +=1
-                item_index+=1
-
+                if size < smallest_bucket_size:
+                    smallest_bucket = i
+                    smallest_bucket_size = size
+        
+            index[item_index] = smallest_bucket
+            bucket_sizes[old_bucket] -=1
+            bucket_sizes[smallest_bucket] +=1
+            item_index+=1        
     new_labels = make_ground_truth_labels(B, neighbours, index)
     dataset.labels = new_labels
     
