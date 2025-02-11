@@ -92,7 +92,7 @@ def reassign_buckets(model, dataset, k, index, bucket_sizes, neighbours, batch_s
 
     for batch_data, batch_labels in reassign_loader:
         bucket_probabilities = torch.sigmoid(model(batch_data))
-        print(f"bucket probabilities: {bucket_probabilities}")
+        # print(f"bucket probabilities: {bucket_probabilities}")
 
         for probability_vector in bucket_probabilities:
             value, indices_of_topk_buckets = torch.topk(probability_vector, k)
