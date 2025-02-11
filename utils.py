@@ -39,7 +39,7 @@ def read_dataset(dataset_name):
             traceback.print_exc()
             raise Exception(f"dataset: {dataset_name} could not be downloaded")
 
-    print(f"readig file: {path}")
+    print(f"reading file: {path}")
     f = h5py.File(path)
     train = f['train']
     test = f['test']
@@ -64,5 +64,3 @@ def get_best_device():
         return torch.device("mps")
     else:
         return torch.device("cpu")
-    
-read_dataset("mnist-784-euclidean")
