@@ -1,29 +1,11 @@
 import numpy as np
 import torch
-import os
-# import pandas as pd
 from torch import nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, Dataset
-from torchvision import datasets, transforms
+# from torchvision import datasets, transforms
 from sklearn.utils import murmurhash3_32 as mmh3
-import sklearn.datasets
-from sklearn.model_selection import train_test_split as sklearn_train_test_split
-from sklearn.neighbors import NearestNeighbors
 from utils import *
-import sys
-import math
-# import importlib
-# importlib.reload(utils) 
-device = get_best_device()
-# device = "cpu"
-print("Using device:", device)
-
-# SIZE = 0
-# DIMENSION = 0
-# B = 0
-BATCH_SIZE = 256
-EPOCHS = 5
 
 class Dataset(Dataset):
     def __init__(self, data, labels):
@@ -60,7 +42,7 @@ class BLISS_NN(nn.Module):
 
         return x
 
-def train_model(model, dataset, index, iterations, k, bucket_sizes, neighbours, epochs_per_iteration=EPOCHS):
+def train_model(model, dataset, index, iterations, k, bucket_sizes, neighbours, epochs_per_iteration, batch_size):
     criterion = nn.BCEWithLogitsLoss()
     optimizer = optim.Adam(model.parameters(), lr=0.001)
     train_loader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=2)
@@ -79,13 +61,10 @@ def train_model(model, dataset, index, iterations, k, bucket_sizes, neighbours, 
                 # Backward pass and optimization
                 loss.backward()
                 optimizer.step()
-        reassign_buckets(model, dataset, k, index, bucket_sizes, neighbours, batch_size=BATCH_SIZE)
+        reassign_buckets(model, dataset, k, index, bucket_sizes, neighbours, batch_size)
         print(f"index after iteration {i} = {index}")
 
-        # TO-DO:
-        # reassignment of labels after 5 epochs
-
-def reassign_buckets(model, dataset, k, index, bucket_sizes, neighbours, batch_size = BATCH_SIZE):
+def reassign_buckets(model, dataset, k, index, bucket_sizes, neighbours, batch_size):
     model.eval()
     reassign_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
     item_index = 0
@@ -142,24 +121,34 @@ def make_ground_truth_labels(B, neighbours, index):
     return labels
 
 if __name__ == "__main__":
-    # train, _, _ = read_dataset("mnist-784-euclidean")
-    train, _, _ = read_dataset("sift-128-euclidean")
+    BATCH_SIZE = 256
+    EPOCHS = 5
+    ITERATIONS = 5
+    K = 2
+    NR_NEIGHBOURS = 100
+    device = get_best_device()
+    # device = "cpu"
+    print("Using device:", device)
+
+    dataset_name = "sift-128-euclidean"
+    # dataset_name = "mnist-784-euclidean"
+    train, _, _ = read_dataset(dataset_name)
     print("training data_________________________")
     print(np.shape(train))
 
     SIZE, DIMENSION = np.shape(train)
     B = get_B(SIZE)
-    # B = 128
     print(B)
-    BATCH_SIZE = 256
 
-    index, counts = assign_initital_buckets(len(train), 1, B)
+    R = 1
+    index, counts = assign_initital_buckets(len(train), R, B)
 
     print("looking for true neighbours")
-    neighbours = get_nearest_neighbours_faiss(train, 100)
+    neighbours = get_train_nearest_neighbours_from_file(train, NR_NEIGHBOURS, dataset_name)
+    print(neighbours)
 
     print("making ground truth labels")
-    labels = make_ground_truth_labels(B, neighbours=neighbours, index=index)
+    labels = make_ground_truth_labels(B, neighbours, index)
 
     dataset = Dataset(train, labels)
     model = BLISS_NN(DIMENSION, B)
@@ -168,7 +157,6 @@ if __name__ == "__main__":
 
     model.to(device)
     print("training model")
-    train_model(model, dataset, index, 5, 2, counts, neighbours, 5)
+    train_model(model, dataset, index, ITERATIONS, K, counts, neighbours, EPOCHS, BATCH_SIZE)
     np.set_printoptions(threshold=np.inf, suppress=True)
-    # print(index)
     print(counts)
