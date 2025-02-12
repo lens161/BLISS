@@ -52,6 +52,8 @@ def train_model(model, dataset, index, iterations, k, bucket_sizes, neighbours, 
         for epoch in range(epochs_per_iteration):
             print(f"training epoch ({i}, {epoch})")
             for batch_data, batch_labels in train_loader:
+                batch_data = batch_data.to(device)
+                batch_labels = batch_labels.to(device)
                 # print(f"batch_labels: {batch_labels}")
                 # Zero the parameter gradients
                 optimizer.zero_grad()
@@ -70,6 +72,7 @@ def reassign_buckets(model, dataset, k, index, bucket_sizes, neighbours, batch_s
     item_index = 0
 
     for batch_data, batch_labels in reassign_loader:
+        batch_data = batch_data.to(device)
         bucket_probabilities = torch.sigmoid(model(batch_data))
         # print(f"bucket probabilities: {bucket_probabilities}")
 
