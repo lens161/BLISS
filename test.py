@@ -23,9 +23,8 @@ def train_test_split(X, test_size):
 
 class TestTrainMethods(unittest.TestCase):
 
-    # mnist_train, mnist_test, mnist_nbrs = read_dataset("mnist-784-euclidean")
+    mnist_train, mnist_test, mnist_nbrs = read_dataset("mnist-784-euclidean")
 
-    @unittest.skip("slow")
     def test_get_B(self):
         '''
         Test whether B value is correct according to our specification.
@@ -37,7 +36,6 @@ class TestTrainMethods(unittest.TestCase):
         with self.assertRaises(Exception): # Empty dataset
             get_B(0)
 
-    @unittest.skip("slow")
     def test_read_dataset(self):
         '''
         Test whether reading in the dataset gives us an np array of the correct shape.
@@ -49,7 +47,6 @@ class TestTrainMethods(unittest.TestCase):
         self.assertEqual(self.__class__.mnist_nbrs.shape[0], 10000) # nr test items
         self.assertEqual(self.__class__.mnist_nbrs.shape[1], 100) # nbrs per test item
 
-    @unittest.skip("slow")
     def test_get_nearest_neighbours_small(self):
         '''
         Test whether we find the correct nearest neighbours in a sample array.
@@ -66,8 +63,7 @@ class TestTrainMethods(unittest.TestCase):
         self.assertTrue(np.array_equal(nbrs[7], [6, 5]))
         self.assertTrue(np.array_equal(nbrs[8], [7, 6]))
         self.assertTrue(np.array_equal(nbrs[9], [8, 7]))
-
-    @unittest.skip("slow")    
+   
     def test_get_nearest_neighbours(self):
         '''
         Test whether our nearest neighbour function finds the same nearest neighbours for test data in a real dataset.
@@ -75,7 +71,6 @@ class TestTrainMethods(unittest.TestCase):
         nbrs_test = get_nearest_neighbours_faiss_in_different_dataset(self.__class__.mnist_train, self.__class__.mnist_test, 100)
         self.assertTrue(np.array_equal(np.sort(nbrs_test), np.sort(self.__class__.mnist_nbrs)))
         
-    @unittest.skip("slow")
     def test_get_nearest_neighbours_from_file(self):
         '''
         Test whether fetching neighbours from a file gives the same array as when computing them.
