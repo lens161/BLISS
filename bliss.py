@@ -1,5 +1,4 @@
 import numpy as np
-import time
 import torch
 from torch import nn
 import torch.optim as optim
@@ -8,17 +7,19 @@ from torch.utils.data import DataLoader, Dataset
 from sklearn.utils import murmurhash3_32 as mmh3
 from utils import *
 
-class BLISSDataset(Dataset):
+class Dataset(Dataset):
     def __init__(self, data, labels):
-        # Convert the whole dataset to tensors once
-        self.data = torch.from_numpy(data).float()
+        self.data = data
         self.labels = labels
 
     def __len__(self):
-        return self.data.shape[0]
+        return len(self.data)
     
     def __getitem__(self, idx):
-        return self.data[idx], self.labels[idx]
+        # turn nd.array into tensor when fetched from the Dataset
+        vector = torch.from_numpy(self.data[idx]).float()
+        label = torch.from_numpy(self.labels[idx]).float()
+        return vector, label
 
 class BLISS_NN(nn.Module):
     def __init__(self, input_size, output_size):
@@ -44,13 +45,12 @@ class BLISS_NN(nn.Module):
 def train_model(model, dataset, index, iterations, k, bucket_sizes, neighbours, epochs_per_iteration, batch_size):
     criterion = nn.BCEWithLogitsLoss()
     optimizer = optim.Adam(model.parameters(), lr=0.001)
-    train_loader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=6)
+    train_loader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=2)
 
     for i in range(iterations):
         model.train()
         for epoch in range(epochs_per_iteration):
             print(f"training epoch ({i}, {epoch})")
-            start = time.time()
             for batch_data, batch_labels in train_loader:
                 batch_data = batch_data.to(device)
                 batch_labels = batch_labels.to(device)
@@ -63,43 +63,35 @@ def train_model(model, dataset, index, iterations, k, bucket_sizes, neighbours, 
                 # Backward pass and optimization
                 loss.backward()
                 optimizer.step()
-            finish = time.time()
-            elapsed = finish-start
-            print(f"epoch {epoch} took {elapsed}")
         reassign_buckets(model, dataset, k, index, bucket_sizes, neighbours, batch_size)
         print(f"index after iteration {i} = {index}")
 
 def reassign_buckets(model, dataset, k, index, bucket_sizes, neighbours, batch_size):
     model.eval()
-    reassign_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=6)
+    reassign_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
     item_index = 0
 
-    start = time.time()
-    with torch.no_grad():
-        for batch_data, batch_labels in reassign_loader:
-            batch_data = batch_data.to(device)
-            bucket_probabilities = torch.sigmoid(model(batch_data))
-            # print(f"bucket probabilities: {bucket_probabilities}")
+    for batch_data, batch_labels in reassign_loader:
+        batch_data = batch_data.to(device)
+        bucket_probabilities = torch.sigmoid(model(batch_data))
+        # print(f"bucket probabilities: {bucket_probabilities}")
 
-            for probability_vector in bucket_probabilities:
-                value, indices_of_topk_buckets = torch.topk(probability_vector, k)
-                # print(f"indices = {indices_of_topk_buckets}")
-                smallest_bucket = 0
-                smallest_bucket_size = SIZE
-                old_bucket = index[item_index]
-                for i in indices_of_topk_buckets:
-                    size = bucket_sizes[i]
-                    if size < smallest_bucket_size:
-                        smallest_bucket = i
-                        smallest_bucket_size = size
-            
-                index[item_index] = smallest_bucket
-                bucket_sizes[old_bucket] -=1
-                bucket_sizes[smallest_bucket] +=1
-                item_index+=1        
-    finish = time.time()
-    elapsed = finish - start
-    print(f"reassigning took {elapsed}")
+        for probability_vector in bucket_probabilities:
+            value, indices_of_topk_buckets = torch.topk(probability_vector, k)
+            # print(f"indices = {indices_of_topk_buckets}")
+            smallest_bucket = 0
+            smallest_bucket_size = SIZE
+            old_bucket = index[item_index]
+            for i in indices_of_topk_buckets:
+                size = bucket_sizes[i]
+                if size < smallest_bucket_size:
+                    smallest_bucket = i
+                    smallest_bucket_size = size
+        
+            index[item_index] = smallest_bucket
+            bucket_sizes[old_bucket] -=1
+            bucket_sizes[smallest_bucket] +=1
+            item_index+=1        
     new_labels = make_ground_truth_labels(B, neighbours, index)
     dataset.labels = new_labels
     
@@ -128,11 +120,11 @@ def make_ground_truth_labels(B, neighbours, index):
         for neighbour in neighbours[i]:
             bucket = index[neighbour]
             labels[i, bucket] = True
-    labels = torch.from_numpy(labels).float()
+    
     return labels
 
 if __name__ == "__main__":
-    BATCH_SIZE = 64
+    BATCH_SIZE = 256
     EPOCHS = 5
     ITERATIONS = 5
     K = 2
@@ -141,8 +133,8 @@ if __name__ == "__main__":
     # device = "cpu"
     print("Using device:", device)
 
-    # dataset_name = "sift-128-euclidean"
-    dataset_name = "mnist-784-euclidean"
+    dataset_name = "sift-128-euclidean"
+    # dataset_name = "mnist-784-euclidean"
     train, _, _ = read_dataset(dataset_name)
     print("training data_________________________")
     print(np.shape(train))
@@ -155,18 +147,19 @@ if __name__ == "__main__":
     index, counts = assign_initital_buckets(len(train), R, B)
 
     print("looking for true neighbours")
-    neighbours = get_nearest_neighbours_old(train, 20)
+    neighbours = get_train_nearest_neighbours_from_file(train, NR_NEIGHBOURS, dataset_name)
     print(neighbours)
 
     print("making ground truth labels")
     labels = make_ground_truth_labels(B, neighbours, index)
 
-    dataset = BLISSDataset(train, labels)
+    dataset = Dataset(train, labels)
     model = BLISS_NN(DIMENSION, B)
+
+    train_loader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True)
 
     model.to(device)
     print("training model")
     train_model(model, dataset, index, ITERATIONS, K, counts, neighbours, EPOCHS, BATCH_SIZE)
-
     np.set_printoptions(threshold=np.inf, suppress=True)
     print(counts)
