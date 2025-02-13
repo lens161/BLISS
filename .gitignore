@@ -8,6 +8,8 @@ __pycache__/
 *$py.class
 *.hdf5
 data/
+models/*
+*.pt
 
 # C extensions
 *.so
