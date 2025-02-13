@@ -10,15 +10,17 @@ from utils import *
 
 class BLISSDataset(Dataset):
     def __init__(self, data, labels):
-        # Convert the whole dataset to tensors once
-        self.data = torch.from_numpy(data).float()
+        self.data = data
         self.labels = labels
 
     def __len__(self):
-        return self.data.shape[0]
-    
+        return len(self.data)
+
     def __getitem__(self, idx):
-        return self.data[idx], self.labels[idx]
+        # turn nd.array into tensor when fetched from the Dataset
+        vector = torch.from_numpy(self.data[idx]).float()
+        label = torch.from_numpy(self.labels[idx]).float()
+        return vector, label
 
 class BLISS_NN(nn.Module):
     def __init__(self, input_size, output_size):
@@ -134,7 +136,6 @@ def make_ground_truth_labels(B, neighbours, index):
         for neighbour in neighbours[i]:
             bucket = index[neighbour]
             labels[i, bucket] = True
-    labels = torch.from_numpy(labels).float()
     return labels
 
 if __name__ == "__main__":
