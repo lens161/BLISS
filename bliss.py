@@ -12,7 +12,7 @@ class BLISSDataset(Dataset):
     def __init__(self, data, labels, device):
         self.device = device
         self.labels = labels
-        if device == "cpu":
+        if device == torch.device("cpu"):
             self.data = data
         else:
             self.data = torch.from_numpy(data).float()
@@ -22,7 +22,7 @@ class BLISSDataset(Dataset):
 
     def __getitem__(self, idx):
         # turn nd.array into tensor when fetched from the Dataset
-        if self.device == "cpu":
+        if self.device == torch.device("cpu"):
             vector = torch.from_numpy(self.data[idx]).float()
             label = torch.from_numpy(self.labels[idx]).float()
         else:
@@ -144,7 +144,7 @@ def make_ground_truth_labels(B, neighbours, index):
         for neighbour in neighbours[i]:
             bucket = index[neighbour]
             labels[i, bucket] = True
-    if device != "cpu":
+    if device != torch.device("cpu"):
         labels = torch.from_numpy(labels).float()
     return labels
 
