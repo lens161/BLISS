@@ -8,7 +8,7 @@ __pycache__/
 *$py.class
 *.hdf5
 data/
-models/*
+models/
 *.pt
 
 # C extensions
