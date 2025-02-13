@@ -9,6 +9,7 @@ __pycache__/
 *.hdf5
 data/
 models/
+memmaps/
 *.pt
 
 # C extensions

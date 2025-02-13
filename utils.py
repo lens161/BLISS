@@ -96,6 +96,16 @@ def save_model(model, dataset_name, R, K):
         os.mkdir("models")
     torch.save(model.state_dict(), MODEL_PATH)
 
+def save_dataset_as_memmap(dataset, dataset_name):
+    memmap_name = f"memmap_{dataset_name}"
+    memmap_path = f"memmaps/{memmap_name}.npy"
+    if not os.path.exists("memmaps/"):
+        os.mkdir("memmaps")
+    memmap = np.memmap(memmap_path, dtype=float, mode='w+', shape=dataset.shape)
+    memmap[:] = dataset[:]
+    memmap.flush()
+    return memmap
+
 def get_best_device():
     if torch.cuda.is_available():
         # covers both NVIDIA CUDA and AMD ROCm

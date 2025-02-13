@@ -161,6 +161,7 @@ if __name__ == "__main__":
     dataset_name = "sift-128-euclidean"
     # dataset_name = "mnist-784-euclidean"
     train, _, _ = read_dataset(dataset_name)
+    memmap = save_dataset_as_memmap(train, dataset_name)
     print("training data_________________________")
     print(np.shape(train))
 
