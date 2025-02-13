@@ -9,17 +9,25 @@ from sklearn.utils import murmurhash3_32 as mmh3
 from utils import *
 
 class BLISSDataset(Dataset):
-    def __init__(self, data, labels):
-        self.data = data
+    def __init__(self, data, labels, device):
+        self.device = device
         self.labels = labels
+        if device == "cpu":
+            self.data = data
+        else:
+            self.data = torch.from_numpy(data).float()
 
     def __len__(self):
         return len(self.data)
 
     def __getitem__(self, idx):
         # turn nd.array into tensor when fetched from the Dataset
-        vector = torch.from_numpy(self.data[idx]).float()
-        label = torch.from_numpy(self.labels[idx]).float()
+        if self.device == "cpu":
+            vector = torch.from_numpy(self.data[idx]).float()
+            label = torch.from_numpy(self.labels[idx]).float()
+        else:
+            vector = self.data[idx]
+            label = self.labels[idx]
         return vector, label
 
 class BLISS_NN(nn.Module):
@@ -136,6 +144,8 @@ def make_ground_truth_labels(B, neighbours, index):
         for neighbour in neighbours[i]:
             bucket = index[neighbour]
             labels[i, bucket] = True
+    if device != "cpu":
+        labels = torch.from_numpy(labels).float()
     return labels
 
 if __name__ == "__main__":
@@ -168,7 +178,7 @@ if __name__ == "__main__":
     print("making ground truth labels")
     labels = make_ground_truth_labels(B, neighbours, index)
 
-    dataset = BLISSDataset(train, labels)
+    dataset = BLISSDataset(train, labels, device)
     model = BLISS_NN(DIMENSION, B)
 
     print("training model")
