@@ -83,6 +83,7 @@ def reassign_buckets(model, dataset, k, index, bucket_sizes, neighbours, batch_s
 
             for probability_vector in bucket_probabilities:
                 reassign_vector_to_bucket(probability_vector, index, SIZE, bucket_sizes, k, item_index)
+                item_index += 1
                      
     finish = time.time()
     elapsed = finish - start
@@ -104,8 +105,7 @@ def reassign_vector_to_bucket(probability_vector, index, SIZE, bucket_sizes, k, 
 
     index[item_index] = smallest_bucket
     bucket_sizes[old_bucket] -=1
-    bucket_sizes[smallest_bucket] +=1
-    item_index+=1   
+    bucket_sizes[smallest_bucket] +=1  
             
 def assign_initital_buckets(train_size, r, B):
     '''
