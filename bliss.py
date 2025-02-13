@@ -42,6 +42,7 @@ class BLISS_NN(nn.Module):
         return x
 
 def train_model(model, dataset, index, iterations, k, bucket_sizes, neighbours, epochs_per_iteration, batch_size, SIZE):
+    model.to(device)
     criterion = nn.BCEWithLogitsLoss()
     optimizer = optim.Adam(model.parameters(), lr=0.001)
     train_loader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=6)
@@ -70,6 +71,7 @@ def train_model(model, dataset, index, iterations, k, bucket_sizes, neighbours, 
         print(f"index after iteration {i} = {index}")
 
 def reassign_buckets(model, dataset, k, index, bucket_sizes, neighbours, batch_size, SIZE):
+    model.to("cpu")
     model.eval()
     reassign_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=6)
     item_index = 0
@@ -77,7 +79,7 @@ def reassign_buckets(model, dataset, k, index, bucket_sizes, neighbours, batch_s
     start = time.time()
     with torch.no_grad():
         for batch_data, batch_labels in reassign_loader:
-            batch_data = batch_data.to(device)
+            batch_data = batch_data.to("cpu")
             bucket_probabilities = torch.sigmoid(model(batch_data))
             # print(f"bucket probabilities: {bucket_probabilities}")
 
@@ -90,6 +92,7 @@ def reassign_buckets(model, dataset, k, index, bucket_sizes, neighbours, batch_s
     print(f"reassigning took {elapsed}")
     new_labels = make_ground_truth_labels(B, neighbours, index)
     dataset.labels = new_labels
+    model.to(device)
 
 def reassign_vector_to_bucket(probability_vector, index, SIZE, bucket_sizes, k, item_index):
     value, indices_of_topk_buckets = torch.topk(probability_vector, k)
@@ -167,7 +170,6 @@ if __name__ == "__main__":
     dataset = BLISSDataset(train, labels)
     model = BLISS_NN(DIMENSION, B)
 
-    model.to(device)
     print("training model")
     train_model(model, dataset, index, ITERATIONS, K, counts, neighbours, EPOCHS, BATCH_SIZE, SIZE)
 
