@@ -88,6 +88,13 @@ def get_B(n):
         return B
     else:
         raise Exception(f"cannot calculate B for empty dataset!")
+    
+def save_model(model, dataset_name, R, K):
+    model_name = f"model_{dataset_name}_{R}_{K}"
+    MODEL_PATH = f"models/{model_name}.pt"
+    if not os.path.exists("models/"):
+        os.mkdir("models")
+    torch.save(model.state_dict(), MODEL_PATH)
 
 def get_best_device():
     if torch.cuda.is_available():

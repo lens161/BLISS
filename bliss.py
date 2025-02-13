@@ -183,6 +183,8 @@ if __name__ == "__main__":
 
     print("training model")
     train_model(model, dataset, index, ITERATIONS, K, counts, neighbours, EPOCHS, BATCH_SIZE, SIZE)
+    
+    save_model(model, dataset_name, R, K)
 
     np.set_printoptions(threshold=np.inf, suppress=True)
     print(counts)
