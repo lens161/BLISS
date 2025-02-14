@@ -91,7 +91,8 @@ class TestTrainMethods(unittest.TestCase):
         data = np.array([[1], [5], [88], [100], [125], [130], [132], [150], [273], [500]])
         index = np.array([0, 0, 2, 1, 0, 1, 1, 2, 2, 0])
         nbrs = get_nearest_neighbours_faiss_within_dataset(data, 2)
-        labels = make_ground_truth_labels(B, nbrs, index)
+        device = get_best_device()
+        labels = make_ground_truth_labels(B, nbrs, index, 10, device)
         self.assertTrue(np.array_equal(labels[0], [1, 0, 1]))
         self.assertTrue(np.array_equal(labels[1], [1, 0, 1]))
         self.assertTrue(np.array_equal(labels[2], [1, 1, 0]))
@@ -110,7 +111,7 @@ class TestTrainMethods(unittest.TestCase):
         N = 10000
         r = 1
         B = get_B(N)
-        index, counts = assign_initial_buckets(N, r, B)
+        index, counts = assign_initial_buckets(N, 0, r, B)
         self.assertEqual(len(index), N)
         self.assertEqual(len(counts), B)
 
@@ -119,7 +120,14 @@ class TestTrainMethods(unittest.TestCase):
         max_bucketsize = expected_bucketsize*2
         self.assertFalse((counts > max_bucketsize).any())
         self.assertFalse((counts < min_bucketsize).any())
-           
+    
+    def test_invert_index_small(self):
+        testindex = np.array([0, 2, 0, 1, 1, 2, 0, 1, 2, 1])
+        inverted_index = invert_index(testindex, 3)
+        self.assertTrue(np.array_equal(inverted_index[0], np.array([0, 2, 6])))
+        self.assertTrue(np.array_equal(inverted_index[1], np.array([3, 4, 7, 9])))
+        self.assertTrue(np.array_equal(inverted_index[2], np.array([1, 5, 8])))
+          
     
 if __name__ == "__main__":
     unittest.main()

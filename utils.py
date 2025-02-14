@@ -104,14 +104,19 @@ def save_dataset_as_memmap(train, rest, dataset_name):
     if not os.path.exists("memmaps/"):
         os.mkdir("memmaps")
     size_train, dim = np.shape(train)
-    size_rest, _ = np.shape(rest)
+    size_rest = 0
+    if rest != None:
+        size_rest, _ = np.shape(rest)
     size = size_rest + size_train
     print(f"size = {size}")
-
+ 
     memmap = np.memmap(memmap_path, dtype=float, mode='w+', shape=(size, dim))
-    all = np.concatenate((train, rest), axis=0)
+    if size_rest == 0:
+        memmap[:] = train[:]
+    else:
+        all = np.concatenate((train, rest), axis=0)
+        memmap[:] = all[:]
     # np.append(memmap, rest)
-    memmap[:] = all[:]
     memmap.flush()
     return memmap
 

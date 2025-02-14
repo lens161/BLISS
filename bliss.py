@@ -51,7 +51,7 @@ class BLISS_NN(nn.Module):
 
         return x
 
-def train_model(model, dataset, index, iterations, k, bucket_sizes, neighbours, epochs_per_iteration, batch_size, SIZE):
+def train_model(model, dataset, index, iterations, k, bucket_sizes, neighbours, epochs_per_iteration, batch_size, SIZE, device):
     model.to(device)
     criterion = nn.BCEWithLogitsLoss()
     optimizer = optim.Adam(model.parameters(), lr=0.001)
@@ -77,10 +77,10 @@ def train_model(model, dataset, index, iterations, k, bucket_sizes, neighbours, 
             finish = time.time()
             elapsed = finish-start
             print(f"epoch {epoch} took {elapsed}")
-        reassign_buckets(model, dataset, k, index, bucket_sizes, neighbours, batch_size, SIZE)
+        reassign_buckets(model, dataset, k, index, bucket_sizes, neighbours, batch_size, SIZE, device)
         print(f"index after iteration {i} = {index}")
 
-def reassign_buckets(model, dataset, k, index, bucket_sizes, neighbours, batch_size, SIZE):
+def reassign_buckets(model, dataset, k, index, bucket_sizes, neighbours, batch_size, SIZE, device):
     sample_size, _ = np.shape(dataset.data)
     model.to("cpu")
     model.eval()
@@ -101,7 +101,7 @@ def reassign_buckets(model, dataset, k, index, bucket_sizes, neighbours, batch_s
     finish = time.time()
     elapsed = finish - start
     print(f"reassigning took {elapsed}")
-    new_labels = make_ground_truth_labels(B, neighbours, index, sample_size)
+    new_labels = make_ground_truth_labels(B, neighbours, index, sample_size, device)
     dataset.labels = new_labels
     model.to(device)
 
@@ -137,7 +137,7 @@ def assign_initial_buckets(train_size, rest_size, r, B):
     
     return index, bucket_sizes
 
-def make_ground_truth_labels(B, neighbours, index, sample_size):
+def make_ground_truth_labels(B, neighbours, index, sample_size, device):
     size = sample_size
     labels = np.zeros((size, B), dtype=bool)
 
@@ -170,6 +170,19 @@ def map_all_to_buckets(rst_vectors, k, bucket_sizes, index, SIZE, model_path, tr
         index[i] = smallest_bucket
         bucket_sizes[smallest_bucket] +=1
 
+
+def invert_index(index, B):
+    inverted_index = [[] for _ in range(B)]
+
+    for i, _ in enumerate(index):
+        bucket = index[i]
+        inverted_index[bucket].append(i)
+    
+    for bucket in inverted_index:
+        bucket = np.array(bucket)
+
+    return inverted_index
+
 if __name__ == "__main__":
     BATCH_SIZE = 256
     EPOCHS = 2
@@ -190,14 +203,17 @@ if __name__ == "__main__":
     SIZE, DIMENSION = np.shape(train)
     B = get_B(SIZE)
     print(B)
-    sample_size = SIZE if SIZE < 10_000 else int(0.01*SIZE)
+    sample_size = SIZE if SIZE < 10_000_000 else int(0.01*SIZE)
     print(f"sample size = {sample_size}")
     sample = np.empty((sample_size, DIMENSION))
     # rest = np.empty((int((1-sample_size_percentage)*SIZE), DIMENSION))
-    rest = np.array([])
+    rest = None
+    rest_size = 0
     if sample_size != SIZE:
         sample, rest = split_training_sample(train, SIZE-sample_size)
-    rest_size, _ = np.shape(rest)
+        rest_size, _ = np.shape(rest)
+    else:
+        sample = train
     
     index, bucket_sizes = assign_initial_buckets(sample_size, rest_size, R, B)
 
@@ -210,13 +226,13 @@ if __name__ == "__main__":
     print(neighbours)
 
     print("making ground truth labels")
-    labels = make_ground_truth_labels(B, neighbours, index, sample_size)
+    labels = make_ground_truth_labels(B, neighbours, index, sample_size, device)
 
     dataset = BLISSDataset(sample, labels, device)
     model = BLISS_NN(DIMENSION, B)
 
     print("training model")
-    train_model(model, dataset, index, ITERATIONS, K, bucket_sizes, neighbours, EPOCHS, BATCH_SIZE, SIZE)
+    train_model(model, dataset, index, ITERATIONS, K, bucket_sizes, neighbours, EPOCHS, BATCH_SIZE, SIZE, device)
     
     model_path = save_model(model, dataset_name, R, K)
 
