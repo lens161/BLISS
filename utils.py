@@ -6,6 +6,7 @@ import h5py
 import numpy as np
 import traceback
 import math
+from sklearn.model_selection import train_test_split as sklearn_train_test_split
 from urllib.request import Request, urlopen
 from pandas import read_csv
 
@@ -95,14 +96,22 @@ def save_model(model, dataset_name, R, K):
     if not os.path.exists("models/"):
         os.mkdir("models")
     torch.save(model.state_dict(), MODEL_PATH)
+    return MODEL_PATH
 
-def save_dataset_as_memmap(dataset, dataset_name):
+def save_dataset_as_memmap(train, rest, dataset_name):
     memmap_name = f"memmap_{dataset_name}"
     memmap_path = f"memmaps/{memmap_name}.npy"
     if not os.path.exists("memmaps/"):
         os.mkdir("memmaps")
-    memmap = np.memmap(memmap_path, dtype=float, mode='w+', shape=dataset.shape)
-    memmap[:] = dataset[:]
+    size_train, dim = np.shape(train)
+    size_rest, _ = np.shape(rest)
+    size = size_rest + size_train
+    print(f"size = {size}")
+
+    memmap = np.memmap(memmap_path, dtype=float, mode='w+', shape=(size, dim))
+    all = np.concatenate((train, rest), axis=0)
+    # np.append(memmap, rest)
+    memmap[:] = all[:]
     memmap.flush()
     return memmap
 
@@ -115,3 +124,10 @@ def get_best_device():
         return torch.device("mps")
     else:
         return torch.device("cpu")
+    
+def split_training_sample(data, sample_size):
+    '''
+    seperate training sample from data
+    '''
+    print(f"Splitting training sample from {data}")
+    return sklearn_train_test_split(data, test_size=sample_size, random_state=1)

@@ -110,7 +110,7 @@ class TestTrainMethods(unittest.TestCase):
         N = 10000
         r = 1
         B = get_B(N)
-        index, counts = assign_initital_buckets(N, r, B)
+        index, counts = assign_initial_buckets(N, r, B)
         self.assertEqual(len(index), N)
         self.assertEqual(len(counts), B)
 

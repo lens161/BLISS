@@ -81,6 +81,7 @@ def train_model(model, dataset, index, iterations, k, bucket_sizes, neighbours, 
         print(f"index after iteration {i} = {index}")
 
 def reassign_buckets(model, dataset, k, index, bucket_sizes, neighbours, batch_size, SIZE):
+    sample_size, _ = np.shape(dataset.data)
     model.to("cpu")
     model.eval()
     reassign_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=6)
@@ -100,7 +101,7 @@ def reassign_buckets(model, dataset, k, index, bucket_sizes, neighbours, batch_s
     finish = time.time()
     elapsed = finish - start
     print(f"reassigning took {elapsed}")
-    new_labels = make_ground_truth_labels(B, neighbours, index)
+    new_labels = make_ground_truth_labels(B, neighbours, index, sample_size)
     dataset.labels = new_labels
     model.to(device)
 
@@ -120,13 +121,13 @@ def reassign_vector_to_bucket(probability_vector, index, SIZE, bucket_sizes, k, 
     bucket_sizes[old_bucket] -=1
     bucket_sizes[smallest_bucket] +=1  
             
-def assign_initital_buckets(train_size, r, B):
+def assign_initial_buckets(train_size, rest_size, r, B):
     '''
     assign bucket labels to vectors (indeces in the nd.array) using a hash function.
     the hash fucntion used here is the same as in the original code from the BLISS github.
     TO-DO: add reference link
     '''
-    index = np.zeros(train_size, dtype=int) # from 0 to train_size-1
+    index = np.zeros(train_size+rest_size, dtype=int) # from 0 to train_size-1
     bucket_sizes = np.zeros(B)
 
     for i in range(train_size):
@@ -136,8 +137,8 @@ def assign_initital_buckets(train_size, r, B):
     
     return index, bucket_sizes
 
-def make_ground_truth_labels(B, neighbours, index):
-    size = len(index)
+def make_ground_truth_labels(B, neighbours, index, sample_size):
+    size = sample_size
     labels = np.zeros((size, B), dtype=bool)
 
     for i in range(size):
@@ -148,10 +149,32 @@ def make_ground_truth_labels(B, neighbours, index):
         labels = torch.from_numpy(labels).float()
     return labels
 
+def map_all_to_buckets(rst_vectors, k, bucket_sizes, index, SIZE, model_path, training_sample_size, DIMENSION, B):
+    rst_vectors = torch.from_numpy(rst_vectors)
+    map_model = BLISS_NN(DIMENSION, B)
+    map_model.state_dict(torch.load(model_path, weights_only=True))
+    map_model.eval()
+
+    for i, vector in enumerate(rst_vectors, start=training_sample_size):
+        scores = map_model(vector)
+        probabilities = torch.sigmoid(scores)
+        values, candidates = torch.topk(probabilities, k)
+        smallest_bucket = 0
+        smallest_bucket_size = SIZE
+        for i in candidates:
+            size = bucket_sizes[i]
+            if size < smallest_bucket_size:
+                smallest_bucket = i
+                smallest_bucket_size = size
+        
+        index[i] = smallest_bucket
+        bucket_sizes[smallest_bucket] +=1
+
 if __name__ == "__main__":
     BATCH_SIZE = 256
-    EPOCHS = 5
-    ITERATIONS = 20
+    EPOCHS = 2
+    ITERATIONS = 2
+    R = 1
     K = 2
     NR_NEIGHBOURS = 100
     device = get_best_device()
@@ -161,32 +184,49 @@ if __name__ == "__main__":
     dataset_name = "sift-128-euclidean"
     # dataset_name = "mnist-784-euclidean"
     train, _, _ = read_dataset(dataset_name)
-    memmap = save_dataset_as_memmap(train, dataset_name)
     print("training data_________________________")
-    print(np.shape(train))
+    print(f"train shape = {np.shape(train)}")
 
     SIZE, DIMENSION = np.shape(train)
     B = get_B(SIZE)
     print(B)
+    sample_size = SIZE if SIZE < 10_000 else int(0.01*SIZE)
+    print(f"sample size = {sample_size}")
+    sample = np.empty((sample_size, DIMENSION))
+    # rest = np.empty((int((1-sample_size_percentage)*SIZE), DIMENSION))
+    rest = np.array([])
+    if sample_size != SIZE:
+        sample, rest = split_training_sample(train, SIZE-sample_size)
+    rest_size, _ = np.shape(rest)
+    
+    index, bucket_sizes = assign_initial_buckets(sample_size, rest_size, R, B)
 
-    R = 1
-    index, counts = assign_initital_buckets(len(train), R, B)
+    memmap = save_dataset_as_memmap(sample, rest, dataset_name)
+    print(f"memmap = {memmap}")
+    print(f"memmap shape = {np.shape(memmap)}")
 
     print("looking for true neighbours")
-    neighbours = get_train_nearest_neighbours_from_file(train, NR_NEIGHBOURS, dataset_name)
+    neighbours = get_train_nearest_neighbours_from_file(sample, NR_NEIGHBOURS, dataset_name)
     print(neighbours)
 
     print("making ground truth labels")
-    labels = make_ground_truth_labels(B, neighbours, index)
+    labels = make_ground_truth_labels(B, neighbours, index, sample_size)
 
-    dataset = BLISSDataset(train, labels, device)
+    dataset = BLISSDataset(sample, labels, device)
     model = BLISS_NN(DIMENSION, B)
 
     print("training model")
-    train_model(model, dataset, index, ITERATIONS, K, counts, neighbours, EPOCHS, BATCH_SIZE, SIZE)
+    train_model(model, dataset, index, ITERATIONS, K, bucket_sizes, neighbours, EPOCHS, BATCH_SIZE, SIZE)
     
-    save_model(model, dataset_name, R, K)
+    model_path = save_model(model, dataset_name, R, K)
+
+    print(f"index before full assignment = {index}")
+    rest_size, _ = np.shape(rest)
+    if rest_size != 0:
+        print("assigning rest of vectors to buckets")
+        map_all_to_buckets(rest, K, bucket_sizes, index, SIZE, model_path, sample_size, DIMENSION, B)
+    print(f"index after full assignment{index}")
 
     np.set_printoptions(threshold=np.inf, suppress=True)
-    print(counts)
+    print(bucket_sizes)
 
