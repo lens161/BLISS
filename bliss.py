@@ -151,20 +151,23 @@ def make_ground_truth_labels(B, neighbours, index, sample_size, device):
 
 def map_all_to_buckets(rst_vectors, k, bucket_sizes, index, SIZE, model_path, training_sample_size, DIMENSION, B):
     rst_vectors = torch.from_numpy(rst_vectors)
+    print(f"training sample size = {training_sample_size}")
     map_model = BLISS_NN(DIMENSION, B)
     map_model.state_dict(torch.load(model_path, weights_only=True))
     map_model.eval()
 
     for i, vector in enumerate(rst_vectors, start=training_sample_size):
+        if i < 10_000:
+            print("wrong start")
         scores = map_model(vector)
         probabilities = torch.sigmoid(scores)
         values, candidates = torch.topk(probabilities, k)
         smallest_bucket = 0
         smallest_bucket_size = SIZE
-        for i in candidates:
-            size = bucket_sizes[i]
+        for cand in candidates:
+            size = bucket_sizes[cand]
             if size < smallest_bucket_size:
-                smallest_bucket = i
+                smallest_bucket = cand
                 smallest_bucket_size = size
         
         index[i] = smallest_bucket
@@ -185,8 +188,8 @@ def invert_index(index, B):
 
 if __name__ == "__main__":
     BATCH_SIZE = 256
-    EPOCHS = 2
-    ITERATIONS = 2
+    EPOCHS = 5
+    ITERATIONS = 20
     R = 1
     K = 2
     NR_NEIGHBOURS = 100
@@ -209,7 +212,8 @@ if __name__ == "__main__":
     # rest = np.empty((int((1-sample_size_percentage)*SIZE), DIMENSION))
     rest = None
     rest_size = 0
-    if sample_size != SIZE:
+    train_on_full_dataset = (sample_size == SIZE)
+    if not train_on_full_dataset:
         sample, rest = split_training_sample(train, SIZE-sample_size)
         rest_size, _ = np.shape(rest)
     else:
@@ -217,7 +221,7 @@ if __name__ == "__main__":
     
     index, bucket_sizes = assign_initial_buckets(sample_size, rest_size, R, B)
 
-    memmap = save_dataset_as_memmap(sample, rest, dataset_name)
+    memmap = save_dataset_as_memmap(sample, rest, dataset_name, train_on_full_dataset)
     print(f"memmap = {memmap}")
     print(f"memmap shape = {np.shape(memmap)}")
 
@@ -237,8 +241,8 @@ if __name__ == "__main__":
     model_path = save_model(model, dataset_name, R, K)
 
     print(f"index before full assignment = {index}")
-    rest_size, _ = np.shape(rest)
-    if rest_size != 0:
+
+    if not train_on_full_dataset:
         print("assigning rest of vectors to buckets")
         map_all_to_buckets(rest, K, bucket_sizes, index, SIZE, model_path, sample_size, DIMENSION, B)
     print(f"index after full assignment{index}")

@@ -98,14 +98,14 @@ def save_model(model, dataset_name, R, K):
     torch.save(model.state_dict(), MODEL_PATH)
     return MODEL_PATH
 
-def save_dataset_as_memmap(train, rest, dataset_name):
+def save_dataset_as_memmap(train, rest, dataset_name, train_on_full_dataset):
     memmap_name = f"memmap_{dataset_name}"
     memmap_path = f"memmaps/{memmap_name}.npy"
     if not os.path.exists("memmaps/"):
         os.mkdir("memmaps")
     size_train, dim = np.shape(train)
     size_rest = 0
-    if rest != None:
+    if not train_on_full_dataset:
         size_rest, _ = np.shape(rest)
     size = size_rest + size_train
     print(f"size = {size}")
