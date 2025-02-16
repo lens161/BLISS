@@ -1,4 +1,5 @@
 import numpy as np
+import sys
 import time
 import torch
 from torch import nn
@@ -85,6 +86,7 @@ def reassign_buckets(model, dataset, k, index, bucket_sizes, neighbours, batch_s
     model.to("cpu")
     model.eval()
     reassign_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=6)
+    bucket_sizes = np.zeros(len(bucket_sizes))
     item_index = 0
 
     start = time.time()
@@ -92,10 +94,9 @@ def reassign_buckets(model, dataset, k, index, bucket_sizes, neighbours, batch_s
         for batch_data, batch_labels in reassign_loader:
             batch_data = batch_data.to("cpu")
             bucket_probabilities = torch.sigmoid(model(batch_data))
-            # print(f"bucket probabilities: {bucket_probabilities}")
 
             for probability_vector in bucket_probabilities:
-                reassign_vector_to_bucket(probability_vector, index, SIZE, bucket_sizes, k, item_index)
+                reassign_vector_to_bucket(probability_vector, index, bucket_sizes, k, item_index)
                 item_index += 1
                      
     finish = time.time()
@@ -105,12 +106,10 @@ def reassign_buckets(model, dataset, k, index, bucket_sizes, neighbours, batch_s
     dataset.labels = new_labels
     model.to(device)
 
-def reassign_vector_to_bucket(probability_vector, index, SIZE, bucket_sizes, k, item_index):
+def reassign_vector_to_bucket(probability_vector, index, bucket_sizes, k, item_index):
     value, indices_of_topk_buckets = torch.topk(probability_vector, k)
-    # print(f"indices = {indices_of_topk_buckets}")
-    smallest_bucket = 0
-    smallest_bucket_size = SIZE
-    old_bucket = index[item_index]
+    smallest_bucket = indices_of_topk_buckets[0]
+    smallest_bucket_size = sys.maxsize
     for i in indices_of_topk_buckets:
         size = bucket_sizes[i]
         if size < smallest_bucket_size:
@@ -118,7 +117,6 @@ def reassign_vector_to_bucket(probability_vector, index, SIZE, bucket_sizes, k, 
             smallest_bucket_size = size
 
     index[item_index] = smallest_bucket
-    bucket_sizes[old_bucket] -=1
     bucket_sizes[smallest_bucket] +=1  
             
 def assign_initial_buckets(train_size, rest_size, r, B):
@@ -188,8 +186,8 @@ def invert_index(index, B):
 
 if __name__ == "__main__":
     BATCH_SIZE = 256
-    EPOCHS = 5
-    ITERATIONS = 20
+    EPOCHS = 2
+    ITERATIONS = 2
     R = 1
     K = 2
     NR_NEIGHBOURS = 100
