@@ -1,42 +1,34 @@
 import numpy as np
+import sys
+import time
 import torch
-import os
-import pandas as pd
 from torch import nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, Dataset
-from torchvision import datasets, transforms
+# from torchvision import datasets, transforms
 from sklearn.utils import murmurhash3_32 as mmh3
-import sklearn.datasets
-from sklearn.model_selection import train_test_split as sklearn_train_test_split
-from sklearn.neighbors import NearestNeighbors
 from utils import *
-import sys
-import math
-# import importlib
-# importlib.reload(utils) 
-device = get_best_device()
-# device = "cpu"
-print("Using device:", device)
 
-SIZE = 0
-DIMENSION = 0
-B = 0
-BATCH_SIZE = 256
-EPOCHS = 5
-
-class Dataset(Dataset):
-    def __init__(self, data, labels):
-        self.data = data
+class BLISSDataset(Dataset):
+    def __init__(self, data, labels, device):
+        self.device = device
         self.labels = labels
+        if device == torch.device("cpu"):
+            self.data = data
+        else:
+            self.data = torch.from_numpy(data).float()
 
     def __len__(self):
         return len(self.data)
-    
+
     def __getitem__(self, idx):
         # turn nd.array into tensor when fetched from the Dataset
-        vector = torch.from_numpy(self.data[idx]).float()
-        label = torch.from_numpy(self.labels[idx]).float()
+        if self.device == torch.device("cpu"):
+            vector = torch.from_numpy(self.data[idx]).float()
+            label = torch.from_numpy(self.labels[idx]).float()
+        else:
+            vector = self.data[idx]
+            label = self.labels[idx]
         return vector, label
 
 class BLISS_NN(nn.Module):
@@ -50,7 +42,7 @@ class BLISS_NN(nn.Module):
         # output layer maps 512 hidden neurons to output neurons (representing the buckets)
         self.fc2 = nn.Linear(512, output_size)
         # turns all output values into softmax values that sum to 1 -> probabilities
-        self.softmax = nn.Softmax(dim=1)
+        # self.sigmoid = nn.Sigmoid(dim=1)
 
     def forward(self, x):
         # x is  training vector?
@@ -58,19 +50,23 @@ class BLISS_NN(nn.Module):
         x = self.relu(x)
         x = self.fc2(x)
 
-        output = torch.softmax(x, dim=1)
-        return output
+        return x
 
-def train_model(model, dataset, index, iterations, k, bucket_sizes, neighbours, epochs_per_iteration=EPOCHS):
+def train_model(model, dataset, index, iterations, k, sample_size, bucket_sizes, neighbours, epochs_per_iteration, batch_size, device):
+    model.to(device)
     criterion = nn.BCEWithLogitsLoss()
     optimizer = optim.Adam(model.parameters(), lr=0.001)
-    train_loader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=2)
+    train_loader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=6)
 
     for i in range(iterations):
         model.train()
         for epoch in range(epochs_per_iteration):
             print(f"training epoch ({i}, {epoch})")
+            start = time.time()
             for batch_data, batch_labels in train_loader:
+                batch_data = batch_data.to(device)
+                batch_labels = batch_labels.to(device)
+                # print(f"batch_labels: {batch_labels}")
                 # Zero the parameter gradients
                 optimizer.zero_grad()
                 # Forward pass
@@ -79,42 +75,57 @@ def train_model(model, dataset, index, iterations, k, bucket_sizes, neighbours, 
                 # Backward pass and optimization
                 loss.backward()
                 optimizer.step()
-        reassign_buckets(model, dataset, k, index, bucket_sizes, neighbours, batch_size=BATCH_SIZE)
+            finish = time.time()
+            elapsed = finish-start
+            print(f"epoch {epoch} took {elapsed}")
+        reassign_buckets(model, dataset, k, index, bucket_sizes, sample_size, neighbours, batch_size, device)
+        print(f"index after iteration {i} = {index}")
 
-        # TO-DO:
-        # reassignment of labels after 5 epochs
-
-def reassign_buckets(model, dataset, k, index, bucket_sizes, neighbours, batch_size = BATCH_SIZE):
+def reassign_buckets(model, dataset, k, index, bucket_sizes, sample_size, neighbours, batch_size, device):
+    sample_size, _ = np.shape(dataset.data)
+    model.to("cpu")
     model.eval()
-    reassign_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
+    reassign_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=6)
+    bucket_sizes = np.zeros(len(bucket_sizes))
     item_index = 0
 
-    for batch_data, batch_labels in reassign_loader:
-        bucket_probabilities = model(batch_data)
+    start = time.time()
+    with torch.no_grad():
+        for batch_data, batch_labels in reassign_loader:
+            batch_data = batch_data.to("cpu")
+            bucket_probabilities = torch.sigmoid(model(batch_data))
 
-        for probability in bucket_probabilities:
-            value, idx = torch.topk(probability, k)
-            smallest_bucket = 0
-            for i in idx:
-                old_bucket = index[item_index]
-                size = bucket_sizes[i]
-                smallest_bucket = i if bucket_sizes[smallest_bucket] > size else smallest_bucket
-                index[item_index] = smallest_bucket
-                bucket_sizes[old_bucket] -=1
-                bucket_sizes[smallest_bucket] +=1
-                item_index+=1
-
-    new_labels = make_ground_truth_labels(B, neighbours, index)
+            for probability_vector in bucket_probabilities:
+                reassign_vector_to_bucket(probability_vector, index, bucket_sizes, k, item_index)
+                item_index += 1
+                     
+    finish = time.time()
+    elapsed = finish - start
+    print(f"reassigning took {elapsed}")
+    new_labels = make_ground_truth_labels(B, neighbours, index, sample_size, device)
     dataset.labels = new_labels
-    
+    model.to(device)
+
+def reassign_vector_to_bucket(probability_vector, index, bucket_sizes, k, item_index):
+    value, indices_of_topk_buckets = torch.topk(probability_vector, k)
+    smallest_bucket = indices_of_topk_buckets[0]
+    smallest_bucket_size = bucket_sizes[smallest_bucket]
+    for i in indices_of_topk_buckets:
+        size = bucket_sizes[i]
+        if size < smallest_bucket_size:
+            smallest_bucket = i
+            smallest_bucket_size = size
+
+    index[item_index] = smallest_bucket
+    bucket_sizes[smallest_bucket] +=1  
             
-def assign_initital_buckets(train_size, r, B):
+def assign_initial_buckets(train_size, rest_size, r, B):
     '''
     assign bucket labels to vectors (indeces in the nd.array) using a hash function.
     the hash fucntion used here is the same as in the original code from the BLISS github.
     TO-DO: add reference link
     '''
-    index = np.zeros(train_size, dtype=int) # from 0 to train_size-1
+    index = np.zeros(train_size+rest_size, dtype=int) # from 0 to train_size-1
     bucket_sizes = np.zeros(B)
 
     for i in range(train_size):
@@ -124,48 +135,116 @@ def assign_initital_buckets(train_size, r, B):
     
     return index, bucket_sizes
 
-def make_ground_truth_labels(B, neighbours, index):
-    size = len(index)
-    labels = np.zeros((size, B), dtype=bool)
+def make_ground_truth_labels(B, neighbours, index, sample_size, device):
+    # size = sample_size
+    labels = np.zeros((sample_size, B), dtype=bool)
 
-    for i in range(size):
+    for i in range(sample_size):
         for neighbour in neighbours[i]:
             bucket = index[neighbour]
             labels[i, bucket] = True
-    
+    if device != torch.device("cpu"):
+        labels = torch.from_numpy(labels).float()
+    print(f"lables = {labels}")
     return labels
 
-# if __name__ == "__main__":
-#     train, _, _ = read_dataset("mnist-784-euclidean")
-#     print("training data_________________________")
-#     print(np.shape(train))
+def map_all_to_buckets(rst_vectors, k, bucket_sizes, index, SIZE, model_path, training_sample_size, DIMENSION, B):
+    rst_vectors = torch.from_numpy(rst_vectors)
+    print(f"training sample size = {training_sample_size}")
+    map_model = BLISS_NN(DIMENSION, B)
+    map_model.state_dict(torch.load(model_path, weights_only=True))
+    map_model.eval()
 
-#     SIZE, DIMENSION = np.shape(train)
-#     B = get_B(SIZE)
-#     print(B)
-#     BATCH_SIZE = 256
-
-#     index, counts = assign_initital_buckets(len(train), 1, B)
-
-#     neighbours = get_nearest_neighbours_faiss(train, 100)
-#     labels = make_ground_truth_labels(B, neighbours=neighbours, index=index)
-
-#     dataset = Dataset(train, labels)
-#     model = BLISS_NN(DIMENSION, B)
-
-#     train_loader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True)
-
-    # model.to(device)
-    # model.eval()
-    # for data, labels in train_loader:
-    #     data = data.to(device)
-    #     labels = labels.to(device)
-    #     outputs = model(data)
-    #     # print(outputs)
+    for i, vector in enumerate(rst_vectors, start=training_sample_size):
+        if i < 10_000:
+            print("wrong start")
+        scores = map_model(vector)
+        probabilities = torch.sigmoid(scores)
+        values, candidates = torch.topk(probabilities, k)
+        smallest_bucket = candidates[0]
+        smallest_bucket_size = bucket_sizes[smallest_bucket]
+        for cand in candidates:
+            size = bucket_sizes[cand]
+            if size < smallest_bucket_size:
+                smallest_bucket = cand
+                smallest_bucket_size = size
+        
+        index[i] = smallest_bucket
+        bucket_sizes[smallest_bucket] +=1
 
 
-    # for vector, labels in dataset:
-    #     print("vector__________________________")
-    #     print(vector)
-    #     print("labels__________________________")
-    #     print(labels)
+def invert_index(index, B):
+    inverted_index = [[] for _ in range(B)]
+
+    for i, _ in enumerate(index):
+        bucket = index[i]
+        inverted_index[bucket].append(i)
+    
+    for bucket in inverted_index:
+        bucket = np.array(bucket)
+
+    return inverted_index
+
+if __name__ == "__main__":
+    BATCH_SIZE = 256
+    EPOCHS = 5
+    ITERATIONS = 20
+    R = 1
+    K = 2
+    NR_NEIGHBOURS = 100
+    device = get_best_device()
+    # device = "cpu"
+    print("Using device:", device) 
+
+    dataset_name = "sift-128-euclidean"
+    # dataset_name = "mnist-784-euclidean"
+    train, _, _ = read_dataset(dataset_name)
+    print("training data_________________________")
+    print(f"train shape = {np.shape(train)}")
+
+    SIZE, DIMENSION = np.shape(train)
+    B = get_B(SIZE)
+    sample_size = SIZE if SIZE < 10_000_000 else int(0.5*SIZE)
+    print(f"sample size = {sample_size}")
+    sample = np.empty((sample_size, DIMENSION))
+    # rest = np.empty((int((1-sample_size_percentage)*SIZE), DIMENSION))
+    rest = None
+    rest_size = 0
+    train_on_full_dataset = (sample_size == SIZE)
+    if not train_on_full_dataset:
+        sample, rest = split_training_sample(train, SIZE-sample_size)
+        rest_size, _ = np.shape(rest)
+    else:
+        sample = train
+    
+    index, bucket_sizes = assign_initial_buckets(sample_size, rest_size, R, B)
+
+    memmap = save_dataset_as_memmap(sample, rest, dataset_name, train_on_full_dataset)
+    print(f"memmap = {memmap}")
+    print(f"memmap shape = {np.shape(memmap)}")
+
+    print("looking for true neighbours")
+    neighbours = get_train_nearest_neighbours_from_file(sample, NR_NEIGHBOURS, dataset_name)
+    print(neighbours)
+
+    print("making ground truth labels")
+    labels = make_ground_truth_labels(B, neighbours, index, sample_size, device)
+
+    dataset = BLISSDataset(sample, labels, device)
+    model = BLISS_NN(DIMENSION, B)
+
+    print("training model")
+    train_model(model, dataset, index, ITERATIONS, K, sample_size, bucket_sizes, neighbours, EPOCHS, BATCH_SIZE, device)
+    
+    model_path = save_model(model, dataset_name, R, K)
+
+    print(f"index before full assignment = {index}")
+
+    if not train_on_full_dataset:
+        print("assigning rest of vectors to buckets")
+        map_all_to_buckets(rest, K, bucket_sizes, index, SIZE, model_path, sample_size, DIMENSION, B)
+    print(f"index after full assignment{index}")
+
+    np.set_printoptions(threshold=np.inf, suppress=True)
+    print(bucket_sizes)
+

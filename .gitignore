@@ -8,6 +8,10 @@ __pycache__/
 *$py.class
 *.hdf5
 data/
+models/
+memmaps/
+*.pt
+*.csv
 
 # C extensions
 *.so
