@@ -152,7 +152,7 @@ def map_all_to_buckets(rst_vectors, k, bucket_sizes, index, model_path, training
     rst_vectors = torch.from_numpy(rst_vectors)
     print(f"training sample size = {training_sample_size}")
     map_model = BLISS_NN(DIMENSION, B)
-    map_model.state_dict(torch.load(model_path, weights_only=True))
+    map_model.load_state_dict(torch.load(model_path, weights_only=True))
     map_model.eval()
 
     for i, vector in enumerate(rst_vectors, start=training_sample_size):
@@ -187,7 +187,7 @@ def invert_index(index, B):
     return inverted_index
 
 def get_sample(train, SIZE, DIMENSION):
-    sample_size = SIZE if SIZE < 10_000 else int(0.5*SIZE)
+    sample_size = SIZE if SIZE < 10_000_000 else int(0.01*SIZE)
     print(f"sample size = {sample_size}")
     sample = np.empty((sample_size, DIMENSION))
     # rest = np.empty((int((1-sample_size_percentage)*SIZE), DIMENSION))
@@ -253,8 +253,8 @@ def build_index(BATCH_SIZE, EPOCHS, ITERATIONS, R, K, NR_NEIGHBOURS, device, dat
 
 if __name__ == "__main__":
     BATCH_SIZE = 256
-    EPOCHS = 2
-    ITERATIONS = 2
+    EPOCHS = 5
+    ITERATIONS = 20
     R = 1
     K = 2
     NR_NEIGHBOURS = 100
