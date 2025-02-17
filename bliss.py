@@ -52,7 +52,7 @@ class BLISS_NN(nn.Module):
 
         return x
 
-def train_model(model, dataset, index, iterations, k, sample_size, bucket_sizes, neighbours, epochs_per_iteration, batch_size, device):
+def train_model(model, dataset, index, iterations, k, B, sample_size, bucket_sizes, neighbours, epochs_per_iteration, batch_size, device):
     model.to(device)
     criterion = nn.BCEWithLogitsLoss()
     optimizer = optim.Adam(model.parameters(), lr=0.001)
@@ -78,10 +78,10 @@ def train_model(model, dataset, index, iterations, k, sample_size, bucket_sizes,
             finish = time.time()
             elapsed = finish-start
             print(f"epoch {epoch} took {elapsed}")
-        reassign_buckets(model, dataset, k, index, bucket_sizes, sample_size, neighbours, batch_size, device)
+        reassign_buckets(model, dataset, k, B, index, bucket_sizes, sample_size, neighbours, batch_size, device)
         print(f"index after iteration {i} = {index}")
 
-def reassign_buckets(model, dataset, k, index, bucket_sizes, sample_size, neighbours, batch_size, device):
+def reassign_buckets(model, dataset, k, B, index, bucket_sizes, sample_size, neighbours, batch_size, device):
     sample_size, _ = np.shape(dataset.data)
     model.to("cpu")
     model.eval()
@@ -145,10 +145,10 @@ def make_ground_truth_labels(B, neighbours, index, sample_size, device):
             labels[i, bucket] = True
     if device != torch.device("cpu"):
         labels = torch.from_numpy(labels).float()
-    print(f"lables = {labels}")
+    print(f"labels = {labels}")
     return labels
 
-def map_all_to_buckets(rst_vectors, k, bucket_sizes, index, SIZE, model_path, training_sample_size, DIMENSION, B):
+def map_all_to_buckets(rst_vectors, k, bucket_sizes, index, model_path, training_sample_size, DIMENSION, B):
     rst_vectors = torch.from_numpy(rst_vectors)
     print(f"training sample size = {training_sample_size}")
     map_model = BLISS_NN(DIMENSION, B)
@@ -163,6 +163,7 @@ def map_all_to_buckets(rst_vectors, k, bucket_sizes, index, SIZE, model_path, tr
         values, candidates = torch.topk(probabilities, k)
         smallest_bucket = candidates[0]
         smallest_bucket_size = bucket_sizes[smallest_bucket]
+        # print(candidates)
         for cand in candidates:
             size = bucket_sizes[cand]
             if size < smallest_bucket_size:
@@ -185,26 +186,8 @@ def invert_index(index, B):
 
     return inverted_index
 
-if __name__ == "__main__":
-    BATCH_SIZE = 256
-    EPOCHS = 5
-    ITERATIONS = 20
-    R = 1
-    K = 2
-    NR_NEIGHBOURS = 100
-    device = get_best_device()
-    # device = "cpu"
-    print("Using device:", device) 
-
-    dataset_name = "sift-128-euclidean"
-    # dataset_name = "mnist-784-euclidean"
-    train, _, _ = read_dataset(dataset_name)
-    print("training data_________________________")
-    print(f"train shape = {np.shape(train)}")
-
-    SIZE, DIMENSION = np.shape(train)
-    B = get_B(SIZE)
-    sample_size = SIZE if SIZE < 10_000_000 else int(0.5*SIZE)
+def get_sample(train, SIZE, DIMENSION):
+    sample_size = SIZE if SIZE < 10_000 else int(0.5*SIZE)
     print(f"sample size = {sample_size}")
     sample = np.empty((sample_size, DIMENSION))
     # rest = np.empty((int((1-sample_size_percentage)*SIZE), DIMENSION))
@@ -217,34 +200,69 @@ if __name__ == "__main__":
     else:
         sample = train
     
-    index, bucket_sizes = assign_initial_buckets(sample_size, rest_size, R, B)
+    return sample, rest, sample_size, rest_size, train_on_full_dataset
 
+def build_index(BATCH_SIZE, EPOCHS, ITERATIONS, R, K, NR_NEIGHBOURS, device, dataset_name):
+    train, _, _ = read_dataset(dataset_name)
+    print("training data_________________________")
+    print(f"train shape = {np.shape(train)}")
+
+    SIZE, DIMENSION = np.shape(train)
+    B = get_B(SIZE)
+    print(f"nr of buckets (B): {B}")
+
+    sample, rest, sample_size, rest_size, train_on_full_dataset = get_sample(train, SIZE, DIMENSION)
+
+    print(f"writing train vectors to memmap")
     memmap = save_dataset_as_memmap(sample, rest, dataset_name, train_on_full_dataset)
     print(f"memmap = {memmap}")
     print(f"memmap shape = {np.shape(memmap)}")
 
-    print("looking for true neighbours")
-    neighbours = get_train_nearest_neighbours_from_file(sample, NR_NEIGHBOURS, dataset_name)
+    print("looking for true neighbours of training sample")
+    neighbours = get_train_nearest_neighbours_from_file(sample, NR_NEIGHBOURS, sample_size, dataset_name)
     print(neighbours)
 
-    print("making ground truth labels")
+    print(f"randomly assigning initial buckets")
+    index, bucket_sizes = assign_initial_buckets(sample_size, rest_size, R, B)
+
+    print("making initial ground truth labels")
     labels = make_ground_truth_labels(B, neighbours, index, sample_size, device)
 
+    print(f"setting up model")
     dataset = BLISSDataset(sample, labels, device)
     model = BLISS_NN(DIMENSION, B)
 
     print("training model")
-    train_model(model, dataset, index, ITERATIONS, K, sample_size, bucket_sizes, neighbours, EPOCHS, BATCH_SIZE, device)
-    
+    train_model(model, dataset, index, ITERATIONS, K, B, sample_size, bucket_sizes, neighbours, EPOCHS, BATCH_SIZE, device)
     model_path = save_model(model, dataset_name, R, K)
+    print(f"model saved to {model_path}")
 
     print(f"index before full assignment = {index}")
 
+    np.set_printoptions(threshold=np.inf, suppress=True)
+    print(f"buckets before full assignment = {bucket_sizes}")
+    np.set_printoptions(threshold=6, suppress=True)
     if not train_on_full_dataset:
         print("assigning rest of vectors to buckets")
-        map_all_to_buckets(rest, K, bucket_sizes, index, SIZE, model_path, sample_size, DIMENSION, B)
+        map_all_to_buckets(rest, K, bucket_sizes, index, model_path, sample_size, DIMENSION, B)
     print(f"index after full assignment{index}")
 
     np.set_printoptions(threshold=np.inf, suppress=True)
     print(bucket_sizes)
 
+
+if __name__ == "__main__":
+    BATCH_SIZE = 256
+    EPOCHS = 2
+    ITERATIONS = 2
+    R = 1
+    K = 2
+    NR_NEIGHBOURS = 100
+    device = get_best_device()
+    # device = "cpu"
+    print("Using device:", device) 
+
+    dataset_name = "sift-128-euclidean"
+    # dataset_name = "mnist-784-euclidean"
+
+    build_index(BATCH_SIZE, EPOCHS, ITERATIONS, R, K, NR_NEIGHBOURS, device, dataset_name)

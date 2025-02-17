@@ -77,9 +77,10 @@ class TestTrainMethods(unittest.TestCase):
         '''
         dataset_name = "mnist-784-euclidean"
         amount = 100
+        sample_size = 60000
         # check that the file exists already, otherwise the test will just compute neighbours twice
-        self.assertTrue(os.path.exists(f"data/{dataset_name}-trainnbrs-{amount}.csv"))
-        file_nbrs = get_train_nearest_neighbours_from_file(self.__class__.mnist_train, amount, dataset_name)
+        self.assertTrue(os.path.exists(f"data/{dataset_name}-nbrs{amount}-sample{sample_size}.csv"))
+        file_nbrs = get_train_nearest_neighbours_from_file(self.__class__.mnist_train, amount, sample_size, dataset_name)
         fresh_nbrs = get_nearest_neighbours_faiss_within_dataset(self.__class__.mnist_train, amount)
         self.assertTrue(np.array_equal(np.sort(file_nbrs), np.sort(fresh_nbrs)))
 

@@ -36,20 +36,20 @@ def get_nearest_neighbours_faiss_in_different_dataset(dataset, queries, amount):
     _, I = nbrs.search(queries, amount)
     return I
 
-def get_train_nearest_neighbours_from_file(dataset, amount, dataset_name):
+def get_train_nearest_neighbours_from_file(dataset, amount, sample_size, dataset_name):
     '''
     Helper to read/write nearest neighbour of train data to file so we can test index building without repeating preprocessing each time.
     Should not be used in actual algorithm or experiments.
     '''
-    if not os.path.exists(f"data/{dataset_name}-trainnbrs-{amount}.csv"):
-        print(f"no nbrs file found for {dataset_name} with amount={amount}, calculating {amount} nearest neighbours")
+    if not os.path.exists(f"data/{dataset_name}-nbrs{amount}-sample{sample_size}.csv"):
+        print(f"no nbrs file found for {dataset_name} with amount={amount} and samplesize={sample_size}, calculating {amount} nearest neighbours")
         I = get_nearest_neighbours_faiss_within_dataset(dataset, amount)
         print("writing neighbours to nbrs file")
         I = np.asarray(I)
-        np.savetxt(f"data/{dataset_name}-trainnbrs-{amount}.csv", I, delimiter=",", fmt='%.0f')
+        np.savetxt(f"data/{dataset_name}-nbrs{amount}-sample{sample_size}.csv", I, delimiter=",", fmt='%.0f')
     else:
-        print(f"found nbrs file for {dataset_name} with amount={amount}, reading true nearest neighbours from file")
-        filename = f"data/{dataset_name}-trainnbrs-{amount}.csv"
+        print(f"found nbrs file for {dataset_name} with amount={amount} and samplesize={sample_size}, reading true nearest neighbours from file")
+        filename = f"data/{dataset_name}-nbrs{amount}-sample{sample_size}.csv"
         I = read_csv(filename, dtype=int, header=None).to_numpy()
     return I
 
