@@ -1,4 +1,5 @@
 import numpy as np
+import random
 import sklearn.datasets
 import unittest
 from sklearn.model_selection import train_test_split as sklearn_train_test_split
@@ -10,7 +11,14 @@ def generate_random_array(size: int, dimensions: int, centers: int):
     generate random training and test arrays for unit tests
     '''
     X, _ = sklearn.datasets.make_blobs(n_samples=size, n_features=dimensions, centers=centers, random_state=1)
-    train, test = train_test_split(X, test_size=0.1)
+    return X
+
+def generate_random_array_with_train_test_split(size: int, dimensions: int, centers: int, test_size: int):
+    '''
+    generate random training and test arrays for unit tests
+    '''
+    X, _ = sklearn.datasets.make_blobs(n_samples=size, n_features=dimensions, centers=centers, random_state=1)
+    train, test = train_test_split(X, test_size=test_size)
     return train, test
 
 def train_test_split(X, test_size):
@@ -133,22 +141,48 @@ class TestTrainMethods(unittest.TestCase):
         data_small = np.array([[1], [5], [88], [100], [125], [130], [132], [150], [273], [500]])
         SIZE_small = 10
         DIMENSION_small = 1
-        sample_small, test_small, sample_small_size, test_small_size, train_bool_small = get_sample(data_small, SIZE_small, DIMENSION_small)
+        sample_small, rest_small, sample_small_size, rest_small_size, train_bool_small = get_sample(data_small, SIZE_small, DIMENSION_small)
         self.assertEqual(np.shape(sample_small)[0], SIZE_small)
         self.assertEqual(sample_small_size, SIZE_small)
-        self.assertEqual(np.shape(test_small), ())
-        self.assertEqual(test_small_size, 0)
+        self.assertEqual(np.shape(rest_small), ())
+        self.assertEqual(rest_small_size, 0)
         self.assertEqual(train_bool_small, True)
 
         data_large = np.zeros((11_000_000, 1))
         SIZE_large = 11_000_000
         DIMENSION_large = 1
-        sample_large, test_large, sample_large_size, test_large_size, train_bool_large = get_sample(data_large, SIZE_large, DIMENSION_large)
+        sample_large, rest_large, sample_large_size, rest_large_size, train_bool_large = get_sample(data_large, SIZE_large, DIMENSION_large)
         self.assertEqual(np.shape(sample_large)[0], SIZE_large*0.01)
         self.assertEqual(sample_large_size, SIZE_large*0.01)
-        self.assertEqual(np.shape(test_large)[0], SIZE_large*0.99)
-        self.assertEqual(test_large_size, SIZE_large*0.99)
-        self.assertEqual(train_bool_large, False)          
+        self.assertEqual(np.shape(rest_large)[0], SIZE_large*0.99)
+        self.assertEqual(rest_large_size, SIZE_large*0.99)
+        self.assertEqual(train_bool_large, False)
+
+    def test_sample_and_memmap_indices_small(self):
+        data_small = np.array([[1], [5], [88], [100], [125], [130], [132], [150], [273], [500]])
+        SIZE_small = 10
+        DIMENSION_small = 1
+        sample_small, rest_small, sample_small_size, rest_small_size, train_bool_small = get_sample(data_small, SIZE_small, DIMENSION_small)
+        memmap_small = save_dataset_as_memmap(sample_small, rest_small, f"test_small_sample", train_bool_small)
+        self.assertTrue(np.array_equal(sample_small, data_small))
+        self.assertTrue(np.array_equal(memmap_small, data_small))
+    
+    def test_sample_and_memmap_indices_large(self):
+        data_large = generate_random_array(11_000_000, 1, 1)
+        SIZE_large = 11_000_000
+        DIMENSION_large = 1
+        sample_large, rest_large, sample_large_size, rest_large_size, train_bool_large = get_sample(data_large, SIZE_large, DIMENSION_large)
+        memmap_large = save_dataset_as_memmap(sample_large, rest_large, f"test_large_sample", train_bool_large)
+        self.assertTrue(np.array_equal(memmap_large[:int(SIZE_large*0.01)], sample_large[:int(SIZE_large*0.01)]))
+
+        for _ in range(0, 1000):
+            rand_idx = random.randrange(sample_large_size)
+            self.assertEqual(memmap_large[rand_idx], sample_large[rand_idx])
+        
+        for _ in range(0, 10000):
+            rand_idx = random.randrange(rest_large_size)
+            self.assertEqual(memmap_large[sample_large_size + rand_idx], rest_large[rand_idx])
+
     
 if __name__ == "__main__":
     unittest.main()
