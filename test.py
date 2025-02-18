@@ -128,7 +128,27 @@ class TestTrainMethods(unittest.TestCase):
         self.assertTrue(np.array_equal(inverted_index[0], np.array([0, 2, 6])))
         self.assertTrue(np.array_equal(inverted_index[1], np.array([3, 4, 7, 9])))
         self.assertTrue(np.array_equal(inverted_index[2], np.array([1, 5, 8])))
-          
+
+    def test_get_sample(self):
+        data_small = np.array([[1], [5], [88], [100], [125], [130], [132], [150], [273], [500]])
+        SIZE_small = 10
+        DIMENSION_small = 1
+        sample_small, test_small, sample_small_size, test_small_size, train_bool_small = get_sample(data_small, SIZE_small, DIMENSION_small)
+        self.assertEqual(np.shape(sample_small)[0], SIZE_small)
+        self.assertEqual(sample_small_size, SIZE_small)
+        self.assertEqual(np.shape(test_small), ())
+        self.assertEqual(test_small_size, 0)
+        self.assertEqual(train_bool_small, True)
+
+        data_large = np.zeros((11_000_000, 1))
+        SIZE_large = 11_000_000
+        DIMENSION_large = 1
+        sample_large, test_large, sample_large_size, test_large_size, train_bool_large = get_sample(data_large, SIZE_large, DIMENSION_large)
+        self.assertEqual(np.shape(sample_large)[0], SIZE_large*0.01)
+        self.assertEqual(sample_large_size, SIZE_large*0.01)
+        self.assertEqual(np.shape(test_large)[0], SIZE_large*0.99)
+        self.assertEqual(test_large_size, SIZE_large*0.99)
+        self.assertEqual(train_bool_large, False)          
     
 if __name__ == "__main__":
     unittest.main()
