@@ -6,6 +6,7 @@ import h5py
 import numpy as np
 import traceback
 import math
+import pickle
 from bliss import BLISS_NN
 from sklearn.model_selection import train_test_split as sklearn_train_test_split
 from urllib.request import Request, urlopen
@@ -91,22 +92,34 @@ def get_B(n):
     else:
         raise Exception(f"cannot calculate B for empty dataset!")
     
-def save_model(model, dataset_name, R, K):
-    model_name = f"model_{dataset_name}_{R}_{K}"
-    MODEL_PATH = f"models/{dataset_name}_{R}_{K}/{model_name}.pt"
-    if not os.path.exists(f"models/{dataset_name}_{R}_{K}/"):
-        os.mkdir(f"models/{dataset_name}_{R}_{K}/")
+def save_model(model, dataset_name, r, R, K):
+    model_name = f"model_{dataset_name}_r{r}_k{K}"
+    directory = f"models/{dataset_name}_{R}_{K}/"
+    MODEL_PATH = os.path.join(directory, f"{model_name}.pt")
+    
+    os.makedirs(directory, exist_ok=True)
+    
     torch.save(model.state_dict(), MODEL_PATH)
     return MODEL_PATH
 
-def save_inverted_index(inv_index, dataset_name, R, K):
-    index_name = f"index_{dataset_name}_{R}_{K}"
-    index_path = f"models/{dataset_name}_{R}_{K}/{index_name}.csv"
-    if not os.path.exists(f"models/{dataset_name}_{R}_{K}/"):
-        os.mkdir(f"models/{dataset_name}_{R}_{K}/")
-    np.savetxt(index_path, inv_index, delimiter=",", fmt='%.0f')
+def save_inverted_index(inverted_index, dataset_name, model_num, R, K):
+    index_name = f"index_model{model_num}_{dataset_name}_r{model_num}_k{K}.pkl"
+    directory = f"models/{dataset_name}_{R}_{K}/"
+    if not os.path.exists(directory):
+        os.makedirs(directory, exist_ok=True)
+    index_path = os.path.join(directory, index_name)
+    with open(index_path, 'wb') as f:
+        pickle.dump(inverted_index, f)
     return index_path
-    
+
+def load_indexes(dataset_name, R, K):
+    indexes = []
+    if not os.path.exists(f"models/{dataset_name}_{R}_{K}/"): 
+        print("no index found for this data set or configuration: build index first")
+    else:
+         for i in range(R):
+             indexes.append(np.load(f"models/{dataset_name}_{R}_{K}/model_{dataset_name}_r{i}_k{K}.pt"))
+    return indexes
 
 def save_dataset_as_memmap(train, rest, dataset_name, train_on_full_dataset):
     memmap_name = f"memmap_{dataset_name}"
