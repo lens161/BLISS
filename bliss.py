@@ -145,7 +145,6 @@ def make_ground_truth_labels(B, neighbours, index, sample_size, device):
             labels[i, bucket] = True
     if device != torch.device("cpu"):
         labels = torch.from_numpy(labels).float()
-    print(f"labels = {labels}")
     return labels
 
 def map_all_to_buckets(rst_vectors, k, bucket_sizes, index, model_path, training_sample_size, DIMENSION, B):
@@ -221,41 +220,81 @@ def build_index(BATCH_SIZE, EPOCHS, ITERATIONS, R, K, NR_NEIGHBOURS, device, dat
     print("looking for true neighbours of training sample")
     neighbours = get_train_nearest_neighbours_from_file(sample, NR_NEIGHBOURS, sample_size, dataset_name)
     print(neighbours)
-
-    print(f"randomly assigning initial buckets")
-    index, bucket_sizes = assign_initial_buckets(sample_size, rest_size, R, B)
-
-    print("making initial ground truth labels")
-    labels = make_ground_truth_labels(B, neighbours, index, sample_size, device)
-
-    print(f"setting up model")
+    labels = []
     dataset = BLISSDataset(sample, labels, device)
-    model = BLISS_NN(DIMENSION, B)
 
-    print("training model")
-    train_model(model, dataset, index, ITERATIONS, K, B, sample_size, bucket_sizes, neighbours, EPOCHS, BATCH_SIZE, device)
-    model_path = save_model(model, dataset_name, R, K)
-    print(f"model saved to {model_path}")
+    final_index = []
+    # build R models/indexes
+    for r in range(R):
 
-    print(f"index before full assignment = {index}")
+        print(f"randomly assigning initial buckets")
+        index, bucket_sizes = assign_initial_buckets(sample_size, rest_size, r, B)
+        print("making initial ground truth labels")
+        labels = make_ground_truth_labels(B, neighbours, index, sample_size, device)
+        dataset.labels = labels # replace old labels in dataset with new labels for current model 
+        print(f"setting up model {r+1}")
+        model = BLISS_NN(DIMENSION, B)
+        print(f"training model {r+1}")
+        train_model(model, dataset, index, ITERATIONS, K, B, sample_size, bucket_sizes, neighbours, EPOCHS, BATCH_SIZE, device)
+        model_path = save_model(model, dataset_name, r+1, K)
+        print(f"model {r+1} saved to {model_path}")
+        print(f"model {r+1}: index before full assignment = {index}")
+        # np.set_printoptions(threshold=np.inf, suppress=True)
+        # print(f"model {R}: buckets before full assignment = {bucket_sizes}")
+        np.set_printoptions(threshold=6, suppress=True)
+        if not train_on_full_dataset:
+            print("assigning rest of vectors to buckets")
+            map_all_to_buckets(rest, K, bucket_sizes, index, model_path, sample_size, DIMENSION, B)
+        print(f"model {r+1}: index after full assignment{index}")
+        np.set_printoptions(threshold=np.inf, suppress=True)
+        print(bucket_sizes)
+        inverted_index = invert_index(index, B)
+        index_path = save_inverted_index(inverted_index, dataset_name, r, K)
+        np.set_printoptions(threshold=1000, suppress=True)
+        final_index.append((index_path, model_path))
+    # return paths to all models created for the index
+    return final_index
 
-    np.set_printoptions(threshold=np.inf, suppress=True)
-    print(f"buckets before full assignment = {bucket_sizes}")
-    np.set_printoptions(threshold=6, suppress=True)
-    if not train_on_full_dataset:
-        print("assigning rest of vectors to buckets")
-        map_all_to_buckets(rest, K, bucket_sizes, index, model_path, sample_size, DIMENSION, B)
-    print(f"index after full assignment{index}")
+def query_multiple(index, vectors, m, threshold):
+    '''run multiple queries from a set of query vectors i.e. "Test" from the ANN benchmark datsets'''
+    size = len(vectors)
+    shape = (size, m)
+    results = np.empty(shape)
+    for i in range(size):
+        vector = vectors[i]
+        anns = query(index, vector, m, threshold)
+        results[i] = anns
+    return results
 
-    np.set_printoptions(threshold=np.inf, suppress=True)
-    print(bucket_sizes)
+def query(index, query_vector, m, threshold):
+    '''query the index for a single vector'''
+    inverted_indexes, models = index
+    buckets = set()
+    candidates = set()
+    for i in range(len(models)):
+        model = models[i]
+        index = inverted_indexes[i]
+        probabilities = model(query_vector)
+        _, bucket = torch.topk(probabilities, m)
+        for vector in index[bucket]:
+            candidates.add(vector)
+    if len(candidates) >= threshold:
+        return np.array(candidates)
+    else:
+        return reorder(np.array(candidates))
 
+
+def reorder(query_vector, candidates, threshhold):
+    import faiss 
+    index = faiss.IndexFlatL2(candidates.shape[1])
+    _, neighbours = index.search(query_vector, threshhold)
+    return neighbours
 
 if __name__ == "__main__":
     BATCH_SIZE = 256
-    EPOCHS = 5
-    ITERATIONS = 20
-    R = 1
+    EPOCHS = 2
+    ITERATIONS = 2
+    R = 4
     K = 2
     NR_NEIGHBOURS = 100
     device = get_best_device()
@@ -265,4 +304,16 @@ if __name__ == "__main__":
     dataset_name = "sift-128-euclidean"
     # dataset_name = "mnist-784-euclidean"
 
-    build_index(BATCH_SIZE, EPOCHS, ITERATIONS, R, K, NR_NEIGHBOURS, device, dataset_name)
+    index = build_index(BATCH_SIZE, EPOCHS, ITERATIONS, R, K, NR_NEIGHBOURS, device, dataset_name)
+
+    inverted_indexes, model_paths = zip(*index)
+    inverted_indexes = [read_csv(index_path, dtype=int, header=None).to_numpy() for index_path in inverted_indexes]
+    q_models = [load_model(model_path, 128, 1024) for model_path in model_paths]
+    index = (inverted_indexes, q_models)
+
+    _, test, neighbours = read_dataset(dataset_name)
+
+    results = query_multiple(index, test, 3, 10)
+
+    for result in results:
+        print(f"result -> {result}")

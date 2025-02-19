@@ -6,6 +6,7 @@ import h5py
 import numpy as np
 import traceback
 import math
+from bliss import BLISS_NN
 from sklearn.model_selection import train_test_split as sklearn_train_test_split
 from urllib.request import Request, urlopen
 from pandas import read_csv
@@ -92,11 +93,20 @@ def get_B(n):
     
 def save_model(model, dataset_name, R, K):
     model_name = f"model_{dataset_name}_{R}_{K}"
-    MODEL_PATH = f"models/{model_name}.pt"
-    if not os.path.exists("models/"):
-        os.mkdir("models")
+    MODEL_PATH = f"models/{dataset_name}_{R}_{K}/{model_name}.pt"
+    if not os.path.exists(f"models/{dataset_name}_{R}_{K}/"):
+        os.mkdir(f"models/{dataset_name}_{R}_{K}/")
     torch.save(model.state_dict(), MODEL_PATH)
     return MODEL_PATH
+
+def save_inverted_index(inv_index, dataset_name, R, K):
+    index_name = f"index_{dataset_name}_{R}_{K}"
+    index_path = f"models/{dataset_name}_{R}_{K}/{index_name}.csv"
+    if not os.path.exists(f"models/{dataset_name}_{R}_{K}/"):
+        os.mkdir(f"models/{dataset_name}_{R}_{K}/")
+    np.savetxt(index_path, inv_index, delimiter=",", fmt='%.0f')
+    return index_path
+    
 
 def save_dataset_as_memmap(train, rest, dataset_name, train_on_full_dataset):
     memmap_name = f"memmap_{dataset_name}"
@@ -136,3 +146,8 @@ def split_training_sample(data, sample_size):
     '''
     print(f"Splitting training sample from {data}")
     return sklearn_train_test_split(data, test_size=sample_size, random_state=1)
+
+def load_model(model_path, dim, b):
+    model = BLISS_NN(dim, b)
+    model.load_state_dict(torch.load(model_path, weights_only=True))
+    return model
