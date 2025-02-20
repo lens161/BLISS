@@ -250,47 +250,66 @@ def build_index(BATCH_SIZE, EPOCHS, ITERATIONS, R, K, NR_NEIGHBOURS, device, dat
     # return paths to all models created for the index
     return final_index
 
-def query_multiple(index, vectors, m, threshold):
+def query_multiple(data, index, vectors, m, threshold, requested_amount):
     '''run multiple queries from a set of query vectors i.e. "Test" from the ANN benchmark datsets'''
     size = len(vectors)
     results = [[] for i in range(size)]
     for i in range(size):
         print(f"querying {i} of {size}")
         vector = vectors[i]
-        anns = query(index, vector, m, threshold)
-        results[i] = anns.tolist()
+        anns = query(data, index, vector, m, threshold, requested_amount)
+        results[i] = anns
     return results
 
-def query(index, query_vector, m, threshold):
+def query(data, index, query_vector, m, freq_threshold, requested_amount):
     '''query the index for a single vector'''
     inverted_indexes, models = index
     buckets = set()
-    candidates = set()
+    candidates = {}
     for i in range(len(models)):
         model = models[i]
         index = inverted_indexes[i]
         probabilities = model(query_vector)
         _, m_buckets = torch.topk(probabilities, m)
         for bucket in m_buckets:
+            # print(f"bucket {bucket} size = {len(index[bucket])}")
             for vector in index[bucket]:
-                candidates.add(vector)
-    print(f"found: {len(candidates)}")
-    if len(candidates) <= threshold:
+                if candidates.__contains__(vector):
+                    f = candidates.get(vector)
+                else:
+                    f = 0
+                candidates.update({vector : f+1})
+    final_results = [key for key, value in candidates.items() if value >= freq_threshold]
+    # print (f"final results = {len(final_results)}")
+    if len(candidates) <= requested_amount:
         return np.array(candidates)
     else:
-        return reorder(query_vector, np.array(candidates), threshold)
+        return reorder(data, query_vector, np.array(final_results), requested_amount)
 
-def reorder(query_vector, candidates, threshhold):
+def reorder(data, query_vector, candidates, requested_amount):
     import faiss 
     #  TO-DO: get this shit to work....
-    index = faiss.IndexFlatL2()
-    _, neighbours = index.search(query_vector, threshhold)
+    n, d = np.shape(data)
+    search_space = data[candidates]
+    index = faiss.IndexFlatL2(d)
+    index.add(search_space)
+    query_vector = query_vector.reshape(1, -1)
+    (dist, neighbours) = index.search(query_vector, requested_amount)
+    neighbours = neighbours[0].tolist()
     return neighbours
+
+def recall(results, neighbours):
+    recalls = []
+    for ann, nn in zip(results, neighbours):
+        # get size of intersection of anns and nns to find the amount of correct anns
+        correct = len(set(ann) & set(nn))
+        recalls.append(correct/len(nn))
+    return np.mean(recalls)
 
 if __name__ == "__main__":
     BATCH_SIZE = 256
-    EPOCHS = 2
-    ITERATIONS = 2
+    EPOCHS = 5   
+    ITERATIONS = 20
     R = 4
     K = 2
     NR_NEIGHBOURS = 100
@@ -305,11 +324,11 @@ if __name__ == "__main__":
 
     # inverted_indexes_paths, model_paths = zip(*index)
     inverted_indexes_paths = [f"models/sift-128-euclidean_4_2/index_model{i+1}_sift-128-euclidean_r{i+1}_k2.pkl" for i in range(R)]
-    # for i in range (R):
-    #     inverted_indexes_paths.append(f"models/sift-128-euclidean_4_2/index_model{i+1}_sift-128-euclidean_r{i+1}_k2.npy")
+    for i in range (R):
+        inverted_indexes_paths.append(f"models/sift-128-euclidean_4_2/index_model{i+1}_sift-128-euclidean_r{i+1}_k2.pkl")
     model_paths = [f"models/sift-128-euclidean_4_2/model_sift-128-euclidean_r{i+1}_k2.pt" for i in range(R)]
-    # for i in range(R):
-    #     model_paths.append(f"models/sift-128-euclidean_4_2/model_sift-128-euclidean_r{i+1}_k2.pt")
+    for i in range(R):
+        model_paths.append(f"models/sift-128-euclidean_4_2/model_sift-128-euclidean_r{i+1}_k2.pt")
 
     inverted_indexes = []
     for path in inverted_indexes_paths:
@@ -320,12 +339,14 @@ if __name__ == "__main__":
     q_models = [load_model(model_path, 128, 1024) for model_path in model_paths]
     index = (inverted_indexes, q_models)
 
-    _, test, neighbours = read_dataset(dataset_name)
+    data, test, neighbours = read_dataset(dataset_name)
+
+    print(f"neigbours = {len(neighbours[0])}")
 
     print(f"ctreating np array from Test")
     test = torch.from_numpy(test)
 
-    results = query_multiple(index, test, 3, 10)
+    results = query_multiple(data, index, test, 2, 2, 100)
 
-    for result in results:
-        print(f"result -> {result}")
+    RECALL = recall(results, neighbours)
+    print(f"RECALL = {RECALL}")
