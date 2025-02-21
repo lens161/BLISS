@@ -12,6 +12,7 @@ models/
 memmaps/
 *.pt
 *.csv
+*.png
 
 # C extensions
 *.so
@@ -31,6 +32,7 @@ sdist/
 var/
 wheels/
 share/python-wheels/
+/sift-128-euclidean_4_2_lr=0.001
 *.egg-info/
 .installed.cfg
 *.egg
@@ -57,8 +59,10 @@ nosetests.xml
 coverage.xml
 *.cover
 *.py,cover
+*.pkl
 .hypothesis/
 .pytest_cache/
+sift-128-euclidean_4_2/
 cover/
 
 # Translations
