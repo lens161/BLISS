@@ -291,7 +291,6 @@ def query_multiple(data, index, vectors, m, threshold, requested_amount):
 def query(data, index, query_vector, m, freq_threshold, requested_amount):
     '''query the index for a single vector'''
     inverted_indexes, models = index
-    buckets = set()
     candidates = {}
     for i in range(len(models)):
         model = models[i]
@@ -308,8 +307,8 @@ def query(data, index, query_vector, m, freq_threshold, requested_amount):
                 candidates.update({vector : f+1})
     final_results = [key for key, value in candidates.items() if value >= freq_threshold]
     # print (f"final results = {len(final_results)}")
-    if len(candidates) <= requested_amount:
-        return np.array(candidates)
+    if len(final_results) <= requested_amount:
+        return final_results
     else:
         return reorder(data, query_vector, np.array(final_results, dtype=int), requested_amount)
 
@@ -317,19 +316,19 @@ def reorder(data, query_vector, candidates, requested_amount):
     import faiss 
     #  TO-DO: get this shit to work....
     n, d = np.shape(data)
-    sp_index = {}
+    sp_index = []
     search_space = data[candidates]
     for i in range(len(search_space)):
-        sp_index.update({i : candidates[i]})
-    print(f"search_space = {search_space}")
+        sp_index.append(candidates[i])
+    # print(f"search_space = {search_space}")
     index = faiss.IndexFlatL2(d)
     index.add(search_space)
     query_vector = query_vector.reshape(1, -1)
     (dist, neighbours) = index.search(query_vector, requested_amount)
     neighbours = neighbours[0].tolist()
     final_neighbours = []
-    for neighbour in neighbours:
-        final_neighbours.append(sp_index.get(neighbour))
+    for i in neighbours:
+        final_neighbours.append(sp_index[i])
     return final_neighbours
 
 def recall(results, neighbours):
@@ -347,7 +346,7 @@ if __name__ == "__main__":
     BATCH_SIZE = 256
     EPOCHS = 5   
     ITERATIONS = 20
-    R = 1
+    R = 4
     K = 2
     NR_NEIGHBOURS = 100
     device = get_best_device()
@@ -378,14 +377,23 @@ if __name__ == "__main__":
 
     data, test, neighbours = read_dataset(dataset_name)
 
-    print(f"neigbours = {len(neighbours[0])}")
+    # print(f"neigbours = {len(neighbours[0])}")
 
     print(f"ctreating np array from Test")
     test = torch.from_numpy(test)
+    # # i = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+    # # test = test[i]
 
-    # results = query_multiple(data, index, test, 2, 3, 100)
-    results = query(data, index, test[0], 2, 2, 100)
-    print(f"results = {results}")
+    results = query_multiple(data, index, test, 2, 2, 100)
+    result_path = "results.pkl"
+    with open(result_path, 'wb') as f:
+        pickle.dump(results, f)
+    
+    # with open("results.pkl", "rb") as f:
+    #     results = pickle.load(f)
 
-    RECALL = recall_single(results, neighbours[0])
+    # results = query(data, index, test[0], 2, 2, 100)
+    # print(f"results = {results}")
+
+    RECALL = recall(results, neighbours)
     print(f"RECALL = {RECALL}")
