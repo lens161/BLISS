@@ -7,7 +7,6 @@ import numpy as np
 import traceback
 import math
 import pickle
-from bliss import BLISS_NN
 from sklearn.model_selection import train_test_split as sklearn_train_test_split
 from urllib.request import Request, urlopen
 from pandas import read_csv
@@ -159,8 +158,3 @@ def split_training_sample(data, sample_size):
     '''
     print(f"Splitting training sample from {data}")
     return sklearn_train_test_split(data, test_size=sample_size, random_state=1)
-
-def load_model(model_path, dim, b):
-    model = BLISS_NN(dim, b)
-    model.load_state_dict(torch.load(model_path, weights_only=True))
-    return model

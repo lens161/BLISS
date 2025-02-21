@@ -1,7 +1,9 @@
 import numpy as np
+import matplotlib.pyplot as plt
 import sys
 import time
 import torch
+import statistics
 from torch import nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, Dataset
@@ -55,12 +57,16 @@ class BLISS_NN(nn.Module):
 def train_model(model, dataset, index, iterations, k, B, sample_size, bucket_sizes, neighbours, epochs_per_iteration, batch_size, device):
     model.to(device)
     criterion = nn.BCEWithLogitsLoss()
-    optimizer = optim.Adam(model.parameters(), lr=0.001)
-    train_loader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=6)
+    learning_rate = 0.001
+    optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+    train_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=2)
+
+    all_losses = []
 
     for i in range(iterations):
-        model.train()
+        model.train() 
         for epoch in range(epochs_per_iteration):
+            epoch_losses = []
             print(f"training epoch ({i}, {epoch})")
             start = time.time()
             for batch_data, batch_labels in train_loader:
@@ -75,17 +81,31 @@ def train_model(model, dataset, index, iterations, k, B, sample_size, bucket_siz
                 # Backward pass and optimization
                 loss.backward()
                 optimizer.step()
+                epoch_losses.append(loss.item())
             finish = time.time()
             elapsed = finish-start
             print(f"epoch {epoch} took {elapsed}")
+            avg_loss = statistics.mean(epoch_losses)
+            print(f"epoch {epoch} avg. loss = {avg_loss}")
+            all_losses.append(avg_loss)
         reassign_buckets(model, dataset, k, B, index, bucket_sizes, sample_size, neighbours, batch_size, device)
         print(f"index after iteration {i} = {index}")
+
+    plt.figure(figsize=(10, 5))
+    plt.plot(all_losses, marker='o')
+    plt.title('Training Loss Over Epochs')
+    plt.xlabel('Epoch (accumulated over iterations)')
+    plt.ylabel('Average Loss')
+    plt.grid(True)
+
+    plt.savefig(f"training_loss_lr={learning_rate}_I={iterations}_E={epochs_per_iteration}.png")
+    plt.show()
 
 def reassign_buckets(model, dataset, k, B, index, bucket_sizes, sample_size, neighbours, batch_size, device):
     sample_size, _ = np.shape(dataset.data)
     model.to("cpu")
     model.eval()
-    reassign_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=6)
+    reassign_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=2)
     bucket_sizes[:] = 0
     item_index = 0
 
@@ -155,7 +175,7 @@ def map_all_to_buckets(rst_vectors, k, bucket_sizes, index, model_path, training
     map_model.eval()
 
     for i, vector in enumerate(rst_vectors, start=training_sample_size):
-        if i < 10_000:
+        if i < training_sample_size:
             print("wrong start")
         scores = map_model(vector)
         probabilities = torch.sigmoid(scores)
@@ -250,6 +270,13 @@ def build_index(BATCH_SIZE, EPOCHS, ITERATIONS, R, K, NR_NEIGHBOURS, device, dat
     # return paths to all models created for the index
     return final_index
 
+def load_model(model_path, dim, b):
+    inf_device = torch.device("cpu")
+    model = BLISS_NN(dim, b)
+    model.load_state_dict(torch.load(model_path, weights_only=True, map_location=inf_device))
+    model.eval()
+    return model
+
 def query_multiple(data, index, vectors, m, threshold, requested_amount):
     '''run multiple queries from a set of query vectors i.e. "Test" from the ANN benchmark datsets'''
     size = len(vectors)
@@ -284,19 +311,26 @@ def query(data, index, query_vector, m, freq_threshold, requested_amount):
     if len(candidates) <= requested_amount:
         return np.array(candidates)
     else:
-        return reorder(data, query_vector, np.array(final_results), requested_amount)
+        return reorder(data, query_vector, np.array(final_results, dtype=int), requested_amount)
 
 def reorder(data, query_vector, candidates, requested_amount):
     import faiss 
     #  TO-DO: get this shit to work....
     n, d = np.shape(data)
+    sp_index = {}
     search_space = data[candidates]
+    for i in range(len(search_space)):
+        sp_index.update({i : candidates[i]})
+    print(f"search_space = {search_space}")
     index = faiss.IndexFlatL2(d)
     index.add(search_space)
     query_vector = query_vector.reshape(1, -1)
     (dist, neighbours) = index.search(query_vector, requested_amount)
     neighbours = neighbours[0].tolist()
-    return neighbours
+    final_neighbours = []
+    for neighbour in neighbours:
+        final_neighbours.append(sp_index.get(neighbour))
+    return final_neighbours
 
 def recall(results, neighbours):
     recalls = []
@@ -306,11 +340,14 @@ def recall(results, neighbours):
         recalls.append(correct/len(nn))
     return np.mean(recalls)
 
+def recall_single(results, neighbours):
+    return len(set(results) & set(neighbours))/len(neighbours)
+
 if __name__ == "__main__":
     BATCH_SIZE = 256
     EPOCHS = 5   
     ITERATIONS = 20
-    R = 4
+    R = 1
     K = 2
     NR_NEIGHBOURS = 100
     device = get_best_device()
@@ -321,8 +358,8 @@ if __name__ == "__main__":
     # dataset_name = "mnist-784-euclidean"
 
     # index = build_index(BATCH_SIZE, EPOCHS, ITERATIONS, R, K, NR_NEIGHBOURS, device, dataset_name)
-
     # inverted_indexes_paths, model_paths = zip(*index)
+
     inverted_indexes_paths = [f"models/sift-128-euclidean_4_2/index_model{i+1}_sift-128-euclidean_r{i+1}_k2.pkl" for i in range(R)]
     for i in range (R):
         inverted_indexes_paths.append(f"models/sift-128-euclidean_4_2/index_model{i+1}_sift-128-euclidean_r{i+1}_k2.pkl")
@@ -346,7 +383,9 @@ if __name__ == "__main__":
     print(f"ctreating np array from Test")
     test = torch.from_numpy(test)
 
-    results = query_multiple(data, index, test, 2, 2, 100)
+    # results = query_multiple(data, index, test, 2, 3, 100)
+    results = query(data, index, test[0], 2, 2, 100)
+    print(f"results = {results}")
 
-    RECALL = recall(results, neighbours)
+    RECALL = recall_single(results, neighbours[0])
     print(f"RECALL = {RECALL}")
