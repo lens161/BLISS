@@ -1,5 +1,5 @@
 import numpy as np
-import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt # type: ignore
 import sys
 import time
 import torch
@@ -92,7 +92,7 @@ def train_model(model, dataset, index, iterations, k, B, sample_size, bucket_siz
         print(f"index after iteration {i} = {index}")
 
     plt.figure(figsize=(10, 5))
-    plt.plot(all_losses, marker='o')
+    plt.plot(all_losses, marker='.')
     plt.title('Training Loss Over Epochs')
     plt.xlabel('Epoch (accumulated over iterations)')
     plt.ylabel('Average Loss')
