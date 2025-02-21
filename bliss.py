@@ -316,10 +316,10 @@ def reorder(data, query_vector, candidates, requested_amount):
     import faiss 
     #  TO-DO: get this shit to work....
     n, d = np.shape(data)
-    sp_index = {}
+    sp_index = []
     search_space = data[candidates]
     for i in range(len(search_space)):
-        sp_index.update({i : candidates[i]})
+        sp_index.append(candidates[i])
     # print(f"search_space = {search_space}")
     index = faiss.IndexFlatL2(d)
     index.add(search_space)
@@ -327,8 +327,8 @@ def reorder(data, query_vector, candidates, requested_amount):
     (dist, neighbours) = index.search(query_vector, requested_amount)
     neighbours = neighbours[0].tolist()
     final_neighbours = []
-    for neighbour in neighbours:
-        final_neighbours.append(sp_index.get(neighbour))
+    for i in neighbours:
+        final_neighbours.append(sp_index[i])
     return final_neighbours
 
 def recall(results, neighbours):
