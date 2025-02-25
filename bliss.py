@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt # type: ignore
 import sys
+from config import Config
 import time
 import torch
 import statistics
@@ -99,7 +100,6 @@ def train_model(model, dataset, index, iterations, k, B, sample_size, bucket_siz
     plt.grid(True)
 
     plt.savefig(f"training_loss_lr={learning_rate}_I={iterations}_E={epochs_per_iteration}.png")
-    plt.show()
 
 def reassign_buckets(model, dataset, k, B, index, bucket_sizes, sample_size, neighbours, batch_size, device):
     sample_size, _ = np.shape(dataset.data)
@@ -215,21 +215,23 @@ def get_sample(train, SIZE, DIMENSION):
     
     return sample, rest, sample_size, rest_size, train_on_full_dataset
 
-def build_index(BATCH_SIZE, EPOCHS, ITERATIONS, R, K, NR_NEIGHBOURS, device, dataset_name):
-    train, _, _ = read_dataset(dataset_name)
+def build_index(BATCH_SIZE, EPOCHS, ITERATIONS, R, K, NR_NEIGHBOURS, device, train, dataset_name):
+    # TO-DO read only train data -> split read_dataset function into two. one reads training data, other reads neighbours and queries (test)
+    # train = read_dataset(dataset_name, mode= 'train')
     print("training data_________________________")
     print(f"train shape = {np.shape(train)}")
 
     SIZE, DIMENSION = np.shape(train)
     B = get_B(SIZE)
     print(f"nr of buckets (B): {B}")
+    print(f"K = {K}, R = {R}")
 
     sample, rest, sample_size, rest_size, train_on_full_dataset = get_sample(train, SIZE, DIMENSION)
 
     print(f"writing train vectors to memmap")
-    memmap = save_dataset_as_memmap(sample, rest, dataset_name, train_on_full_dataset)
-    print(f"memmap = {memmap}")
-    print(f"memmap shape = {np.shape(memmap)}")
+    save_dataset_as_memmap(sample, rest, dataset_name, train_on_full_dataset)
+    # print(f"memmap = {memmap}")
+    # print(f"memmap shape = {np.shape(memmap)}")
 
     print("looking for true neighbours of training sample")
     neighbours = get_train_nearest_neighbours_from_file(sample, NR_NEIGHBOURS, sample_size, dataset_name)
@@ -260,7 +262,7 @@ def build_index(BATCH_SIZE, EPOCHS, ITERATIONS, R, K, NR_NEIGHBOURS, device, dat
         if not train_on_full_dataset:
             print("assigning rest of vectors to buckets")
             map_all_to_buckets(rest, K, bucket_sizes, index, model_path, sample_size, DIMENSION, B)
-        print(f"model {r+1}: index after full assignment{index}")
+        # print(f"model {r+1}: index after full assignment{index}")
         np.set_printoptions(threshold=np.inf, suppress=True)
         print(bucket_sizes)
         inverted_index = invert_index(index, B)
@@ -282,10 +284,11 @@ def query_multiple(data, index, vectors, m, threshold, requested_amount):
     size = len(vectors)
     results = [[] for i in range(size)]
     for i in range(size):
-        print(f"querying {i} of {size}")
+        print(f"\rquerying {i} of {size}", end='', flush=True)
         vector = vectors[i]
         anns = query(data, index, vector, m, threshold, requested_amount)
         results[i] = anns
+    print("\r")
     return results
 
 def query(data, index, query_vector, m, freq_threshold, requested_amount):
@@ -342,58 +345,60 @@ def recall(results, neighbours):
 def recall_single(results, neighbours):
     return len(set(results) & set(neighbours))/len(neighbours)
 
-if __name__ == "__main__":
-    BATCH_SIZE = 256
-    EPOCHS = 5   
-    ITERATIONS = 20
-    R = 4
-    K = 2
-    NR_NEIGHBOURS = 100
-    device = get_best_device()
-    # device = "cpu"
-    print("Using device:", device) 
+def run_bliss(config: Config):
+    batch_size = config.BATCH_SIZE
+    epochs = config.EPOCHS
+    iterations = config.ITERATIONS
+    r = config.R
+    k = config.K
+    nr_neighbours = config.NR_NEIGHBOURS
+    device = config.device
+    print(f"Using device: {device}")
+    dataset_name = config.dataset_name
+    print(dataset_name)
 
-    dataset_name = "sift-128-euclidean"
-    # dataset_name = "mnist-784-euclidean"
+    data = read_dataset(dataset_name, mode= 'train')
 
-    # index = build_index(BATCH_SIZE, EPOCHS, ITERATIONS, R, K, NR_NEIGHBOURS, device, dataset_name)
-    # inverted_indexes_paths, model_paths = zip(*index)
-
-    inverted_indexes_paths = [f"models/sift-128-euclidean_4_2/index_model{i+1}_sift-128-euclidean_r{i+1}_k2.pkl" for i in range(R)]
-    for i in range (R):
-        inverted_indexes_paths.append(f"models/sift-128-euclidean_4_2/index_model{i+1}_sift-128-euclidean_r{i+1}_k2.pkl")
-    model_paths = [f"models/sift-128-euclidean_4_2/model_sift-128-euclidean_r{i+1}_k2.pt" for i in range(R)]
-    for i in range(R):
-        model_paths.append(f"models/sift-128-euclidean_4_2/model_sift-128-euclidean_r{i+1}_k2.pt")
+    index = build_index(batch_size, epochs, iterations, r, k, nr_neighbours, device, data, dataset_name)
+    inverted_indexes_paths, model_paths = zip(*index)
 
     inverted_indexes = []
     for path in inverted_indexes_paths:
         with open(path, 'rb') as f:
             inverted_indexes.append(pickle.load(f))
 
-    # print(f"inv indexes = {inverted_indexes}")
     q_models = [load_model(model_path, 128, 1024) for model_path in model_paths]
     index = (inverted_indexes, q_models)
 
-    data, test, neighbours = read_dataset(dataset_name)
+    memmap_path = f"memmaps/memmap_{dataset_name}.npy"
+    data = np.load(memmap_path, mmap_mode='r')
 
-    # print(f"neigbours = {len(neighbours[0])}")
+    test, neighbours = read_dataset(dataset_name, mode= 'test')
 
-    print(f"ctreating np array from Test")
+    print(f"creating tensor array from Test")
     test = torch.from_numpy(test)
-    # # i = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
-    # # test = test[i]
 
     results = query_multiple(data, index, test, 2, 2, 100)
-    result_path = "results.pkl"
+    result_path = f"results_r{r}_k{k}.pkl"
     with open(result_path, 'wb') as f:
         pickle.dump(results, f)
     
-    # with open("results.pkl", "rb") as f:
-    #     results = pickle.load(f)
-
-    # results = query(data, index, test[0], 2, 2, 100)
-    # print(f"results = {results}")
-
     RECALL = recall(results, neighbours)
     print(f"RECALL = {RECALL}")
+
+    return RECALL
+
+if __name__ == "__main__":
+    # BATCH_SIZE = 256
+    # EPOCHS = 5   
+    # ITERATIONS = 20
+    # R = 4
+    # K = 2
+    # NR_NEIGHBOURS = 100
+    
+    dataset_name = "sift-128-euclidean"
+    config = Config(dataset_name, r = 1, epochs=2, iterations= 2)
+
+    recall = run_bliss(config)
+    # dataset_name = "mnist-784-euclidean"
+   
