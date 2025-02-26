@@ -240,10 +240,11 @@ def build_index(BATCH_SIZE, EPOCHS, ITERATIONS, R, K, NR_NEIGHBOURS, device, tra
     dataset = BLISSDataset(sample, labels, device)
 
     final_index = []
+    time_per_r = []
     # build R models/indexes
     for r in range(R):
-
         print(f"randomly assigning initial buckets")
+        start= time.time()
         index, bucket_sizes = assign_initial_buckets(sample_size, rest_size, r, B)
         print(bucket_sizes)
         print("making initial ground truth labels")
@@ -269,8 +270,10 @@ def build_index(BATCH_SIZE, EPOCHS, ITERATIONS, R, K, NR_NEIGHBOURS, device, tra
         index_path = save_inverted_index(inverted_index, dataset_name, r+1, R, K)
         np.set_printoptions(threshold=1000, suppress=True)
         final_index.append((index_path, model_path))
+        end = time.time()
+        time_per_r.append(end-start)
     # return paths to all models created for the index
-    return final_index
+    return final_index, time_per_r
 
 def load_model(model_path, dim, b):
     inf_device = torch.device("cpu")
@@ -279,19 +282,23 @@ def load_model(model_path, dim, b):
     model.eval()
     return model
 
-def query_multiple(data, index, vectors, m, threshold, requested_amount):
+def query_multiple(data, index, vectors, neighbours, m, threshold, requested_amount):
     '''run multiple queries from a set of query vectors i.e. "Test" from the ANN benchmark datsets'''
     size = len(vectors)
-    results = [[] for i in range(size)]
-    for i in range(size):
-        print(f"\rquerying {i} of {size}", end='', flush=True)
-        vector = vectors[i]
-        anns = query(data, index, vector, m, threshold, requested_amount)
-        results[i] = anns
+    query_times = []
+    results = [[] for i in range(len(vectors))]
+    for i, vector in enumerate(vectors):
+        print(f"\rquerying {i+1} of {size}", end='', flush=True)
+        start = time.time()
+        anns, dist_comps, recall = query(data, index, vector, neighbours[i], m, threshold, requested_amount)
+        end = time.time()
+        elapsed = end - start
+        query_times.append(elapsed)
+        results[i] = (anns, dist_comps, elapsed, recall)
     print("\r")
     return results
 
-def query(data, index, query_vector, m, freq_threshold, requested_amount):
+def query(data, index, query_vector, neighbours, m, freq_threshold, requested_amount):
     '''query the index for a single vector'''
     inverted_indexes, models = index
     candidates = {}
@@ -311,9 +318,10 @@ def query(data, index, query_vector, m, freq_threshold, requested_amount):
     final_results = [key for key, value in candidates.items() if value >= freq_threshold]
     # print (f"final results = {len(final_results)}")
     if len(final_results) <= requested_amount:
-        return final_results
+        return final_results, 0, recall_single(final_results, neighbours)
     else:
-        return reorder(data, query_vector, np.array(final_results, dtype=int), requested_amount)
+        final_neighbours, dist_comps = reorder(data, query_vector, np.array(final_results, dtype=int), requested_amount)
+        return final_neighbours, dist_comps, recall_single(final_neighbours, neighbours)
 
 def reorder(data, query_vector, candidates, requested_amount):
     import faiss 
@@ -321,6 +329,7 @@ def reorder(data, query_vector, candidates, requested_amount):
     n, d = np.shape(data)
     sp_index = []
     search_space = data[candidates]
+    dist_comps = len(search_space)
     for i in range(len(search_space)):
         sp_index.append(candidates[i])
     # print(f"search_space = {search_space}")
@@ -332,7 +341,7 @@ def reorder(data, query_vector, candidates, requested_amount):
     final_neighbours = []
     for i in neighbours:
         final_neighbours.append(sp_index[i])
-    return final_neighbours
+    return final_neighbours, dist_comps
 
 def recall(results, neighbours):
     recalls = []
@@ -345,12 +354,13 @@ def recall(results, neighbours):
 def recall_single(results, neighbours):
     return len(set(results) & set(neighbours))/len(neighbours)
 
-def run_bliss(config: Config):
+def run_bliss(config: Config, mode):
     batch_size = config.BATCH_SIZE
     epochs = config.EPOCHS
     iterations = config.ITERATIONS
     r = config.R
     k = config.K
+    dataset_name = config.dataset_name
     nr_neighbours = config.NR_NEIGHBOURS
     device = config.device
     print(f"Using device: {device}")
@@ -359,34 +369,49 @@ def run_bliss(config: Config):
 
     data = read_dataset(dataset_name, mode= 'train')
 
-    index = build_index(batch_size, epochs, iterations, r, k, nr_neighbours, device, data, dataset_name)
-    inverted_indexes_paths, model_paths = zip(*index)
-
-    inverted_indexes = []
-    for path in inverted_indexes_paths:
-        with open(path, 'rb') as f:
-            inverted_indexes.append(pickle.load(f))
-
-    q_models = [load_model(model_path, 128, 1024) for model_path in model_paths]
-    index = (inverted_indexes, q_models)
-
-    memmap_path = f"memmaps/memmap_{dataset_name}.npy"
-    data = np.load(memmap_path, mmap_mode='r')
-
-    test, neighbours = read_dataset(dataset_name, mode= 'test')
-
-    print(f"creating tensor array from Test")
-    test = torch.from_numpy(test)
-
-    results = query_multiple(data, index, test, 2, 2, 100)
-    result_path = f"results_r{r}_k{k}.pkl"
-    with open(result_path, 'wb') as f:
-        pickle.dump(results, f)
+    inverted_indexes_paths =[]
+    if mode == 'build':
+        index, time_per_r = build_index(batch_size, epochs, iterations, r, k, nr_neighbours, device, data, dataset_name)
+        inverted_indexes_paths, model_paths = zip(*index)
+        return time_per_r
+    elif mode == 'query':
+        inverted_indexes_paths = [f"models/{dataset_name}_r{r}_k{k}/index_model{i+1}_sift-128-euclidean_r{i+1}_k{k}.pkl" for i in range(r)]
+        for i in range (r):
+            inverted_indexes_paths.append(f"models/{dataset_name}_r{r}_k{k}/index_model{i+1}_sift-128-euclidean_r{i+1}_k{k}.pkl")
+        model_paths = [f"models/{dataset_name}_r{r}_k{k}/model_sift-128-euclidean_r{i+1}_k{k}.pt" for i in range(r)]
+        for i in range(r):
+            model_paths.append(f"models/{dataset_name}_r{r}_k{k}/model_sift-128-euclidean_r{i+1}_k{k}.pt")
     
-    RECALL = recall(results, neighbours)
-    print(f"RECALL = {RECALL}")
+        inverted_indexes = []
+        for path in inverted_indexes_paths:
+            with open(path, 'rb') as f:
+                inverted_indexes.append(pickle.load(f))
 
-    return RECALL
+        q_models = [load_model(model_path, 128, 1024) for model_path in model_paths]
+        index = (inverted_indexes, q_models)
+
+        memmap_path = f"memmaps/memmap_{dataset_name}.npy"
+        data = np.load(memmap_path, mmap_mode='r')
+
+        test, neighbours = read_dataset(dataset_name, mode= 'test')
+        # comment in for quick debugging/testing
+        # test = test[:10]
+        print(f"creating tensor array from Test")
+        test = torch.from_numpy(test)
+
+        start = time.time()
+        results = query_multiple(data, index, test, neighbours, config.M, config.FREQ_THRESHOLD, config.NR_NEIGHBOURS)
+        end = time.time()
+
+        total_query_time = end - start
+        # result_path = f"results_r{r}_k{k}.pkl"
+        # with open(result_path, 'wb') as f:
+        #     pickle.dump(results, f)
+        anns = [t[0] for t in results]
+        RECALL = recall(anns, neighbours)
+        print(f"RECALL = {RECALL}")
+
+        return RECALL, results, total_query_time
 
 if __name__ == "__main__":
     # BATCH_SIZE = 256
@@ -395,7 +420,7 @@ if __name__ == "__main__":
     # R = 4
     # K = 2
     # NR_NEIGHBOURS = 100
-    
+
     dataset_name = "sift-128-euclidean"
     config = Config(dataset_name, r = 1, epochs=2, iterations= 2)
 
