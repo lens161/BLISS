@@ -17,6 +17,11 @@ def get_nearest_neighbours_old(train, amount):
     I = I[:, 1:]
     return I
 
+def get_nearest_neighbours_old_without_filter(data, queries, amount):
+    nbrs = NearestNeighbors(n_neighbors=amount, metric="euclidean", algorithm='brute').fit(data)
+    I = nbrs.kneighbors(queries, return_distance=False)
+    return I
+
 def get_nearest_neighbours_faiss_within_dataset(dataset, amount):
     '''
     Find the true nearest neighbours of vectors within a dataset. To avoid returning a datapoint as its own neighbour, we search for amount+1 neighbours and then filter out
