@@ -11,6 +11,8 @@ from torch.utils.data import DataLoader, Dataset
 # from torchvision import datasets, transforms
 from sklearn.utils import murmurhash3_32 as mmh3
 from utils import *
+import psutil  # type: ignore
+import os
 
 class BLISSDataset(Dataset):
     def __init__(self, data, labels, device):
@@ -99,7 +101,7 @@ def train_model(model, dataset, index, iterations, k, B, sample_size, bucket_siz
     plt.ylabel('Average Loss')
     plt.grid(True)
 
-    plt.savefig(f"training_loss_lr={learning_rate}_I={iterations}_E={epochs_per_iteration}.png")
+    plt.savefig(f"training_loss_lr={learning_rate}_I={iterations}_E={epochs_per_iteration}_k{k}_B{B}.png")
 
 def reassign_buckets(model, dataset, k, B, index, bucket_sizes, sample_size, neighbours, batch_size, device):
     sample_size, _ = np.shape(dataset.data)
@@ -220,7 +222,7 @@ def build_index(BATCH_SIZE, EPOCHS, ITERATIONS, R, K, NR_NEIGHBOURS, device, tra
     # train = read_dataset(dataset_name, mode= 'train')
     print("training data_________________________")
     print(f"train shape = {np.shape(train)}")
-
+    all_start = time.time()
     SIZE, DIMENSION = np.shape(train)
     B = get_B(SIZE)
     print(f"nr of buckets (B): {B}")
@@ -273,7 +275,11 @@ def build_index(BATCH_SIZE, EPOCHS, ITERATIONS, R, K, NR_NEIGHBOURS, device, tra
         end = time.time()
         time_per_r.append(end-start)
     # return paths to all models created for the index
-    return final_index, time_per_r
+    all_end = time.time()
+    build_time = all_end-all_start
+    process = psutil.Process(os.getpid())
+    memory_usage = process.memory_info().rss / (1024 ** 2)
+    return final_index, time_per_r, build_time, memory_usage
 
 def load_model(model_path, dim, b):
     inf_device = torch.device("cpu")
@@ -426,4 +432,3 @@ if __name__ == "__main__":
 
     recall = run_bliss(config)
     # dataset_name = "mnist-784-euclidean"
-   
