@@ -1,0 +1,19 @@
+name: bliss
+channels:
+  - defaults
+  - nvidia
+  - pytorch
+dependencies:
+  - python=3.12
+  - faiss-cpu
+  - pip
+  - pip:
+      - faiss
+      - h5py
+      - matplotlib
+      - numpy<2.0
+      - pandas
+      - scikit-learn
+      - torch
+      - torchvision
+      - torchaudio
