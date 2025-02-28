@@ -57,10 +57,9 @@ class BLISS_NN(nn.Module):
 
         return x
 
-def train_model(model, dataset, index, iterations, k, B, sample_size, bucket_sizes, neighbours, epochs_per_iteration, batch_size, device):
+def train_model(model, dataset, index, iterations, k, B, sample_size, bucket_sizes, neighbours, epochs_per_iteration, batch_size, device, learning_rate):
     model.to(device)
     criterion = nn.BCEWithLogitsLoss()
-    learning_rate = 0.001
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
     train_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=2)
 
@@ -217,14 +216,14 @@ def get_sample(train, SIZE, DIMENSION):
     
     return sample, rest, sample_size, rest_size, train_on_full_dataset
 
-def build_index(BATCH_SIZE, EPOCHS, ITERATIONS, R, K, NR_NEIGHBOURS, device, train, dataset_name):
+def build_index(BATCH_SIZE, EPOCHS, ITERATIONS, R, K, NR_NEIGHBOURS, device, train, dataset_name, b, lr):
     # TO-DO read only train data -> split read_dataset function into two. one reads training data, other reads neighbours and queries (test)
     # train = read_dataset(dataset_name, mode= 'train')
     print("training data_________________________")
     print(f"train shape = {np.shape(train)}")
     all_start = time.time()
     SIZE, DIMENSION = np.shape(train)
-    B = get_B(SIZE)
+    B = b if b!=0 else get_B(SIZE)
     print(f"nr of buckets (B): {B}")
     print(f"K = {K}, R = {R}")
 
@@ -255,8 +254,8 @@ def build_index(BATCH_SIZE, EPOCHS, ITERATIONS, R, K, NR_NEIGHBOURS, device, tra
         print(f"setting up model {r+1}")
         model = BLISS_NN(DIMENSION, B)
         print(f"training model {r+1}")
-        train_model(model, dataset, index, ITERATIONS, K, B, sample_size, bucket_sizes, neighbours, EPOCHS, BATCH_SIZE, device)
-        model_path = save_model(model, dataset_name, r+1, R, K)
+        train_model(model, dataset, index, ITERATIONS, K, B, sample_size, bucket_sizes, neighbours, EPOCHS, BATCH_SIZE, device, lr)
+        model_path = save_model(model, dataset_name, r+1, R, K, B, lr)
         print(f"model {r+1} saved to {model_path}")
         print(f"model {r+1}: index before full assignment = {index}")
         # np.set_printoptions(threshold=np.inf, suppress=True)
@@ -269,7 +268,7 @@ def build_index(BATCH_SIZE, EPOCHS, ITERATIONS, R, K, NR_NEIGHBOURS, device, tra
         np.set_printoptions(threshold=np.inf, suppress=True)
         print(bucket_sizes)
         inverted_index = invert_index(index, B)
-        index_path = save_inverted_index(inverted_index, dataset_name, r+1, R, K)
+        index_path = save_inverted_index(inverted_index, dataset_name, r+1, R, K, B, lr)
         np.set_printoptions(threshold=1000, suppress=True)
         final_index.append((index_path, model_path))
         end = time.time()
@@ -366,6 +365,8 @@ def run_bliss(config: Config, mode):
     iterations = config.ITERATIONS
     r = config.R
     k = config.K
+    b = config.B 
+    lr = config.LR
     dataset_name = config.dataset_name
     nr_neighbours = config.NR_NEIGHBOURS
     device = config.device
@@ -373,31 +374,35 @@ def run_bliss(config: Config, mode):
     dataset_name = config.dataset_name
     print(dataset_name)
 
-    data = read_dataset(dataset_name, mode= 'train')
 
     inverted_indexes_paths =[]
     if mode == 'build':
-        index, time_per_r = build_index(batch_size, epochs, iterations, r, k, nr_neighbours, device, data, dataset_name)
+        data = read_dataset(dataset_name, mode= 'train')
+        index, time_per_r, build_time, memory_usage = build_index(batch_size, epochs, iterations, r, k, nr_neighbours, device, data, dataset_name, b, lr)
         inverted_indexes_paths, model_paths = zip(*index)
-        return time_per_r
+        return time_per_r, build_time, memory_usage
     elif mode == 'query':
-        inverted_indexes_paths = [f"models/{dataset_name}_r{r}_k{k}/index_model{i+1}_sift-128-euclidean_r{i+1}_k{k}.pkl" for i in range(r)]
+        b = b if b !=0 else 1024
+        inverted_indexes_paths = [f"models/{dataset_name}_r{r}_k{k}_b{b}_lr{lr}/index_model{i+1}_{dataset_name}_r{i+1}_k{k}_b{b}_lr{lr}.pkl" for i in range(r)]
         for i in range (r):
-            inverted_indexes_paths.append(f"models/{dataset_name}_r{r}_k{k}/index_model{i+1}_sift-128-euclidean_r{i+1}_k{k}.pkl")
-        model_paths = [f"models/{dataset_name}_r{r}_k{k}/model_sift-128-euclidean_r{i+1}_k{k}.pt" for i in range(r)]
+            inverted_indexes_paths.append(f"models/{dataset_name}_r{r}_k{k}_b{b}_lr{lr}/index_model{i+1}_{dataset_name}_r{i+1}_k{k}_b{b}_lr{lr}.pkl")
+        model_paths = [f"models/{dataset_name}_r{r}_k{k}_b{b}_lr{lr}/model_{dataset_name}_r{i+1}_k{k}_b{b}_lr{lr}.pt" for i in range(r)]
         for i in range(r):
-            model_paths.append(f"models/{dataset_name}_r{r}_k{k}/model_sift-128-euclidean_r{i+1}_k{k}.pt")
+            model_paths.append(f"models/{dataset_name}_r{r}_k{k}_b{b}_lr{lr}/model_{dataset_name}_r{i+1}_k{k}_b{b}_lr{lr}.pt")
     
         inverted_indexes = []
         for path in inverted_indexes_paths:
             with open(path, 'rb') as f:
                 inverted_indexes.append(pickle.load(f))
-
-        q_models = [load_model(model_path, 128, 1024) for model_path in model_paths]
-        index = (inverted_indexes, q_models)
-
+        
         memmap_path = f"memmaps/memmap_{dataset_name}.npy"
         data = np.load(memmap_path, mmap_mode='r')
+
+        size, dim = np.shape(data)
+
+        q_models = [load_model(model_path, dim, b) for model_path in model_paths]
+        index = (inverted_indexes, q_models)
+
 
         test, neighbours = read_dataset(dataset_name, mode= 'test')
         # comment in for quick debugging/testing

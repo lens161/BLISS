@@ -10,6 +10,7 @@ __pycache__/
 data/
 models/
 memmaps/
+result_archive/
 *.pt
 *.csv
 *.png

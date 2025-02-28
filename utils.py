@@ -95,9 +95,9 @@ def get_B(n):
     else:
         raise Exception(f"cannot calculate B for empty dataset!")
     
-def save_model(model, dataset_name, r, R, K):
-    model_name = f"model_{dataset_name}_r{r}_k{K}"
-    directory = f"models/{dataset_name}_r{R}_k{K}/"
+def save_model(model, dataset_name, r, R, K, B, lr):
+    model_name = f"model_{dataset_name}_r{r}_k{K}_b{B}_lr{lr}"
+    directory = f"models/{dataset_name}_r{R}_k{K}_b{B}_lr{lr}/"
     MODEL_PATH = os.path.join(directory, f"{model_name}.pt")
     
     os.makedirs(directory, exist_ok=True)
@@ -105,9 +105,9 @@ def save_model(model, dataset_name, r, R, K):
     torch.save(model.state_dict(), MODEL_PATH)
     return MODEL_PATH
 
-def save_inverted_index(inverted_index, dataset_name, model_num, R, K):
-    index_name = f"index_model{model_num}_{dataset_name}_r{model_num}_k{K}.pkl"
-    directory = f"models/{dataset_name}_r{R}_k{K}/"
+def save_inverted_index(inverted_index, dataset_name, model_num, R, K, B, lr):
+    index_name = f"index_model{model_num}_{dataset_name}_r{model_num}_k{K}_b{B}_lr{lr}.pkl"
+    directory = f"models/{dataset_name}_r{R}_k{K}_b{B}_lr{lr}/"
     if not os.path.exists(directory):
         os.makedirs(directory, exist_ok=True)
     index_path = os.path.join(directory, index_name)
