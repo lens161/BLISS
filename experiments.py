@@ -25,7 +25,7 @@ def build_multiple_indexes_exp(experiment_name, configs):
         stats.append({'R':r, 'k':k, 'epochs_per_it':epochs, 'iterations':iterations, 'build_time':build_time, 'mem':memory_usage})
         print(time_per_r)
     df = pd.DataFrame(stats)
-    df.to_csv(f"{experiment_name}.csv")
+    df.to_csv(f"{experiment_name}_build.csv", index=False)
 
 def run_multiple_query_exp(experiment_name, configs):
     mode = 'query'
@@ -34,7 +34,8 @@ def run_multiple_query_exp(experiment_name, configs):
         k = config.K
         m =config.M
         results = []
-        total_query_time, stats, avg_recall  = run_bliss(config, mode=mode)
+        avg_recall, stats, total_query_time = run_bliss(config, mode=mode)
+        print(f"avg recall = {avg_recall}")
         for (anns, dist_comps, elapsed, recall) in stats:
             results.append({'ANNs': anns, 
                             'distance_computations': dist_comps, 
@@ -54,25 +55,29 @@ def run_multiple_query_exp(experiment_name, configs):
     return experiment_name, avg_recall, total_query_time, results
 
 if __name__ == "__main__":
-    configs_q = []
-    configs_b = []
+    configs_q = [] # configs for building the index
+    configs_b = [] # configs for querying
 
     range_M = 5
     range_K = 5
     range_threshold = 5
 
-    dataset_name = "sift-128-euclidean"
+    # add all dataset names that the experiments should be run on
+    datasets = ["sift-128-euclidean",
+                 ]
+    
+    for dataset in datasets:
+        for i in range(1, range_K):
+            config = Config(dataset, k=i, r=1, epochs=1, iterations=1, b = 4096)
+            configs_b.append(config)
 
-    for i in range(1, range_M):
-        config = Config(dataset_name, r= 4, k=2, m=i, epochs=1, iterations=1)
-        configs_q.append(config)
+        for i in range(1, range_M):
+            for j in range(1, range_K):
+                config = Config(dataset, r = 1, k=j, m=i, b = 4096)
+                configs_q.append(config)
 
-    experiment_name, avg_recall, time_all_queries, stats = run_multiple_query_exp("test_1", configs_q)
-
-    for i in range(1, range_K):
-        config = Config(dataset_name, k=i)
-        configs_b.append(config)
-
+    build_multiple_indexes_exp("test_2", configs_b)
+    experiment_name, avg_recall, time_all_queries, stats = run_multiple_query_exp("test_2", configs_q)
 
     # # code below was used to plot single graph from an existing csv
     # df = pd.DataFrame(pd.read_csv("test_1_r4_k2_m3_qps5.47_avg_rec0.973.csv"))
