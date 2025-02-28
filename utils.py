@@ -59,7 +59,7 @@ def get_train_nearest_neighbours_from_file(dataset, amount, sample_size, dataset
         I = read_csv(filename, dtype=int, header=None).to_numpy()
     return I
 
-def read_dataset(dataset_name):
+def read_dataset(dataset_name, mode = 'train'):
     if not os.path.exists("data"):
         os.mkdir("data")
     path = os.path.join("data", f"{dataset_name}.hdf5")
@@ -79,14 +79,18 @@ def read_dataset(dataset_name):
 
     print(f"reading file: {path}")
     f = h5py.File(path)
-    train = f['train']
-    test = f['test']
-    neighbours = f['neighbors']
-    train_X = np.array(train)
-    test_X = np.array(test)
-    neighbours_X = np.array(neighbours)
-    print("done reading")
-    return train_X, test_X, neighbours_X
+    if mode == 'train':
+        train = f['train']
+        train_X = np.array(train)
+        print("done reading training data")
+        return train_X
+    if mode == 'test':    
+        test = f['test']
+        neighbours = f['neighbors']
+        test_X = np.array(test)
+        neighbours_X = np.array(neighbours)
+        print("done reading testing data")
+        return test_X, neighbours_X
 
 def get_B(n):
     if n > 0:
@@ -98,7 +102,7 @@ def get_B(n):
     
 def save_model(model, dataset_name, r, R, K):
     model_name = f"model_{dataset_name}_r{r}_k{K}"
-    directory = f"models/{dataset_name}_{R}_{K}/"
+    directory = f"models/{dataset_name}_r{R}_k{K}/"
     MODEL_PATH = os.path.join(directory, f"{model_name}.pt")
     
     os.makedirs(directory, exist_ok=True)
@@ -108,7 +112,7 @@ def save_model(model, dataset_name, r, R, K):
 
 def save_inverted_index(inverted_index, dataset_name, model_num, R, K):
     index_name = f"index_model{model_num}_{dataset_name}_r{model_num}_k{K}.pkl"
-    directory = f"models/{dataset_name}_{R}_{K}/"
+    directory = f"models/{dataset_name}_r{R}_k{K}/"
     if not os.path.exists(directory):
         os.makedirs(directory, exist_ok=True)
     index_path = os.path.join(directory, index_name)
@@ -125,27 +129,50 @@ def load_indexes(dataset_name, R, K):
              indexes.append(np.load(f"models/{dataset_name}_{R}_{K}/model_{dataset_name}_r{i}_k{K}.pt"))
     return indexes
 
+## function below is old version of save_dataset_as_memmap in case new one fucks something up
+# def save_dataset_as_memmap(train, rest, dataset_name, train_on_full_dataset):
+#     memmap_name = f"memmap_{dataset_name}"
+#     memmap_path = f"memmaps/{memmap_name}.npy"
+#     if not os.path.exists("memmaps/"):
+#         os.mkdir("memmaps")
+#     size_train, dim = np.shape(train)
+#     size_rest = 0
+#     if not train_on_full_dataset:
+#         size_rest, _ = np.shape(rest)
+#     size = size_rest + size_train
+#     print(f"size = {size}")
+ 
+#     memmap = np.memmap(memmap_path, dtype=float, mode='w+', shape=(size, dim))
+#     if size_rest == 0:
+#         memmap[:] = train[:]
+#     else:
+#         all = np.concatenate((train, rest), axis=0)
+#         memmap[:] = all[:]
+#     # np.append(memmap, rest)
+#     memmap.flush()
+#     return memmap
+
 def save_dataset_as_memmap(train, rest, dataset_name, train_on_full_dataset):
-    memmap_name = f"memmap_{dataset_name}"
-    memmap_path = f"memmaps/{memmap_name}.npy"
-    if not os.path.exists("memmaps/"):
-        os.mkdir("memmaps")
+    dir_path = "memmaps/"
+    if not os.path.exists(dir_path):
+        os.mkdir(dir_path)
+    file_path = os.path.join(dir_path, f"memmap_{dataset_name}.npy")
+
     size_train, dim = np.shape(train)
     size_rest = 0
     if not train_on_full_dataset:
         size_rest, _ = np.shape(rest)
-    size = size_rest + size_train
-    print(f"size = {size}")
- 
-    memmap = np.memmap(memmap_path, dtype=float, mode='w+', shape=(size, dim))
+    size = size_train + size_rest
+    print(f"Total size = {size}")
+
+    # combine train and rest if needed
     if size_rest == 0:
-        memmap[:] = train[:]
+        combined = train
     else:
-        all = np.concatenate((train, rest), axis=0)
-        memmap[:] = all[:]
-    # np.append(memmap, rest)
-    memmap.flush()
-    return memmap
+        combined = np.concatenate((train, rest), axis=0)
+    
+    np.save(file_path, combined)
+    print(f"Dataset saved to {file_path} with shape {combined.shape}")
 
 def get_best_device():
     if torch.cuda.is_available():
@@ -153,7 +180,7 @@ def get_best_device():
         return torch.device("cuda")
     elif torch.backends.mps.is_available():
         # apple silicon mps
-        return torch.device("mps")
+        return torch.device("mps") 
     else:
         return torch.device("cpu")
     

@@ -1,6 +1,7 @@
 import numpy as np
-import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt # type: ignore
 import sys
+from config import Config
 import time
 import torch
 import statistics
@@ -10,6 +11,8 @@ from torch.utils.data import DataLoader, Dataset
 # from torchvision import datasets, transforms
 from sklearn.utils import murmurhash3_32 as mmh3
 from utils import *
+import psutil  # type: ignore
+import os
 
 class BLISSDataset(Dataset):
     def __init__(self, data, labels, device):
@@ -92,14 +95,13 @@ def train_model(model, dataset, index, iterations, k, B, sample_size, bucket_siz
         print(f"index after iteration {i} = {index}")
 
     plt.figure(figsize=(10, 5))
-    plt.plot(all_losses, marker='o')
+    plt.plot(all_losses, marker='.')
     plt.title('Training Loss Over Epochs')
     plt.xlabel('Epoch (accumulated over iterations)')
     plt.ylabel('Average Loss')
     plt.grid(True)
 
-    plt.savefig(f"training_loss_lr={learning_rate}_I={iterations}_E={epochs_per_iteration}.png")
-    plt.show()
+    plt.savefig(f"training_loss_lr={learning_rate}_I={iterations}_E={epochs_per_iteration}_k{k}_B{B}.png")
 
 def reassign_buckets(model, dataset, k, B, index, bucket_sizes, sample_size, neighbours, batch_size, device):
     sample_size, _ = np.shape(dataset.data)
@@ -215,21 +217,23 @@ def get_sample(train, SIZE, DIMENSION):
     
     return sample, rest, sample_size, rest_size, train_on_full_dataset
 
-def build_index(BATCH_SIZE, EPOCHS, ITERATIONS, R, K, NR_NEIGHBOURS, device, dataset_name):
-    train, _, _ = read_dataset(dataset_name)
+def build_index(BATCH_SIZE, EPOCHS, ITERATIONS, R, K, NR_NEIGHBOURS, device, train, dataset_name):
+    # TO-DO read only train data -> split read_dataset function into two. one reads training data, other reads neighbours and queries (test)
+    # train = read_dataset(dataset_name, mode= 'train')
     print("training data_________________________")
     print(f"train shape = {np.shape(train)}")
-
+    all_start = time.time()
     SIZE, DIMENSION = np.shape(train)
     B = get_B(SIZE)
     print(f"nr of buckets (B): {B}")
+    print(f"K = {K}, R = {R}")
 
     sample, rest, sample_size, rest_size, train_on_full_dataset = get_sample(train, SIZE, DIMENSION)
 
     print(f"writing train vectors to memmap")
-    memmap = save_dataset_as_memmap(sample, rest, dataset_name, train_on_full_dataset)
-    print(f"memmap = {memmap}")
-    print(f"memmap shape = {np.shape(memmap)}")
+    save_dataset_as_memmap(sample, rest, dataset_name, train_on_full_dataset)
+    # print(f"memmap = {memmap}")
+    # print(f"memmap shape = {np.shape(memmap)}")
 
     print("looking for true neighbours of training sample")
     neighbours = get_train_nearest_neighbours_from_file(sample, NR_NEIGHBOURS, sample_size, dataset_name)
@@ -238,10 +242,11 @@ def build_index(BATCH_SIZE, EPOCHS, ITERATIONS, R, K, NR_NEIGHBOURS, device, dat
     dataset = BLISSDataset(sample, labels, device)
 
     final_index = []
+    time_per_r = []
     # build R models/indexes
     for r in range(R):
-
         print(f"randomly assigning initial buckets")
+        start= time.time()
         index, bucket_sizes = assign_initial_buckets(sample_size, rest_size, r, B)
         print(bucket_sizes)
         print("making initial ground truth labels")
@@ -260,15 +265,21 @@ def build_index(BATCH_SIZE, EPOCHS, ITERATIONS, R, K, NR_NEIGHBOURS, device, dat
         if not train_on_full_dataset:
             print("assigning rest of vectors to buckets")
             map_all_to_buckets(rest, K, bucket_sizes, index, model_path, sample_size, DIMENSION, B)
-        print(f"model {r+1}: index after full assignment{index}")
+        # print(f"model {r+1}: index after full assignment{index}")
         np.set_printoptions(threshold=np.inf, suppress=True)
         print(bucket_sizes)
         inverted_index = invert_index(index, B)
         index_path = save_inverted_index(inverted_index, dataset_name, r+1, R, K)
         np.set_printoptions(threshold=1000, suppress=True)
         final_index.append((index_path, model_path))
+        end = time.time()
+        time_per_r.append(end-start)
     # return paths to all models created for the index
-    return final_index
+    all_end = time.time()
+    build_time = all_end-all_start
+    process = psutil.Process(os.getpid())
+    memory_usage = process.memory_info().rss / (1024 ** 2)
+    return final_index, time_per_r, build_time, memory_usage
 
 def load_model(model_path, dim, b):
     inf_device = torch.device("cpu")
@@ -277,18 +288,23 @@ def load_model(model_path, dim, b):
     model.eval()
     return model
 
-def query_multiple(data, index, vectors, m, threshold, requested_amount):
+def query_multiple(data, index, vectors, neighbours, m, threshold, requested_amount):
     '''run multiple queries from a set of query vectors i.e. "Test" from the ANN benchmark datsets'''
     size = len(vectors)
-    results = [[] for i in range(size)]
-    for i in range(size):
-        print(f"querying {i} of {size}")
-        vector = vectors[i]
-        anns = query(data, index, vector, m, threshold, requested_amount)
-        results[i] = anns
+    query_times = []
+    results = [[] for i in range(len(vectors))]
+    for i, vector in enumerate(vectors):
+        print(f"\rquerying {i+1} of {size}", end='', flush=True)
+        start = time.time()
+        anns, dist_comps, recall = query(data, index, vector, neighbours[i], m, threshold, requested_amount)
+        end = time.time()
+        elapsed = end - start
+        query_times.append(elapsed)
+        results[i] = (anns, dist_comps, elapsed, recall)
+    print("\r")
     return results
 
-def query(data, index, query_vector, m, freq_threshold, requested_amount):
+def query(data, index, query_vector, neighbours, m, freq_threshold, requested_amount):
     '''query the index for a single vector'''
     inverted_indexes, models = index
     candidates = {}
@@ -308,9 +324,10 @@ def query(data, index, query_vector, m, freq_threshold, requested_amount):
     final_results = [key for key, value in candidates.items() if value >= freq_threshold]
     # print (f"final results = {len(final_results)}")
     if len(final_results) <= requested_amount:
-        return final_results
+        return final_results, 0, recall_single(final_results, neighbours)
     else:
-        return reorder(data, query_vector, np.array(final_results, dtype=int), requested_amount)
+        final_neighbours, dist_comps = reorder(data, query_vector, np.array(final_results, dtype=int), requested_amount)
+        return final_neighbours, dist_comps, recall_single(final_neighbours, neighbours)
 
 def reorder(data, query_vector, candidates, requested_amount):
     import faiss 
@@ -318,6 +335,7 @@ def reorder(data, query_vector, candidates, requested_amount):
     n, d = np.shape(data)
     sp_index = []
     search_space = data[candidates]
+    dist_comps = len(search_space)
     for i in range(len(search_space)):
         sp_index.append(candidates[i])
     # print(f"search_space = {search_space}")
@@ -329,7 +347,7 @@ def reorder(data, query_vector, candidates, requested_amount):
     final_neighbours = []
     for i in neighbours:
         final_neighbours.append(sp_index[i])
-    return final_neighbours
+    return final_neighbours, dist_comps
 
 def recall(results, neighbours):
     recalls = []
@@ -342,58 +360,75 @@ def recall(results, neighbours):
 def recall_single(results, neighbours):
     return len(set(results) & set(neighbours))/len(neighbours)
 
+def run_bliss(config: Config, mode):
+    batch_size = config.BATCH_SIZE
+    epochs = config.EPOCHS
+    iterations = config.ITERATIONS
+    r = config.R
+    k = config.K
+    dataset_name = config.dataset_name
+    nr_neighbours = config.NR_NEIGHBOURS
+    device = config.device
+    print(f"Using device: {device}")
+    dataset_name = config.dataset_name
+    print(dataset_name)
+
+    data = read_dataset(dataset_name, mode= 'train')
+
+    inverted_indexes_paths =[]
+    if mode == 'build':
+        index, time_per_r = build_index(batch_size, epochs, iterations, r, k, nr_neighbours, device, data, dataset_name)
+        inverted_indexes_paths, model_paths = zip(*index)
+        return time_per_r
+    elif mode == 'query':
+        inverted_indexes_paths = [f"models/{dataset_name}_r{r}_k{k}/index_model{i+1}_sift-128-euclidean_r{i+1}_k{k}.pkl" for i in range(r)]
+        for i in range (r):
+            inverted_indexes_paths.append(f"models/{dataset_name}_r{r}_k{k}/index_model{i+1}_sift-128-euclidean_r{i+1}_k{k}.pkl")
+        model_paths = [f"models/{dataset_name}_r{r}_k{k}/model_sift-128-euclidean_r{i+1}_k{k}.pt" for i in range(r)]
+        for i in range(r):
+            model_paths.append(f"models/{dataset_name}_r{r}_k{k}/model_sift-128-euclidean_r{i+1}_k{k}.pt")
+    
+        inverted_indexes = []
+        for path in inverted_indexes_paths:
+            with open(path, 'rb') as f:
+                inverted_indexes.append(pickle.load(f))
+
+        q_models = [load_model(model_path, 128, 1024) for model_path in model_paths]
+        index = (inverted_indexes, q_models)
+
+        memmap_path = f"memmaps/memmap_{dataset_name}.npy"
+        data = np.load(memmap_path, mmap_mode='r')
+
+        test, neighbours = read_dataset(dataset_name, mode= 'test')
+        # comment in for quick debugging/testing
+        # test = test[:10]
+        print(f"creating tensor array from Test")
+        test = torch.from_numpy(test)
+
+        start = time.time()
+        results = query_multiple(data, index, test, neighbours, config.M, config.FREQ_THRESHOLD, config.NR_NEIGHBOURS)
+        end = time.time()
+
+        total_query_time = end - start
+        # result_path = f"results_r{r}_k{k}.pkl"
+        # with open(result_path, 'wb') as f:
+        #     pickle.dump(results, f)
+        anns = [t[0] for t in results]
+        RECALL = recall(anns, neighbours)
+        print(f"RECALL = {RECALL}")
+
+        return RECALL, results, total_query_time
+
 if __name__ == "__main__":
-    BATCH_SIZE = 256
-    EPOCHS = 5   
-    ITERATIONS = 20
-    R = 4
-    K = 2
-    NR_NEIGHBOURS = 100
-    device = get_best_device()
-    # device = "cpu"
-    print("Using device:", device) 
+    # BATCH_SIZE = 256
+    # EPOCHS = 5   
+    # ITERATIONS = 20
+    # R = 4
+    # K = 2
+    # NR_NEIGHBOURS = 100
 
     dataset_name = "sift-128-euclidean"
+    config = Config(dataset_name, r = 1, epochs=2, iterations= 2)
+
+    recall = run_bliss(config)
     # dataset_name = "mnist-784-euclidean"
-
-    # index = build_index(BATCH_SIZE, EPOCHS, ITERATIONS, R, K, NR_NEIGHBOURS, device, dataset_name)
-    # inverted_indexes_paths, model_paths = zip(*index)
-
-    inverted_indexes_paths = [f"models/sift-128-euclidean_4_2/index_model{i+1}_sift-128-euclidean_r{i+1}_k2.pkl" for i in range(R)]
-    for i in range (R):
-        inverted_indexes_paths.append(f"models/sift-128-euclidean_4_2/index_model{i+1}_sift-128-euclidean_r{i+1}_k2.pkl")
-    model_paths = [f"models/sift-128-euclidean_4_2/model_sift-128-euclidean_r{i+1}_k2.pt" for i in range(R)]
-    for i in range(R):
-        model_paths.append(f"models/sift-128-euclidean_4_2/model_sift-128-euclidean_r{i+1}_k2.pt")
-
-    inverted_indexes = []
-    for path in inverted_indexes_paths:
-        with open(path, 'rb') as f:
-            inverted_indexes.append(pickle.load(f))
-
-    # print(f"inv indexes = {inverted_indexes}")
-    q_models = [load_model(model_path, 128, 1024) for model_path in model_paths]
-    index = (inverted_indexes, q_models)
-
-    data, test, neighbours = read_dataset(dataset_name)
-
-    # print(f"neigbours = {len(neighbours[0])}")
-
-    print(f"ctreating np array from Test")
-    test = torch.from_numpy(test)
-    # # i = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
-    # # test = test[i]
-
-    results = query_multiple(data, index, test, 2, 2, 100)
-    result_path = "results.pkl"
-    with open(result_path, 'wb') as f:
-        pickle.dump(results, f)
-    
-    # with open("results.pkl", "rb") as f:
-    #     results = pickle.load(f)
-
-    # results = query(data, index, test[0], 2, 2, 100)
-    # print(f"results = {results}")
-
-    RECALL = recall(results, neighbours)
-    print(f"RECALL = {RECALL}")
