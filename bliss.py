@@ -60,7 +60,7 @@ def train_model(model, dataset, index, iterations, k, B, sample_size, bucket_siz
     model.to(device)
     criterion = nn.BCEWithLogitsLoss()
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
-    train_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=2)
+    train_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=8)
 
     all_losses = []
 
@@ -98,7 +98,7 @@ def reassign_buckets(model, dataset, k, B, index, bucket_sizes, sample_size, nei
     sample_size, _ = np.shape(dataset.data)
     model.to("cpu")
     model.eval()
-    reassign_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=4)
+    reassign_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=8)
     bucket_sizes[:] = 0
     item_index = 0
 
@@ -127,7 +127,7 @@ def reassign_buckets_vectorized(model, dataset, k, B, index, bucket_sizes, sampl
     sample_size, _ = np.shape(dataset.data)
     model.to(device)
     model.eval()
-    reassign_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=4)
+    reassign_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=8)
     
     # create auxiliary tensor representing bucket_sizes
     bucket_sizes_t = torch.zeros(B, device=device, dtype=torch.int32)
