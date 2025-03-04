@@ -11,6 +11,8 @@ data/
 models/
 memmaps/
 result_archive/
+outputs/
+results/
 *.pt
 *.csv
 *.png

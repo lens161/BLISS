@@ -22,12 +22,16 @@ def build_multiple_indexes_exp(experiment_name, configs):
         k = config.K
         epochs = config.EPOCHS
         iterations = config.ITERATIONS
-        time_per_r, build_time, memory_usage = run_bliss(config, mode=mode)
+        time_per_r, build_time, memory_usage = run_bliss(config, mode=mode, experiment_name=experiment_name)
         stats.append({'R':r, 'k':k, 'epochs_per_it':epochs, 'iterations':iterations, 'build_time':build_time, 'mem':memory_usage})
         print(time_per_r)
+    foldername = f"results/{experiment_name}"
+    if not os.path.exists("results"):
+        os.mkdir("results")
+    if not os.path.exists(f"results/{experiment_name}"):
+        os.mkdir(foldername)
     df = pd.DataFrame(stats)
-    path = f"{experiment_name}_{r}_{k}.csv"
-    df.to_csv(path, index=False)
+    df.to_csv(f"{foldername}/{experiment_name}_build.csv", index=False)
 
 def run_multiple_query_exp(experiment_name, configs):
     mode = 'query'
@@ -36,7 +40,7 @@ def run_multiple_query_exp(experiment_name, configs):
         k = config.K
         m =config.M
         results = []
-        avg_recall, stats, total_query_time = run_bliss(config, mode=mode)
+        avg_recall, stats, total_query_time = run_bliss(config, mode=mode, experiment_name=experiment_name)
         print(f"avg recall = {avg_recall}")
         for (anns, dist_comps, elapsed, recall) in stats:
             results.append({'ANNs': anns, 
@@ -45,15 +49,19 @@ def run_multiple_query_exp(experiment_name, configs):
                             'recall': recall})
         qps = len(stats)/total_query_time
         df = pd.DataFrame(results)
-        path = f"results/{experiment_name}_r{r}_k{k}_m{m}"
-        df.to_csv(f"{experiment_name}_r{r}_k{k}_m{m}_qps{qps:.2f}_avg_rec{avg_recall:.3f}.csv", index=False)
-        plt.figure(figsize=(8, 5))
         plt.scatter(df['distance_computations'], df['recall'], color='blue', s=20)
         plt.xlabel("Distance Computations")
         plt.ylabel("Recall")
         plt.title(f"Distance Computations vs Recall R={r} k={k} m={m}")
         plt.grid(True)
-        plt.savefig(f"{experiment_name}_r{r}_k{k}_m{m}_qps{qps:.2f}_avg_rec{avg_recall:.3f}.png", dpi=300)
+        foldername = f"results/{experiment_name}"
+        if not os.path.exists("results"):
+            os.mkdir("results")
+        if not os.path.exists(f"results/{experiment_name}"):
+            os.mkdir(foldername)
+        df.to_csv(f"{foldername}/r{r}_k{k}_m{m}_qps{qps:.2f}_avg_rec{avg_recall:.3f}.csv", index=False)
+        plt.figure(figsize=(8, 5))
+        plt.savefig(f"{foldername}/r{r}_k{k}_m{m}_qps{qps:.2f}_avg_rec{avg_recall:.3f}.png", dpi=300)
 
     return experiment_name, avg_recall, total_query_time, results
 
