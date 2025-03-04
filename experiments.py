@@ -4,6 +4,7 @@ from utils import get_best_device
 import numpy as np
 import time 
 import csv
+import os
 import pandas as pd
 import matplotlib.pyplot as plt # type: ignore
 
@@ -25,7 +26,10 @@ def build_multiple_indexes_exp(experiment_name, configs):
         stats.append({'R':r, 'k':k, 'epochs_per_it':epochs, 'iterations':iterations, 'build_time':build_time, 'mem':memory_usage})
         print(time_per_r)
     df = pd.DataFrame(stats)
-    df.to_csv(f"{experiment_name}_build.csv", index=False)
+    if not os.path.exists(f"results/{experiment_name}"):
+        os.mkdir(f"results/{experiment_name}")
+    path = f"results/{experiment_name}/{experiment_name}_{r}_{k}.csv"
+    df.to_csv(path, index=False)
 
 def run_multiple_query_exp(experiment_name, configs):
     mode = 'query'
@@ -43,6 +47,7 @@ def run_multiple_query_exp(experiment_name, configs):
                             'recall': recall})
         qps = len(stats)/total_query_time
         df = pd.DataFrame(results)
+        path = f"results/{experiment_name}_r{r}_k{k}_m{m}"
         df.to_csv(f"{experiment_name}_r{r}_k{k}_m{m}_qps{qps:.2f}_avg_rec{avg_recall:.3f}.csv", index=False)
         plt.figure(figsize=(8, 5))
         plt.scatter(df['distance_computations'], df['recall'], color='blue', s=20)
