@@ -7,6 +7,7 @@ import numpy as np
 import traceback
 import math
 import pickle
+import matplotlib.pyplot as plt # type: ignore
 from sklearn.model_selection import train_test_split as sklearn_train_test_split
 from urllib.request import Request, urlopen
 from pandas import read_csv
@@ -128,6 +129,20 @@ def load_indexes(dataset_name, R, K):
          for i in range(R):
              indexes.append(np.load(f"models/{dataset_name}_{R}_{K}/model_{dataset_name}_r{i}_k{K}.pt"))
     return indexes
+
+def make_loss_plot(learning_rate, iterations, epochs_per_iteration, k, B, experiment_name, all_losses):
+    foldername = f"results/{experiment_name}"
+    if not os.path.exists("results"):
+        os.mkdir("results")
+    if not os.path.exists(foldername):
+        os.mkdir(foldername)
+    plt.figure(figsize=(10, 5))
+    plt.plot(all_losses, marker='.')
+    plt.title('Training Loss Over Epochs')
+    plt.xlabel('Epoch (accumulated over iterations)')
+    plt.ylabel('Average Loss')
+    plt.grid(True)
+    plt.savefig(f"{foldername}/training_loss_lr={learning_rate}_I={iterations}_E={epochs_per_iteration}_k{k}_B{B}.png")
 
 ## function below is old version of save_dataset_as_memmap in case new one fucks something up
 # def save_dataset_as_memmap(train, rest, dataset_name, train_on_full_dataset):

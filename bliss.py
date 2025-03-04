@@ -1,5 +1,4 @@
 import numpy as np
-import matplotlib.pyplot as plt # type: ignore
 import sys
 from config import Config
 import time
@@ -57,7 +56,7 @@ class BLISS_NN(nn.Module):
 
         return x
 
-def train_model(model, dataset, index, iterations, k, B, sample_size, bucket_sizes, neighbours, epochs_per_iteration, batch_size, device, learning_rate):
+def train_model(model, dataset, index, iterations, k, B, sample_size, bucket_sizes, neighbours, epochs_per_iteration, batch_size, device, learning_rate, experiment_name):
     model.to(device)
     criterion = nn.BCEWithLogitsLoss()
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
@@ -93,14 +92,7 @@ def train_model(model, dataset, index, iterations, k, B, sample_size, bucket_siz
         reassign_buckets(model, dataset, k, B, index, bucket_sizes, sample_size, neighbours, batch_size, device)
         print(f"index after iteration {i} = {index}")
 
-    plt.figure(figsize=(10, 5))
-    plt.plot(all_losses, marker='.')
-    plt.title('Training Loss Over Epochs')
-    plt.xlabel('Epoch (accumulated over iterations)')
-    plt.ylabel('Average Loss')
-    plt.grid(True)
-
-    plt.savefig(f"training_loss_lr={learning_rate}_I={iterations}_E={epochs_per_iteration}_k{k}_B{B}.png")
+    make_loss_plot(learning_rate, iterations, epochs_per_iteration, k, B, experiment_name, all_losses)
 
 def reassign_buckets(model, dataset, k, B, index, bucket_sizes, sample_size, neighbours, batch_size, device):
     sample_size, _ = np.shape(dataset.data)
@@ -216,7 +208,7 @@ def get_sample(train, SIZE, DIMENSION):
     
     return sample, rest, sample_size, rest_size, train_on_full_dataset
 
-def build_index(BATCH_SIZE, EPOCHS, ITERATIONS, R, K, NR_NEIGHBOURS, device, train, dataset_name, b, lr):
+def build_index(BATCH_SIZE, EPOCHS, ITERATIONS, R, K, NR_NEIGHBOURS, device, train, dataset_name, b, lr, experiment_name):
     # TO-DO read only train data -> split read_dataset function into two. one reads training data, other reads neighbours and queries (test)
     # train = read_dataset(dataset_name, mode= 'train')
     print("training data_________________________")
@@ -254,7 +246,7 @@ def build_index(BATCH_SIZE, EPOCHS, ITERATIONS, R, K, NR_NEIGHBOURS, device, tra
         print(f"setting up model {r+1}")
         model = BLISS_NN(DIMENSION, B)
         print(f"training model {r+1}")
-        train_model(model, dataset, index, ITERATIONS, K, B, sample_size, bucket_sizes, neighbours, EPOCHS, BATCH_SIZE, device, lr)
+        train_model(model, dataset, index, ITERATIONS, K, B, sample_size, bucket_sizes, neighbours, EPOCHS, BATCH_SIZE, device, lr, experiment_name)
         model_path = save_model(model, dataset_name, r+1, R, K, B, lr)
         print(f"model {r+1} saved to {model_path}")
         print(f"model {r+1}: index before full assignment = {index}")
@@ -359,7 +351,7 @@ def recall(results, neighbours):
 def recall_single(results, neighbours):
     return len(set(results) & set(neighbours))/len(neighbours)
 
-def run_bliss(config: Config, mode):
+def run_bliss(config: Config, mode, experiment_name):
     batch_size = config.BATCH_SIZE
     epochs = config.EPOCHS
     iterations = config.ITERATIONS
@@ -378,7 +370,7 @@ def run_bliss(config: Config, mode):
     inverted_indexes_paths =[]
     if mode == 'build':
         data = read_dataset(dataset_name, mode= 'train')
-        index, time_per_r, build_time, memory_usage = build_index(batch_size, epochs, iterations, r, k, nr_neighbours, device, data, dataset_name, b, lr)
+        index, time_per_r, build_time, memory_usage = build_index(batch_size, epochs, iterations, r, k, nr_neighbours, device, data, dataset_name, b, lr, experiment_name)
         inverted_indexes_paths, model_paths = zip(*index)
         return time_per_r, build_time, memory_usage
     elif mode == 'query':
