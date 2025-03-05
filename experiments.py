@@ -49,6 +49,7 @@ def run_multiple_query_exp(experiment_name, configs):
                             'recall': recall})
         qps = len(stats)/total_query_time
         df = pd.DataFrame(results)
+        plt.figure(figsize=(8, 5))
         plt.scatter(df['distance_computations'], df['recall'], color='blue', s=20)
         plt.xlabel("Distance Computations")
         plt.ylabel("Recall")
@@ -60,7 +61,7 @@ def run_multiple_query_exp(experiment_name, configs):
         if not os.path.exists(f"results/{experiment_name}"):
             os.mkdir(foldername)
         df.to_csv(f"{foldername}/r{r}_k{k}_m{m}_qps{qps:.2f}_avg_rec{avg_recall:.3f}.csv", index=False)
-        plt.figure(figsize=(8, 5))
+        # plt.show()
         plt.savefig(f"{foldername}/r{r}_k{k}_m{m}_qps{qps:.2f}_avg_rec{avg_recall:.3f}.png", dpi=300)
 
     return experiment_name, avg_recall, total_query_time, results
@@ -78,17 +79,19 @@ if __name__ == "__main__":
     # add all dataset names that the experiments should be run on
     datasets = ["sift-128-euclidean",
                  ]
+    
+    configs_b.append(Config(dataset_name="sift-128-euclidean", r=1, m=2, k=2, batch_size=512, epochs=2, iterations=2))
+    configs_q.append(Config(dataset_name="sift-128-euclidean", r=1, m=2, k=2, batch_size=512, epochs=2, iterations=2))
+    # for dataset in datasets:
+    #     for i in k_values:
+    #         config = Config(dataset, k=i, r=4, epochs=5, iterations=20, b = 4096, batch_size=512)
+    #         configs_b.append(config)
 
-    for dataset in datasets:
-        for i in k_values:
-            config = Config(dataset, k=i, r=4, epochs=5, iterations=20, b = 4096, batch_size=512)
-            configs_b.append(config)
+    #     for i in m_values:
+    #         for j in k_values:
+    #             config = Config(dataset, r = 4, k=j, m=i, b = 4096, batch_size=512)
+    #             configs_q.append(config)
 
-        for i in m_values:
-            for j in k_values:
-                config = Config(dataset, r = 4, k=j, m=i, b = 4096, batch_size=512)
-                configs_q.append(config)
-
-    build_multiple_indexes_exp("test_b=4096_gpu_out_of_mem?", configs_b)
-    experiment_name, avg_recall, time_all_queries, stats = run_multiple_query_exp("test_b=4096_gpu_out_of_mem?", configs_q)
+    # build_multiple_indexes_exp("plot??", configs_b)
+    experiment_name, avg_recall, time_all_queries, stats = run_multiple_query_exp("plot??", configs_q)
  
