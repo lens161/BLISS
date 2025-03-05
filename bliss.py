@@ -60,7 +60,7 @@ def train_model(model, dataset, index, iterations, k, B, sample_size, bucket_siz
     model.to(device)
     criterion = nn.BCEWithLogitsLoss()
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
-    train_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=2)
+    train_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=8)
 
     all_losses = []
 
@@ -98,7 +98,7 @@ def reassign_buckets(model, dataset, k, B, index, bucket_sizes, sample_size, nei
     sample_size, _ = np.shape(dataset.data)
     model.to("cpu")
     model.eval()
-    reassign_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=2)
+    reassign_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=8)
     bucket_sizes[:] = 0
     item_index = 0
 
@@ -114,10 +114,59 @@ def reassign_buckets(model, dataset, k, B, index, bucket_sizes, sample_size, nei
                      
     finish = time.time()
     elapsed = finish - start
+    process = psutil.Process(os.getpid())
+    mem_usage = process.memory_info().rss
+
+    print(f"Memory usage: {mem_usage / (1024 ** 2):.2f} MB")
     print(f"reassigning took {elapsed}")
     new_labels = make_ground_truth_labels(B, neighbours, index, sample_size, device)
     dataset.labels = new_labels
     model.to(device)
+
+def reassign_buckets_vectorized(model, dataset, k, B, index, bucket_sizes, sample_size, neighbours, batch_size, device):
+    sample_size, _ = np.shape(dataset.data)
+    model.to(device)
+    model.eval()
+    reassign_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=8)
+    
+    # create auxiliary tensor representing bucket_sizes
+    bucket_sizes_t = torch.zeros(B, device=device, dtype=torch.int32)
+    
+    global_item_index = 0 # index from list "index" on cpu
+    start = time.time()
+    with torch.no_grad():
+        for batch_data, _ in reassign_loader:
+            batch_data = batch_data.to(device)
+            bucket_probabilities = torch.sigmoid(model(batch_data))
+            _, candidate_indices = torch.topk(bucket_probabilities, k, dim=1)
+            # get current sizes for candidate buckets (broadcast bucket_sizes_t)
+            candidate_sizes = bucket_sizes_t[candidate_indices]  # shape: (batch_size, k)
+            #for each vector, choose the candidate with the smallest bucket count
+            chosen_candidate_idx = torch.argmin(candidate_sizes, dim=1)
+            #get the chosen buckets for batch
+            chosen_buckets = candidate_indices[torch.arange(candidate_indices.size(0)), chosen_candidate_idx]
+            
+            # batched update bucket sizes
+            ones = torch.ones_like(chosen_buckets, dtype=torch.int32, device=device)
+            bucket_sizes_t = bucket_sizes_t.scatter_add(0, chosen_buckets, ones)
+            
+            # send chosen buckets to cpu
+            chosen_buckets_cpu = chosen_buckets.cpu().numpy()
+            for bucket in chosen_buckets_cpu:
+                index[global_item_index] = bucket
+                global_item_index += 1
+    end = time.time()
+    
+    #update global bucket_sizes list
+    bucket_sizes[:] = bucket_sizes_t.cpu().numpy()
+    
+    process = psutil.Process(os.getpid())
+    mem_usage = process.memory_info().rss
+    print(f"Memory usage: {mem_usage / (1024 ** 2):.2f} MB")
+    print(f"reassigning vect. took: {end - start:.4f} seconds")
+    
+    new_labels = make_ground_truth_labels(B, neighbours, index, sample_size, device)
+    dataset.labels = new_labels
 
 def reassign_vector_to_bucket(probability_vector, index, bucket_sizes, k, item_index):
     value, indices_of_topk_buckets = torch.topk(probability_vector, k)
@@ -258,6 +307,7 @@ def build_index(BATCH_SIZE, EPOCHS, ITERATIONS, R, K, NR_NEIGHBOURS, device, tra
             map_all_to_buckets(rest, K, bucket_sizes, index, model_path, sample_size, DIMENSION, B)
         # print(f"model {r+1}: index after full assignment{index}")
         np.set_printoptions(threshold=np.inf, suppress=True)
+        print(f"bucket_sizes sum = {np.sum(bucket_sizes)}")
         print(bucket_sizes)
         inverted_index = invert_index(index, B)
         index_path = save_inverted_index(inverted_index, dataset_name, r+1, R, K, B, lr)
@@ -425,7 +475,7 @@ if __name__ == "__main__":
     # NR_NEIGHBOURS = 100
 
     dataset_name = "sift-128-euclidean"
-    config = Config(dataset_name, r = 1, epochs=2, iterations= 2)
+    config = Config(dataset_name, r = 1, epochs=2, iterations= 2, batch_size=512)
 
-    recall = run_bliss(config)
+    recall = run_bliss(config, "build")
     # dataset_name = "mnist-784-euclidean"

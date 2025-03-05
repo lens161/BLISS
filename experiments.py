@@ -69,51 +69,26 @@ if __name__ == "__main__":
     configs_q = [] # configs for building the index
     configs_b = [] # configs for querying
 
-    range_M = 5
-    range_K = 5
-    range_threshold = 5
+    # range_M = 10
+    # range_K = 2
+    range_threshold = 2
+    k_values = [2]
+    m_values = [5, 15]
 
     # add all dataset names that the experiments should be run on
     datasets = ["sift-128-euclidean",
                  ]
-    
+
     for dataset in datasets:
-        for i in range(1, range_K):
-            config = Config(dataset, k=i, r=1, epochs=1, iterations=1, b = 4096)
+        for i in k_values:
+            config = Config(dataset, k=i, r=4, epochs=5, iterations=20, b = 4096, batch_size=512)
             configs_b.append(config)
 
-        for i in range(1, range_M):
-            for j in range(1, range_K):
-                config = Config(dataset, r = 1, k=j, m=i, b = 4096)
+        for i in m_values:
+            for j in k_values:
+                config = Config(dataset, r = 4, k=j, m=i, b = 4096, batch_size=512)
                 configs_q.append(config)
 
-    build_multiple_indexes_exp("test_2", configs_b)
-    experiment_name, avg_recall, time_all_queries, stats = run_multiple_query_exp("test_2", configs_q)
-
-    # # code below was used to plot single graph from an existing csv
-    # df = pd.DataFrame(pd.read_csv("test_1_r4_k2_m3_qps5.47_avg_rec0.973.csv"))
-
-    # num_bins = 10
-    # bins = np.linspace(df['distance_computations'].min(), df['distance_computations'].max(), num_bins+1)
-
-    # # Bin the data
-    # df['bin'] = pd.cut(df['distance_computations'], bins=bins)
-
-    # # Group by the bin and calculate the average recall for each bin.
-    # grouped = df.groupby('bin')['recall'].mean()
-
-    # # Compute the midpoints of each bin for the x-axis
-    # bin_midpoints = [interval.mid for interval in grouped.index.categories]
-
-    # # Plot a line graph
-    # plt.figure(figsize=(8, 5))
-    # plt.plot(bin_midpoints, grouped.values, marker='o', linestyle='-')
-    # plt.xlabel("Distance Computations (binned midpoint)")
-    # plt.ylabel("Average Recall")
-    # plt.title("Binned Average Recall vs Distance Computations")
-    # plt.grid(True)
-    # plt.savefig("test2.png", dpi = 300)
-    # plt.show()
-
-    # # df = pd.DataFrame(stats)
-    # # df.to_csv(f"{experiment_name}_avg_rec:{avg_recall:.3f}.csv", index = False)
+    build_multiple_indexes_exp("test_b=4096_gpu_out_of_mem?", configs_b)
+    experiment_name, avg_recall, time_all_queries, stats = run_multiple_query_exp("test_b=4096_gpu_out_of_mem?", configs_q)
+ 
