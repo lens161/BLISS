@@ -13,6 +13,7 @@ memmaps/
 result_archive/
 outputs/
 results/
+synthetic_data_results/
 *.pt
 *.csv
 *.png
