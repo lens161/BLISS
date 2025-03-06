@@ -97,5 +97,5 @@ if __name__ == "__main__":
     #             configs_q.append(config)
 
     build_multiple_indexes_exp(EXP_NAME, configs_b)
-    experiment_name, avg_recall, time_all_queries, stats = run_multiple_query_exp(EXP_NAME, configs_q)
+    run_multiple_query_exp(EXP_NAME, configs_q)
  
