@@ -1,13 +1,13 @@
 #!/bin/bash
 
-#SBATCH --job-name=experiments-v1       # Job name
+#SBATCH --job-name=try_m2_5_10_k=2      # Job name
 #SBATCH --output=outputs/job.%j.out     # Name of output file (%j expands to jobId)
 #SBATCH --cpus-per-task=32              # Schedule 32 cores
 #SBATCH --time=10:00:00                 # Max run time (hh:mm:ss)
 #SBATCH --gres=gpu                      # Need GPU
+#SBATCH --exclude=desktop[1-16]         # Exclude desktops
 #SBATCH --partition=scavenge            # Run on the scavenge queue
 #SBATCH --mail-type=BEGIN,FAIL,END      # Send an email when the job finishes
-#SBATCH --exclusive                     # get machine for my self
 
 
 echo "Running on $(hostname):"

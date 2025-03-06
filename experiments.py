@@ -74,28 +74,21 @@ if __name__ == "__main__":
     # range_K = 2
     range_threshold = 2
     k_values = [2]
-    m_values = [5, 15]
+    m_values = [2, 5, 10]
 
-    EXP_NAME = "threshold_fixed_r4"
+    EXP_NAME = "try_m2_5_10_k=2"
 
     # add all dataset names that the experiments should be run on
     datasets = ["sift-128-euclidean",
                  ]
     
     for dataset in datasets:
-        conf = Config(dataset_name=dataset, k=2, r=4, batch_size=2048, b= 1024, epochs=5, iterations=4, m=5)
+        conf = Config(dataset_name=dataset, k=2, r=4, batch_size=2048, b= 1024, epochs=5, iterations=4)
         configs_b.append(conf)
-        configs_q.append(conf)
-    # for dataset in datasets:
-    #     for i in k_values:
-    #         config = Config(dataset, k=i, r=4, epochs=5, iterations=20, b = 4096, batch_size=512)
-    #         configs_b.append(config)
+        for m in m_values:
+            conf_q = Config(dataset_name=dataset, k=2, r=4, batch_size=2048, b= 1024, epochs=5, iterations=4, m=m)
+            configs_q.append(conf)
 
-    #     for i in m_values:
-    #         for j in k_values:
-    #             config = Config(dataset, r = 4, k=j, m=i, b = 4096, batch_size=512)
-    #             configs_q.append(config)
-
-    # build_multiple_indexes_exp(EXP_NAME, configs_b)
+    build_multiple_indexes_exp(EXP_NAME, configs_b)
     run_multiple_query_exp(EXP_NAME, configs_q)
  
