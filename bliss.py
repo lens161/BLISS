@@ -33,7 +33,7 @@ class BLISSDataset(Dataset):
         else:
             vector = self.data[idx]
             label = self.labels[idx]
-        return vector, label
+        return vector, label, idx
 
 class BLISS_NN(nn.Module):
     def __init__(self, input_size, output_size):
@@ -70,7 +70,7 @@ def train_model(model, dataset, index, iterations, k, B, sample_size, bucket_siz
             epoch_losses = []
             print(f"training epoch ({i}, {epoch})")
             start = time.time()
-            for batch_data, batch_labels in train_loader:
+            for batch_data, batch_labels, _ in train_loader:
                 batch_data = batch_data.to(device)
                 batch_labels = batch_labels.to(device)
                 # print(f"batch_labels: {batch_labels}")
@@ -98,18 +98,18 @@ def reassign_buckets(model, dataset, k, B, index, bucket_sizes, sample_size, nei
     sample_size, _ = np.shape(dataset.data)
     model.to("cpu")
     model.eval()
-    reassign_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=8)
+    reassign_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=8)
     bucket_sizes[:] = 0
     item_index = 0
 
     start = time.time()
     with torch.no_grad():
-        for batch_data, batch_labels in reassign_loader:
+        for batch_data, batch_labels, batch_indices in reassign_loader:
             batch_data = batch_data.to("cpu")
             bucket_probabilities = torch.sigmoid(model(batch_data))
 
-            for probability_vector in bucket_probabilities:
-                reassign_vector_to_bucket(probability_vector, index, bucket_sizes, k, item_index)
+            for probability_vector, idx in zip(bucket_probabilities, batch_indices):
+                reassign_vector_to_bucket(probability_vector, index, bucket_sizes, k, idx)
                 item_index += 1
                      
     finish = time.time()
@@ -119,9 +119,23 @@ def reassign_buckets(model, dataset, k, B, index, bucket_sizes, sample_size, nei
 
     print(f"Memory usage: {mem_usage / (1024 ** 2):.2f} MB")
     print(f"reassigning took {elapsed}")
+    print(bucket_sizes)
     new_labels = make_ground_truth_labels(B, neighbours, index, sample_size, device)
     dataset.labels = new_labels
     model.to(device)
+
+def reassign_vector_to_bucket(probability_vector, index, bucket_sizes, k, item_index):
+    value, indices_of_topk_buckets = torch.topk(probability_vector, k)
+    smallest_bucket = indices_of_topk_buckets[0]
+    smallest_bucket_size = bucket_sizes[smallest_bucket]
+    for i in indices_of_topk_buckets:
+        size = bucket_sizes[i]
+        if size < smallest_bucket_size:
+            smallest_bucket = i
+            smallest_bucket_size = size
+
+    index[item_index] = smallest_bucket
+    bucket_sizes[smallest_bucket] +=1  
 
 def reassign_buckets_vectorized(model, dataset, k, B, index, bucket_sizes, sample_size, neighbours, batch_size, device):
     sample_size, _ = np.shape(dataset.data)
@@ -167,19 +181,6 @@ def reassign_buckets_vectorized(model, dataset, k, B, index, bucket_sizes, sampl
     
     new_labels = make_ground_truth_labels(B, neighbours, index, sample_size, device)
     dataset.labels = new_labels
-
-def reassign_vector_to_bucket(probability_vector, index, bucket_sizes, k, item_index):
-    value, indices_of_topk_buckets = torch.topk(probability_vector, k)
-    smallest_bucket = indices_of_topk_buckets[0]
-    smallest_bucket_size = bucket_sizes[smallest_bucket]
-    for i in indices_of_topk_buckets:
-        size = bucket_sizes[i]
-        if size < smallest_bucket_size:
-            smallest_bucket = i
-            smallest_bucket_size = size
-
-    index[item_index] = smallest_bucket
-    bucket_sizes[smallest_bucket] +=1  
             
 def assign_initial_buckets(train_size, rest_size, r, B):
     '''
