@@ -80,8 +80,8 @@ if __name__ == "__main__":
     datasets = ["sift-128-euclidean",
                  ]
     
-    configs_b.append(Config(dataset_name="sift-128-euclidean", r=1, m=2, k=2, batch_size=512, epochs=2, iterations=2))
-    configs_q.append(Config(dataset_name="sift-128-euclidean", r=1, m=2, k=2, batch_size=512, epochs=2, iterations=2))
+    configs_b.append(Config(dataset_name="sift-128-euclidean", lr=0.001, r=1, m=2, k=2, batch_size=2048, epochs=2, iterations=2))
+    configs_q.append(Config(dataset_name="sift-128-euclidean", lr=0.001, r=1, m=2, k=2, batch_size=2048, epochs=2, iterations=2))
     # for dataset in datasets:
     #     for i in k_values:
     #         config = Config(dataset, k=i, r=4, epochs=5, iterations=20, b = 4096, batch_size=512)
@@ -92,6 +92,6 @@ if __name__ == "__main__":
     #             config = Config(dataset, r = 4, k=j, m=i, b = 4096, batch_size=512)
     #             configs_q.append(config)
 
-    # build_multiple_indexes_exp("plot??", configs_b)
-    experiment_name, avg_recall, time_all_queries, stats = run_multiple_query_exp("plot??", configs_q)
+    build_multiple_indexes_exp("lower_learning_rate_full", configs_b)
+    experiment_name, avg_recall, time_all_queries, stats = run_multiple_query_exp("lower_learning_rate_full", configs_q)
  
