@@ -76,14 +76,14 @@ if __name__ == "__main__":
     k_values = [2]
     m_values = [5, 15]
 
-    EXP_NAME = "check_rand_reass"
+    EXP_NAME = "threshold_fixed_r4"
 
     # add all dataset names that the experiments should be run on
     datasets = ["sift-128-euclidean",
                  ]
     
     for dataset in datasets:
-        conf = Config(dataset_name=dataset, k=2, r=4, batch_size=2048, b= 4096)
+        conf = Config(dataset_name=dataset, k=2, r=4, batch_size=2048, b= 1024, epochs=5, iterations=4, m=5)
         configs_b.append(conf)
         configs_q.append(conf)
     # for dataset in datasets:
@@ -96,6 +96,6 @@ if __name__ == "__main__":
     #             config = Config(dataset, r = 4, k=j, m=i, b = 4096, batch_size=512)
     #             configs_q.append(config)
 
-    build_multiple_indexes_exp(EXP_NAME, configs_b)
+    # build_multiple_indexes_exp(EXP_NAME, configs_b)
     run_multiple_query_exp(EXP_NAME, configs_q)
  
