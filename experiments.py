@@ -76,12 +76,16 @@ if __name__ == "__main__":
     k_values = [2]
     m_values = [5, 15]
 
+    EXP_NAME = "threshold_fixed_r4"
+
     # add all dataset names that the experiments should be run on
     datasets = ["sift-128-euclidean",
                  ]
     
-    configs_b.append(Config(dataset_name="sift-128-euclidean", lr=0.001, r=1, m=2, k=2, batch_size=2048, epochs=2, iterations=2))
-    configs_q.append(Config(dataset_name="sift-128-euclidean", lr=0.001, r=1, m=2, k=2, batch_size=2048, epochs=2, iterations=2))
+    for dataset in datasets:
+        conf = Config(dataset_name=dataset, k=2, r=4, batch_size=2048, b= 1024, epochs=5, iterations=4, m=5)
+        configs_b.append(conf)
+        configs_q.append(conf)
     # for dataset in datasets:
     #     for i in k_values:
     #         config = Config(dataset, k=i, r=4, epochs=5, iterations=20, b = 4096, batch_size=512)
@@ -92,6 +96,6 @@ if __name__ == "__main__":
     #             config = Config(dataset, r = 4, k=j, m=i, b = 4096, batch_size=512)
     #             configs_q.append(config)
 
-    build_multiple_indexes_exp("lower_learning_rate_full", configs_b)
-    experiment_name, avg_recall, time_all_queries, stats = run_multiple_query_exp("lower_learning_rate_full", configs_q)
+    # build_multiple_indexes_exp(EXP_NAME, configs_b)
+    run_multiple_query_exp(EXP_NAME, configs_q)
  

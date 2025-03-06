@@ -90,6 +90,7 @@ def train_model(model, dataset, index, iterations, k, B, sample_size, bucket_siz
             print(f"epoch {epoch} avg. loss = {avg_loss}")
             all_losses.append(avg_loss)
         reassign_buckets(model, dataset, k, B, index, bucket_sizes, sample_size, neighbours, batch_size, device)
+        # new_reassign_buckets(model, dataset, k, B, device, batch_size, neighbours, bucket_sizes, index)
         print(f"index after iteration {i} = {index}")
 
     make_loss_plot(learning_rate, iterations, epochs_per_iteration, k, B, experiment_name, all_losses)
@@ -196,7 +197,7 @@ def assign_initial_buckets(train_size, rest_size, r, B):
         index[i] = bucket
         bucket_sizes[bucket] += 1
     
-    return index, bucket_sizes
+    return np.array(index), bucket_sizes
 
 def make_ground_truth_labels(B, neighbours, index, sample_size, device):
     # size = sample_size
@@ -355,14 +356,16 @@ def query(data, index, query_vector, neighbours, m, freq_threshold, requested_am
         index = inverted_indexes[i]
         probabilities = model(query_vector)
         _, m_buckets = torch.topk(probabilities, m)
+        m_buckets = m_buckets.tolist()
+        seen = set()
         for bucket in m_buckets:
-            # print(f"bucket {bucket} size = {len(index[bucket])}")
             for vector in index[bucket]:
-                if candidates.__contains__(vector):
-                    f = candidates.get(vector)
-                else:
-                    f = 0
-                candidates.update({vector : f+1})
+                seen.add(vector)
+        for vector in seen:
+            f = 0
+            if candidates.__contains__(vector):
+                f = candidates.get(vector)
+            candidates.update({vector: f+1}) 
     final_results = [key for key, value in candidates.items() if value >= freq_threshold]
     # print (f"final results = {len(final_results)}")
     if len(final_results) <= requested_amount:
@@ -426,13 +429,13 @@ def run_bliss(config: Config, mode, experiment_name):
         return time_per_r, build_time, memory_usage
     elif mode == 'query':
         b = b if b !=0 else 1024
-        inverted_indexes_paths = [f"models/{dataset_name}_r{r}_k{k}_b{b}_lr{lr}/index_model{i+1}_{dataset_name}_r{i+1}_k{k}_b{b}_lr{lr}.pkl" for i in range(r)]
+        inverted_indexes_paths = []
         for i in range (r):
             inverted_indexes_paths.append(f"models/{dataset_name}_r{r}_k{k}_b{b}_lr{lr}/index_model{i+1}_{dataset_name}_r{i+1}_k{k}_b{b}_lr{lr}.pkl")
-        model_paths = [f"models/{dataset_name}_r{r}_k{k}_b{b}_lr{lr}/model_{dataset_name}_r{i+1}_k{k}_b{b}_lr{lr}.pt" for i in range(r)]
+        model_paths = []
         for i in range(r):
             model_paths.append(f"models/{dataset_name}_r{r}_k{k}_b{b}_lr{lr}/model_{dataset_name}_r{i+1}_k{k}_b{b}_lr{lr}.pt")
-    
+
         inverted_indexes = []
         for path in inverted_indexes_paths:
             with open(path, 'rb') as f:
@@ -445,8 +448,7 @@ def run_bliss(config: Config, mode, experiment_name):
 
         q_models = [load_model(model_path, dim, b) for model_path in model_paths]
         index = (inverted_indexes, q_models)
-
-
+        
         test, neighbours = read_dataset(dataset_name, mode= 'test')
         # comment in for quick debugging/testing
         # test = test[:10]
