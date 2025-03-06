@@ -16,7 +16,7 @@ class TestTrainMethods(unittest.TestCase):
         b = 32
         k = 2
         r = 1
-        nr_neighbours = 2
+        nr_neighbours = 3
         batch_size = 256
         epochs = 5
         iterations = 20
@@ -25,6 +25,7 @@ class TestTrainMethods(unittest.TestCase):
         experiment_name = "test"
         dataset_name = "synthetic_data"
         data, _ = sklearn.datasets.make_blobs(n_samples=1000, n_features=2, centers=5, random_state=1, cluster_std=0.5)
+        data = data.astype('float32')
         # print(np.shape(data))
         # print(data)
 
