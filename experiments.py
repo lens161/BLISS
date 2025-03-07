@@ -79,15 +79,20 @@ if __name__ == "__main__":
     EXP_NAME = "glove_first_attempt"
 
     # add all dataset names that the experiments should be run on
-    datasets = ["glove-100-angular",
+    datasets = ["sift-128-euclidean", 
+                # "glove-100-angular",
                  ]
     
     for dataset in datasets:
-        conf = Config(dataset_name=dataset, k=2, r=4, batch_size=2048, b= 4096, epochs=5, iterations=4, m=m)
-        configs_b.append(conf_q)
-        for m in m_values:
-            conf_q = Config(dataset_name=dataset, k=2, r=4, batch_size=2048, b= 4096, epochs=5, iterations=4, m=m)
-            configs_q.append(conf_q)
+        conf = Config(dataset_name=dataset, batch_size= 2048, b= 1024)
+        configs_b.append(conf)
+
+    # for dataset in datasets:
+    #     conf = Config(dataset_name=dataset, k=2, r=4, batch_size=2048, b= 4096, epochs=5, iterations=4)
+    #     configs_b.append(conf)
+    #     for m in m_values:
+    #         conf_q = Config(dataset_name=dataset, k=2, r=4, batch_size=2048, b= 4096, epochs=5, iterations=4, m=m)
+    #         configs_q.append(conf_q)
 
     build_multiple_indexes_exp(EXP_NAME, configs_b)
     run_multiple_query_exp(EXP_NAME, configs_q)

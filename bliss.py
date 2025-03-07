@@ -60,7 +60,7 @@ def train_model(model, dataset, index, iterations, k, B, sample_size, bucket_siz
     model.to(device)
     criterion = nn.BCEWithLogitsLoss()
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
-    train_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=8)
+    train_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=16)
 
     all_losses = []
 
@@ -89,7 +89,8 @@ def train_model(model, dataset, index, iterations, k, B, sample_size, bucket_siz
             avg_loss = statistics.mean(epoch_losses)
             print(f"epoch {epoch} avg. loss = {avg_loss}")
             all_losses.append(avg_loss)
-        reassign_buckets(model, dataset, k, B, index, bucket_sizes, sample_size, neighbours, batch_size, device)
+        # reassign_buckets(model, dataset, k, B, index, bucket_sizes, sample_size, neighbours, batch_size, device)
+        global_reassign_buckets(model, dataset, k, B, device, batch_size, index, neighbours, bucket_sizes)
         # new_reassign_buckets(model, dataset, k, B, device, batch_size, neighbours, bucket_sizes, index)
         print(f"index after iteration {i} = {index}")
 
@@ -99,7 +100,7 @@ def reassign_buckets(model, dataset, k, B, index, bucket_sizes, sample_size, nei
     sample_size, _ = np.shape(dataset.data)
     model.to("cpu")
     model.eval()
-    reassign_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=8)
+    reassign_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=16)
     bucket_sizes[:] = 0
     item_index = 0
 
@@ -138,11 +139,52 @@ def reassign_vector_to_bucket(probability_vector, index, bucket_sizes, k, item_i
     index[item_index] = smallest_bucket
     bucket_sizes[smallest_bucket] +=1  
 
+def global_reassign_buckets(model, dataset, k, B, device, batch_size, index, neighbours, bucket_sizes):
+
+    model.eval()
+    data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=16)
+    
+    all_predictions = []
+
+    start = time.time()
+    with torch.no_grad():
+        for batch_data, _, batch_indices in data_loader:
+            batch_data = batch_data.to(device)
+            probabilities = torch.sigmoid(model(batch_data))
+            all_predictions.append(probabilities.cpu())
+    
+    # concatenate all predictions along the 0th dimension -> create tensor of predictions per vector of shape(N, B)
+    all_predictions = torch.cat(all_predictions, dim=0) 
+    N = all_predictions.size(0)
+    
+    bucket_sizes[:] = 0
+    
+    for i in range(N):
+        probs = all_predictions[i]
+        _, candidate_buckets = torch.topk(probs, k)
+        candidate_buckets = candidate_buckets.numpy()
+        candidate_counts = bucket_sizes[candidate_buckets]
+        best_candidate = candidate_buckets[np.argmin(candidate_counts)]
+        index[i] = best_candidate
+        bucket_sizes[best_candidate] += 1
+    
+    finish = time.time()
+    elapsed = finish - start
+    process = psutil.Process(os.getpid())
+    mem_usage = process.memory_info().rss
+
+    print(f"Memory usage: {mem_usage / (1024 ** 2):.2f} MB")
+    print(f"reassigning took {elapsed}")
+    new_labels = make_ground_truth_labels(B, neighbours, index, N, device)
+    dataset.labels = new_labels
+    print("New bucket sizes:", bucket_sizes)
+
+
 def reassign_buckets_vectorized(model, dataset, k, B, index, bucket_sizes, sample_size, neighbours, batch_size, device):
     sample_size, _ = np.shape(dataset.data)
     model.to(device)
     model.eval()
-    reassign_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=8)
+    reassign_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=16)
     
     # create auxiliary tensor representing bucket_sizes
     bucket_sizes_t = torch.zeros(B, device=device, dtype=torch.int32)
