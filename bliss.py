@@ -56,11 +56,11 @@ class BLISS_NN(nn.Module):
 
         return x
 
-def train_model(model, dataset, index, iterations, k, B, sample_size, bucket_sizes, neighbours, epochs_per_iteration, batch_size, device, learning_rate, experiment_name, mode):
+def train_model(model, dataset, index, iterations, k, B, sample_size, bucket_sizes, neighbours, epochs_per_iteration, batch_size, device, learning_rate, experiment_name):
     model.to(device)
     criterion = nn.BCEWithLogitsLoss()
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
-    train_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=8)
+    train_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=16)
 
     all_losses = []
 
@@ -100,7 +100,7 @@ def reassign_buckets(model, dataset, k, B, index, bucket_sizes, sample_size, nei
     sample_size, _ = np.shape(dataset.data)
     model.to("cpu")
     model.eval()
-    reassign_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=8)
+    reassign_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=16)
     bucket_sizes[:] = 0
 
     start = time.time()
@@ -145,7 +145,7 @@ def reassign_vector_to_bucket(probability_vector, index, bucket_sizes, k, item_i
 def global_reassign_buckets(model, dataset, k, B, device, batch_size, index, neighbours, bucket_sizes):
 
     model.eval()
-    data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=8)
+    data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=16)
     
     all_predictions = []
 
@@ -187,7 +187,7 @@ def reassign_buckets_vectorized(model, dataset, k, B, index, bucket_sizes, sampl
     sample_size, _ = np.shape(dataset.data)
     model.to(device)
     model.eval()
-    reassign_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=8)
+    reassign_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=16)
     
     # create auxiliary tensor representing bucket_sizes
     bucket_sizes_t = torch.zeros(B, device=device, dtype=torch.int32)
