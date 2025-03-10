@@ -74,25 +74,25 @@ if __name__ == "__main__":
     # range_K = 2
     range_threshold = 2
     k_values = [2]
-    m_values = [2, 5, 10]
+    m_values = [2, 5, 10, 15, 20]
 
-    EXP_NAME = "glove_first_attempt"
+    EXP_NAME = "sift_b4096_noshuff"
 
     # add all dataset names that the experiments should be run on
     datasets = ["sift-128-euclidean", 
                 # "glove-100-angular",
                  ]
     
-    for dataset in datasets:
-        conf = Config(dataset_name=dataset, batch_size= 2048, b= 1024)
-        configs_b.append(conf)
-
     # for dataset in datasets:
-    #     conf = Config(dataset_name=dataset, k=2, r=4, batch_size=2048, b= 4096, epochs=5, iterations=4)
+    #     conf = Config(dataset_name=dataset, batch_size= 2048, b= 4096)
     #     configs_b.append(conf)
-    #     for m in m_values:
-    #         conf_q = Config(dataset_name=dataset, k=2, r=4, batch_size=2048, b= 4096, epochs=5, iterations=4, m=m)
-    #         configs_q.append(conf_q)
+
+    for dataset in datasets:
+        conf = Config(dataset_name=dataset, k=2, r=4, batch_size=2048, b= 4096, epochs=5, iterations=4)
+        configs_b.append(conf)
+        for m in m_values:
+            conf_q = Config(dataset_name=dataset, k=2, r=4, batch_size=2048, b= 4096, epochs=5, iterations=4, m=m)
+            configs_q.append(conf_q)
 
     build_multiple_indexes_exp(EXP_NAME, configs_b)
     run_multiple_query_exp(EXP_NAME, configs_q)

@@ -56,11 +56,11 @@ class BLISS_NN(nn.Module):
 
         return x
 
-def train_model(model, dataset, index, iterations, k, B, sample_size, bucket_sizes, neighbours, epochs_per_iteration, batch_size, device, learning_rate, experiment_name):
+def train_model(model, dataset, index, iterations, k, B, sample_size, bucket_sizes, neighbours, epochs_per_iteration, batch_size, device, learning_rate, experiment_name, mode):
     model.to(device)
     criterion = nn.BCEWithLogitsLoss()
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
-    train_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=16)
+    train_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=8)
 
     all_losses = []
 
@@ -89,8 +89,8 @@ def train_model(model, dataset, index, iterations, k, B, sample_size, bucket_siz
             avg_loss = statistics.mean(epoch_losses)
             print(f"epoch {epoch} avg. loss = {avg_loss}")
             all_losses.append(avg_loss)
-        # reassign_buckets(model, dataset, k, B, index, bucket_sizes, sample_size, neighbours, batch_size, device)
-        global_reassign_buckets(model, dataset, k, B, device, batch_size, index, neighbours, bucket_sizes)
+        reassign_buckets(model, dataset, k, B, index, bucket_sizes, sample_size, neighbours, batch_size, device)
+        # global_reassign_buckets(model, dataset, k, B, device, batch_size, index, neighbours, bucket_sizes)
         # new_reassign_buckets(model, dataset, k, B, device, batch_size, neighbours, bucket_sizes, index)
         print(f"index after iteration {i} = {index}")
 
@@ -100,9 +100,8 @@ def reassign_buckets(model, dataset, k, B, index, bucket_sizes, sample_size, nei
     sample_size, _ = np.shape(dataset.data)
     model.to("cpu")
     model.eval()
-    reassign_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=16)
+    reassign_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=8)
     bucket_sizes[:] = 0
-    item_index = 0
 
     start = time.time()
     with torch.no_grad():
@@ -112,7 +111,6 @@ def reassign_buckets(model, dataset, k, B, index, bucket_sizes, sample_size, nei
 
             for probability_vector, idx in zip(bucket_probabilities, batch_indices):
                 reassign_vector_to_bucket(probability_vector, index, bucket_sizes, k, idx)
-                item_index += 1
                      
     finish = time.time()
     elapsed = finish - start
@@ -128,21 +126,26 @@ def reassign_buckets(model, dataset, k, B, index, bucket_sizes, sample_size, nei
 
 def reassign_vector_to_bucket(probability_vector, index, bucket_sizes, k, item_index):
     value, indices_of_topk_buckets = torch.topk(probability_vector, k)
-    smallest_bucket = indices_of_topk_buckets[0]
-    smallest_bucket_size = bucket_sizes[smallest_bucket]
-    for i in indices_of_topk_buckets:
-        size = bucket_sizes[i]
-        if size < smallest_bucket_size:
-            smallest_bucket = i
-            smallest_bucket_size = size
+    # get sizes of candidate buckets
+    candidate_sizes = bucket_sizes[indices_of_topk_buckets]
+    # get bucket at index of smallest bucket from bucket_sizes
+    best_bucket = indices_of_topk_buckets[np.argmin(candidate_sizes)]
+    # smallest_bucket = indices_of_topk_buckets[0]
+    # smallest_bucket_size = bucket_sizes[smallest_bucket]
+    # for i in indices_of_topk_buckets:
+    #     size = bucket_sizes[i]
+    #     if size < smallest_bucket_size:
+    #         smallest_bucket = i
+    #         smallest_bucket_size = size
 
-    index[item_index] = smallest_bucket
-    bucket_sizes[smallest_bucket] +=1  
+    #update bucket
+    index[item_index] = best_bucket
+    bucket_sizes[best_bucket] +=1  
 
 def global_reassign_buckets(model, dataset, k, B, device, batch_size, index, neighbours, bucket_sizes):
 
     model.eval()
-    data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=16)
+    data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=8)
     
     all_predictions = []
 
@@ -155,6 +158,9 @@ def global_reassign_buckets(model, dataset, k, B, device, batch_size, index, nei
     
     # concatenate all predictions along the 0th dimension -> create tensor of predictions per vector of shape(N, B)
     all_predictions = torch.cat(all_predictions, dim=0) 
+    process = psutil.Process(os.getpid())
+    mem_usage = process.memory_info().rss
+    print(f"Memory usage: {mem_usage / (1024 ** 2):.2f} MB")
     N = all_predictions.size(0)
     
     bucket_sizes[:] = 0
@@ -163,17 +169,14 @@ def global_reassign_buckets(model, dataset, k, B, device, batch_size, index, nei
         probs = all_predictions[i]
         _, candidate_buckets = torch.topk(probs, k)
         candidate_buckets = candidate_buckets.numpy()
-        candidate_counts = bucket_sizes[candidate_buckets]
-        best_candidate = candidate_buckets[np.argmin(candidate_counts)]
+        candidate_sizes = bucket_sizes[candidate_buckets]
+        best_candidate = candidate_buckets[np.argmin(candidate_sizes)]
         index[i] = best_candidate
         bucket_sizes[best_candidate] += 1
     
     finish = time.time()
     elapsed = finish - start
-    process = psutil.Process(os.getpid())
-    mem_usage = process.memory_info().rss
 
-    print(f"Memory usage: {mem_usage / (1024 ** 2):.2f} MB")
     print(f"reassigning took {elapsed}")
     new_labels = make_ground_truth_labels(B, neighbours, index, N, device)
     dataset.labels = new_labels
@@ -184,7 +187,7 @@ def reassign_buckets_vectorized(model, dataset, k, B, index, bucket_sizes, sampl
     sample_size, _ = np.shape(dataset.data)
     model.to(device)
     model.eval()
-    reassign_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=16)
+    reassign_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=8)
     
     # create auxiliary tensor representing bucket_sizes
     bucket_sizes_t = torch.zeros(B, device=device, dtype=torch.int32)
