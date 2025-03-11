@@ -259,7 +259,7 @@ def get_sample(train, SIZE, DIMENSION):
     
     return sample, rest, sample_size, rest_size, train_on_full_dataset
 
-def build_index(BATCH_SIZE, EPOCHS, ITERATIONS, R, K, NR_NEIGHBOURS, device, train, dataset_name, b, lr, experiment_name):
+def build_index(BATCH_SIZE, EPOCHS, ITERATIONS, R, K, NR_NEIGHBOURS, device, train, dataset_name, b, lr, experiment_name, metric):
     # TO-DO read only train data -> split read_dataset function into two. one reads training data, other reads neighbours and queries (test)
     # train = read_dataset(dataset_name, mode= 'train')
     print("training data_________________________")
@@ -278,7 +278,10 @@ def build_index(BATCH_SIZE, EPOCHS, ITERATIONS, R, K, NR_NEIGHBOURS, device, tra
     # print(f"memmap shape = {np.shape(memmap)}")
 
     print("looking for true neighbours of training sample")
-    neighbours = get_train_nearest_neighbours_from_file(sample, NR_NEIGHBOURS, sample_size, dataset_name)
+    norms_path = f"memmaps/memmap_{dataset_name}_norms.npy"
+    norms = np.load(norms_path, mmap_mode='r')
+    print(f"Norms read from file: {norms}")
+    neighbours = get_train_nearest_neighbours_from_file(sample, NR_NEIGHBOURS, sample_size, metric, dataset_name, norms)
     print(neighbours)
     labels = []
     dataset = BLISSDataset(sample, labels, device)
@@ -331,7 +334,7 @@ def load_model(model_path, dim, b):
     model.eval()
     return model
 
-def query_multiple(data, index, vectors, neighbours, m, threshold, requested_amount):
+def query_multiple(data, index, vectors, neighbours, m, threshold, requested_amount, metric, norms):
     '''run multiple queries from a set of query vectors i.e. "Test" from the ANN benchmark datsets'''
     size = len(vectors)
     query_times = []
@@ -339,7 +342,7 @@ def query_multiple(data, index, vectors, neighbours, m, threshold, requested_amo
     for i, vector in enumerate(vectors):
         print(f"\rquerying {i+1} of {size}", end='', flush=True)
         start = time.time()
-        anns, dist_comps, recall = query(data, index, vector, neighbours[i], m, threshold, requested_amount)
+        anns, dist_comps, recall = query(data, index, vector, neighbours[i], m, threshold, requested_amount, metric, norms)
         end = time.time()
         elapsed = end - start
         query_times.append(elapsed)
@@ -347,7 +350,7 @@ def query_multiple(data, index, vectors, neighbours, m, threshold, requested_amo
     print("\r")
     return results
 
-def query(data, index, query_vector, neighbours, m, freq_threshold, requested_amount):
+def query(data, index, query_vector, neighbours, m, freq_threshold, requested_amount, metric, norms):
     '''query the index for a single vector'''
     inverted_indexes, models = index
     candidates = {}
@@ -371,23 +374,20 @@ def query(data, index, query_vector, neighbours, m, freq_threshold, requested_am
     if len(final_results) <= requested_amount:
         return final_results, 0, recall_single(final_results, neighbours)
     else:
-        final_neighbours, dist_comps = reorder(data, query_vector, np.array(final_results, dtype=int), requested_amount)
+        final_neighbours, dist_comps = reorder(data, query_vector, np.array(final_results, dtype=int), requested_amount, metric, norms)
         return final_neighbours, dist_comps, recall_single(final_neighbours, neighbours)
 
-def reorder(data, query_vector, candidates, requested_amount):
+def reorder(data, query_vector, candidates, requested_amount, metric):
     import faiss 
-    #  TO-DO: get this shit to work....
-    n, d = np.shape(data)
     sp_index = []
     search_space = data[candidates]
     dist_comps = len(search_space)
     for i in range(len(search_space)):
         sp_index.append(candidates[i])
     # print(f"search_space = {search_space}")
-    index = faiss.IndexFlatL2(d)
-    index.add(search_space)
-    query_vector = query_vector.reshape(1, -1)
-    (dist, neighbours) = index.search(query_vector, requested_amount)
+    
+    (dists, neighbours) = get_nearest_neighbours_faiss_for_single_query(search_space, query, amount, metric, norms)
+
     neighbours = neighbours[0].tolist()
     final_neighbours = []
     for i in neighbours:
@@ -414,17 +414,18 @@ def run_bliss(config: Config, mode, experiment_name):
     b = config.B 
     lr = config.LR
     dataset_name = config.dataset_name
+    metric = dataset_name.split("-")[-1]
+    print(f"Metric detected in dataset_name: {metric}")
     nr_neighbours = config.NR_NEIGHBOURS
     device = config.device
     print(f"Using device: {device}")
     dataset_name = config.dataset_name
     print(dataset_name)
 
-
     inverted_indexes_paths =[]
     if mode == 'build':
         data = read_dataset(dataset_name, mode= 'train')
-        index, time_per_r, build_time, memory_usage = build_index(batch_size, epochs, iterations, r, k, nr_neighbours, device, data, dataset_name, b, lr, experiment_name)
+        index, time_per_r, build_time, memory_usage = build_index(batch_size, epochs, iterations, r, k, nr_neighbours, device, data, dataset_name, b, lr, experiment_name, metric)
         inverted_indexes_paths, model_paths = zip(*index)
         return time_per_r, build_time, memory_usage
     elif mode == 'query':
@@ -444,6 +445,10 @@ def run_bliss(config: Config, mode, experiment_name):
         memmap_path = f"memmaps/memmap_{dataset_name}.npy"
         data = np.load(memmap_path, mmap_mode='r')
 
+        norms_path = f"memmaps/memmap_{dataset_name}_norms.npy"
+        norms = np.load(norms_path, mmap_mode='r')
+        print(f"Norms read from file: {norms}")
+
         size, dim = np.shape(data)
 
         q_models = [load_model(model_path, dim, b) for model_path in model_paths]
@@ -456,7 +461,7 @@ def run_bliss(config: Config, mode, experiment_name):
         test = torch.from_numpy(test)
 
         start = time.time()
-        results = query_multiple(data, index, test, neighbours, config.M, config.FREQ_THRESHOLD, config.NR_NEIGHBOURS)
+        results = query_multiple(data, index, test, neighbours, config.M, config.FREQ_THRESHOLD, config.NR_NEIGHBOURS, metric, norms)
         end = time.time()
 
         total_query_time = end - start
