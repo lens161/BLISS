@@ -49,21 +49,18 @@ class BLISS_NN(nn.Module):
         # self.sigmoid = nn.Sigmoid(dim=1)
 
     def forward(self, x):
-        # x is  training vector?
         x = self.fc1(x)
         x = self.relu(x)
         x = self.fc2(x)
 
         return x
 
-def train_model(model, dataset, index, iterations, k, B, sample_size, bucket_sizes, neighbours, epochs_per_iteration, batch_size, device, learning_rate, experiment_name):
+def train_model(model, dataset, index, iterations, k, B, sample_size, bucket_sizes, neighbours, epochs_per_iteration, batch_size, device, learning_rate, experiment_name, global_reass, shuffle, memlog_path):
     model.to(device)
     criterion = nn.BCEWithLogitsLoss()
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
-    train_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=16)
-
+    train_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=psutil.cpu_count(logical=False))
     all_losses = []
-
     for i in range(iterations):
         model.train() 
         for epoch in range(epochs_per_iteration):
@@ -73,13 +70,9 @@ def train_model(model, dataset, index, iterations, k, B, sample_size, bucket_siz
             for batch_data, batch_labels, _ in train_loader:
                 batch_data = batch_data.to(device)
                 batch_labels = batch_labels.to(device)
-                # print(f"batch_labels: {batch_labels}")
-                # Zero the parameter gradients
                 optimizer.zero_grad()
-                # Forward pass
                 probabilities = model(batch_data)
                 loss = criterion(probabilities, batch_labels)
-                # Backward pass and optimization
                 loss.backward()
                 optimizer.step()
                 epoch_losses.append(loss.item())
@@ -89,18 +82,19 @@ def train_model(model, dataset, index, iterations, k, B, sample_size, bucket_siz
             avg_loss = statistics.mean(epoch_losses)
             print(f"epoch {epoch} avg. loss = {avg_loss}")
             all_losses.append(avg_loss)
-        reassign_buckets(model, dataset, k, B, index, bucket_sizes, sample_size, neighbours, batch_size, device)
-        # global_reassign_buckets(model, dataset, k, B, device, batch_size, index, neighbours, bucket_sizes)
-        # new_reassign_buckets(model, dataset, k, B, device, batch_size, neighbours, bucket_sizes, index)
+        if global_reass:
+            global_reassign_buckets(model, dataset, k, B, device, batch_size, index, neighbours, bucket_sizes, memlog_path)
+        else:
+            reassign_buckets(model, dataset, k, B, index, bucket_sizes, sample_size, neighbours, batch_size, device, memlog_path, shuffle)
         print(f"index after iteration {i} = {index}")
 
     make_loss_plot(learning_rate, iterations, epochs_per_iteration, k, B, experiment_name, all_losses)
-
-def reassign_buckets(model, dataset, k, B, index, bucket_sizes, sample_size, neighbours, batch_size, device):
+ 
+def reassign_buckets(model, dataset, k, B, index, bucket_sizes, sample_size, neighbours, batch_size, device, memlog_path, shuffle):
     sample_size, _ = np.shape(dataset.data)
     model.to("cpu")
     model.eval()
-    reassign_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=16)
+    reassign_loader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, num_workers=psutil.cpu_count(logical=False))
     bucket_sizes[:] = 0
 
     start = time.time()
@@ -115,9 +109,10 @@ def reassign_buckets(model, dataset, k, B, index, bucket_sizes, sample_size, nei
     finish = time.time()
     elapsed = finish - start
     process = psutil.Process(os.getpid())
-    mem_usage = process.memory_info().rss
+    mem_usage = process.memory_info().rss / (1024 ** 2)
+    log_mem(f"shuffle={shuffle}_reassign_buckets", mem_usage, memlog_path)
 
-    print(f"Memory usage: {mem_usage / (1024 ** 2):.2f} MB")
+    print(f"Memory usage reassign batched: {mem_usage:.2f} MB")
     print(f"reassigning took {elapsed}")
     print(bucket_sizes)
     new_labels = make_ground_truth_labels(B, neighbours, index, sample_size, device)
@@ -130,22 +125,13 @@ def reassign_vector_to_bucket(probability_vector, index, bucket_sizes, k, item_i
     candidate_sizes = bucket_sizes[indices_of_topk_buckets]
     # get bucket at index of smallest bucket from bucket_sizes
     best_bucket = indices_of_topk_buckets[np.argmin(candidate_sizes)]
-    # smallest_bucket = indices_of_topk_buckets[0]
-    # smallest_bucket_size = bucket_sizes[smallest_bucket]
-    # for i in indices_of_topk_buckets:
-    #     size = bucket_sizes[i]
-    #     if size < smallest_bucket_size:
-    #         smallest_bucket = i
-    #         smallest_bucket_size = size
-
-    #update bucket
     index[item_index] = best_bucket
     bucket_sizes[best_bucket] +=1  
 
-def global_reassign_buckets(model, dataset, k, B, device, batch_size, index, neighbours, bucket_sizes):
+def global_reassign_buckets(model, dataset, k, B, device, batch_size, index, neighbours, bucket_sizes, memlog_path):
 
     model.eval()
-    data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=16)
+    data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=psutil.cpu_count(logical=False))
     
     all_predictions = []
 
@@ -159,8 +145,9 @@ def global_reassign_buckets(model, dataset, k, B, device, batch_size, index, nei
     # concatenate all predictions along the 0th dimension -> create tensor of predictions per vector of shape(N, B)
     all_predictions = torch.cat(all_predictions, dim=0) 
     process = psutil.Process(os.getpid())
-    mem_usage = process.memory_info().rss
-    print(f"Memory usage: {mem_usage / (1024 ** 2):.2f} MB")
+    mem_usage = process.memory_info().rss / (1024 ** 2)
+    print(f"Memory usage: {mem_usage:.2f} MB")
+    log_mem("global_reassign_buckets", mem_usage, memlog_path)
     N = all_predictions.size(0)
     
     bucket_sizes[:] = 0
@@ -187,7 +174,7 @@ def reassign_buckets_vectorized(model, dataset, k, B, index, bucket_sizes, sampl
     sample_size, _ = np.shape(dataset.data)
     model.to(device)
     model.eval()
-    reassign_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=16)
+    reassign_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=psutil.cpu_count(logical=False))
     
     # create auxiliary tensor representing bucket_sizes
     bucket_sizes_t = torch.zeros(B, device=device, dtype=torch.int32)
@@ -245,7 +232,7 @@ def assign_initial_buckets(train_size, rest_size, r, B):
     return np.array(index), bucket_sizes
 
 def make_ground_truth_labels(B, neighbours, index, sample_size, device):
-    # size = sample_size
+
     labels = np.zeros((sample_size, B), dtype=bool)
 
     for i in range(sample_size):
@@ -271,7 +258,7 @@ def map_all_to_buckets(rst_vectors, k, bucket_sizes, index, model_path, training
         values, candidates = torch.topk(probabilities, k)
         smallest_bucket = candidates[0]
         smallest_bucket_size = bucket_sizes[smallest_bucket]
-        # print(candidates)
+
         for cand in candidates:
             size = bucket_sizes[cand]
             if size < smallest_bucket_size:
@@ -292,7 +279,7 @@ def get_sample(train, SIZE, DIMENSION):
     sample_size = SIZE if SIZE < 10_000_000 else int(0.01*SIZE)
     print(f"sample size = {sample_size}")
     sample = np.empty((sample_size, DIMENSION))
-    # rest = np.empty((int((1-sample_size_percentage)*SIZE), DIMENSION))
+
     rest = None
     rest_size = 0
     train_on_full_dataset = (sample_size == SIZE)
@@ -304,9 +291,8 @@ def get_sample(train, SIZE, DIMENSION):
     
     return sample, rest, sample_size, rest_size, train_on_full_dataset
 
-def build_index(BATCH_SIZE, EPOCHS, ITERATIONS, R, K, NR_NEIGHBOURS, device, train, dataset_name, b, lr, experiment_name):
-    # TO-DO read only train data -> split read_dataset function into two. one reads training data, other reads neighbours and queries (test)
-    # train = read_dataset(dataset_name, mode= 'train')
+def build_index(BATCH_SIZE, EPOCHS, ITERATIONS, R, K, NR_NEIGHBOURS, device, train, dataset_name, b, lr, experiment_name, global_reass, shuffle):
+
     print("training data_________________________")
     print(f"train shape = {np.shape(train)}")
     all_start = time.time()
@@ -314,13 +300,14 @@ def build_index(BATCH_SIZE, EPOCHS, ITERATIONS, R, K, NR_NEIGHBOURS, device, tra
     B = b if b!=0 else get_B(SIZE)
     print(f"nr of buckets (B): {B}")
     print(f"K = {K}, R = {R}")
+    if not os.path.exists(f"results/{experiment_name}/"):
+        os.mkdir(f"results/{experiment_name}/")
+    memlog_path = f"results/{experiment_name}/{experiment_name}_memory_log.csv"
 
     sample, rest, sample_size, rest_size, train_on_full_dataset = get_sample(train, SIZE, DIMENSION)
 
     print(f"writing train vectors to memmap")
     save_dataset_as_memmap(sample, rest, dataset_name, train_on_full_dataset)
-    # print(f"memmap = {memmap}")
-    # print(f"memmap shape = {np.shape(memmap)}")
 
     print("looking for true neighbours of training sample")
     neighbours = get_train_nearest_neighbours_from_file(sample, NR_NEIGHBOURS, sample_size, dataset_name)
@@ -331,6 +318,9 @@ def build_index(BATCH_SIZE, EPOCHS, ITERATIONS, R, K, NR_NEIGHBOURS, device, tra
     final_index = []
     time_per_r = []
     # build R models/indexes
+    process = psutil.Process(os.getpid())
+    memory_usage = process.memory_info().rss / (1024 ** 2)
+    log_mem(f"before_building_global={global_reass}_shuffle={shuffle}", memory_usage, memlog_path)
     for r in range(R):
         print(f"randomly assigning initial buckets")
         start= time.time()
@@ -342,17 +332,16 @@ def build_index(BATCH_SIZE, EPOCHS, ITERATIONS, R, K, NR_NEIGHBOURS, device, tra
         print(f"setting up model {r+1}")
         model = BLISS_NN(DIMENSION, B)
         print(f"training model {r+1}")
-        train_model(model, dataset, index, ITERATIONS, K, B, sample_size, bucket_sizes, neighbours, EPOCHS, BATCH_SIZE, device, lr, experiment_name)
-        model_path = save_model(model, dataset_name, r+1, R, K, B, lr)
+        train_model(model, dataset, index, ITERATIONS, K, B, sample_size, bucket_sizes, neighbours, EPOCHS, BATCH_SIZE, device, lr, experiment_name, global_reass, shuffle, memlog_path)
+        model_path = save_model(model, dataset_name, experiment_name, r+1, R, K, B, lr)
         print(f"model {r+1} saved to {model_path}")
         print(f"model {r+1}: index before full assignment = {index}")
-        # np.set_printoptions(threshold=np.inf, suppress=True)
-        # print(f"model {R}: buckets before full assignment = {bucket_sizes}")
+
         np.set_printoptions(threshold=6, suppress=True)
         if not train_on_full_dataset:
             print("assigning rest of vectors to buckets")
             map_all_to_buckets(rest, K, bucket_sizes, index, model_path, sample_size, DIMENSION, B)
-        # print(f"model {r+1}: index after full assignment{index}")
+
         np.set_printoptions(threshold=np.inf, suppress=True)
         print(f"bucket_sizes sum = {np.sum(bucket_sizes)}")
         print(bucket_sizes)
@@ -367,6 +356,7 @@ def build_index(BATCH_SIZE, EPOCHS, ITERATIONS, R, K, NR_NEIGHBOURS, device, tra
     build_time = all_end-all_start
     process = psutil.Process(os.getpid())
     memory_usage = process.memory_info().rss / (1024 ** 2)
+    log_mem(f"after_building_global={global_reass}_shuffle={shuffle}", memory_usage, memlog_path)
     return final_index, time_per_r, build_time, memory_usage
 
 def load_model(model_path, dim, b):
@@ -458,6 +448,8 @@ def run_bliss(config: Config, mode, experiment_name):
     k = config.K
     b = config.B 
     lr = config.LR
+    global_reass = config.GLOBAL_REASS
+    shuffle = config.SHUFFLE
     dataset_name = config.dataset_name
     nr_neighbours = config.NR_NEIGHBOURS
     device = config.device
@@ -469,7 +461,7 @@ def run_bliss(config: Config, mode, experiment_name):
     inverted_indexes_paths =[]
     if mode == 'build':
         data = read_dataset(dataset_name, mode= 'train')
-        index, time_per_r, build_time, memory_usage = build_index(batch_size, epochs, iterations, r, k, nr_neighbours, device, data, dataset_name, b, lr, experiment_name)
+        index, time_per_r, build_time, memory_usage = build_index(batch_size, epochs, iterations, r, k, nr_neighbours, device, data, dataset_name, b, lr, experiment_name, global_reass, shuffle)
         inverted_indexes_paths, model_paths = zip(*index)
         return time_per_r, build_time, memory_usage
     elif mode == 'query':
@@ -495,8 +487,7 @@ def run_bliss(config: Config, mode, experiment_name):
         index = (inverted_indexes, q_models)
         
         test, neighbours = read_dataset(dataset_name, mode= 'test')
-        # comment in for quick debugging/testing
-        # test = test[:10]
+
         print(f"creating tensor array from Test")
         test = torch.from_numpy(test)
 
@@ -505,9 +496,7 @@ def run_bliss(config: Config, mode, experiment_name):
         end = time.time()
 
         total_query_time = end - start
-        # result_path = f"results_r{r}_k{k}.pkl"
-        # with open(result_path, 'wb') as f:
-        #     pickle.dump(results, f)
+
         anns = [t[0] for t in results]
         RECALL = recall(anns, neighbours)
         print(f"RECALL = {RECALL}")
@@ -515,15 +504,8 @@ def run_bliss(config: Config, mode, experiment_name):
         return RECALL, results, total_query_time
 
 if __name__ == "__main__":
-    # BATCH_SIZE = 256
-    # EPOCHS = 5   
-    # ITERATIONS = 20
-    # R = 4
-    # K = 2
-    # NR_NEIGHBOURS = 100
 
     dataset_name = "sift-128-euclidean"
-    config = Config(dataset_name, r = 1, epochs=2, iterations= 2, batch_size=512)
+    config = Config(dataset_name, r = 1, epochs=2, iterations= 2, batch_size=2048)
 
     recall = run_bliss(config, "build")
-    # dataset_name = "mnist-784-euclidean"

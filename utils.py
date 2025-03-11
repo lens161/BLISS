@@ -6,6 +6,7 @@ import h5py
 import numpy as np
 import traceback
 import math
+import csv
 import pickle
 import matplotlib.pyplot as plt # type: ignore
 from sklearn.model_selection import train_test_split as sklearn_train_test_split
@@ -101,9 +102,9 @@ def get_B(n):
     else:
         raise Exception(f"cannot calculate B for empty dataset!")
     
-def save_model(model, dataset_name, r, R, K, B, lr):
+def save_model(model, dataset_name, experiment_name, r, R, K, B, lr):
     model_name = f"model_{dataset_name}_r{r}_k{K}_b{B}_lr{lr}"
-    directory = f"models/{dataset_name}_r{R}_k{K}_b{B}_lr{lr}/"
+    directory = f"models/{experiment_name}/{dataset_name}_r{R}_k{K}_b{B}_lr{lr}/"
     MODEL_PATH = os.path.join(directory, f"{model_name}.pt")
     
     os.makedirs(directory, exist_ok=True)
@@ -143,6 +144,18 @@ def make_loss_plot(learning_rate, iterations, epochs_per_iteration, k, B, experi
     plt.ylabel('Average Loss')
     plt.grid(True)
     plt.savefig(f"{foldername}/training_loss_lr={learning_rate}_I={iterations}_E={epochs_per_iteration}_k{k}_B{B}.png")
+
+def log_mem(function_name, mem_usage, filepath):
+    file_exists = os.path.isfile(filepath)
+    with open(filepath, mode='a', newline='') as csv_file:
+        fieldnames = ['function', 'memory_usage_mb']
+        writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+        if not file_exists:
+            writer.writeheader()
+        writer.writerow({
+            'function': function_name,
+            'memory_usage_mb': mem_usage
+        })
 
 ## function below is old version of save_dataset_as_memmap in case new one fucks something up
 # def save_dataset_as_memmap(train, rest, dataset_name, train_on_full_dataset):
