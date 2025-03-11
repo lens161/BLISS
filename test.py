@@ -60,7 +60,7 @@ class TestTrainMethods(unittest.TestCase):
         Test whether we find the correct nearest neighbours in a sample array.
         '''
         data = np.array([[1], [5], [88], [100], [125], [130], [132], [150], [273], [500]])
-        nbrs = get_nearest_neighbours_faiss_within_dataset(data, 2, "euclidean")
+        nbrs = get_nearest_neighbours_faiss_within_dataset(data, 2)
         self.assertTrue(np.array_equal(nbrs[0], [1, 2]))
         self.assertTrue(np.array_equal(nbrs[1], [0, 2]))
         self.assertTrue(np.array_equal(nbrs[2], [3, 4]))
@@ -76,7 +76,7 @@ class TestTrainMethods(unittest.TestCase):
         '''
         Test whether our nearest neighbour function finds the same nearest neighbours for test data in a real dataset.
         '''
-        nbrs_test = get_nearest_neighbours_faiss_in_different_dataset(self.__class__.mnist_train, self.__class__.mnist_test, 100, "euclidean")
+        nbrs_test = get_nearest_neighbours_faiss_in_different_dataset(self.__class__.mnist_train, self.__class__.mnist_test, 100)
         self.assertTrue(np.array_equal(np.sort(nbrs_test), np.sort(self.__class__.mnist_nbrs)))
         
     def test_get_nearest_neighbours_from_file(self):
@@ -88,8 +88,8 @@ class TestTrainMethods(unittest.TestCase):
         sample_size = 60000
         # check that the file exists already, otherwise the test will just compute neighbours twice
         self.assertTrue(os.path.exists(f"data/{dataset_name}-nbrs{amount}-sample{sample_size}.csv"))
-        file_nbrs = get_train_nearest_neighbours_from_file(self.__class__.mnist_train, amount, sample_size, dataset_name, "euclidean")
-        fresh_nbrs = get_nearest_neighbours_faiss_within_dataset(self.__class__.mnist_train, amount, "euclidean")
+        file_nbrs = get_train_nearest_neighbours_from_file(self.__class__.mnist_train, amount, sample_size, dataset_name)
+        fresh_nbrs = get_nearest_neighbours_faiss_within_dataset(self.__class__.mnist_train, amount)
         self.assertTrue(np.array_equal(np.sort(file_nbrs), np.sort(fresh_nbrs)))
 
     def test_make_ground_truth_labels_small(self):
@@ -99,7 +99,7 @@ class TestTrainMethods(unittest.TestCase):
         B = 3
         data = np.array([[1], [5], [88], [100], [125], [130], [132], [150], [273], [500]])
         index = np.array([0, 0, 2, 1, 0, 1, 1, 2, 2, 0])
-        nbrs = get_nearest_neighbours_faiss_within_dataset(data, 2, "euclidean")
+        nbrs = get_nearest_neighbours_faiss_within_dataset(data, 2)
         device = get_best_device()
         labels = make_ground_truth_labels(B, nbrs, index, 10, device)
         self.assertTrue(np.array_equal(labels[0], [1, 0, 1]))

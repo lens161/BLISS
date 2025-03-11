@@ -12,72 +12,45 @@ from sklearn.model_selection import train_test_split as sklearn_train_test_split
 from urllib.request import Request, urlopen
 from pandas import read_csv
 
-# def get_nearest_neighbours_old(train, amount):
-#     nbrs = NearestNeighbors(n_neighbors=amount+1, metric="euclidean", algorithm='brute').fit(train)
-#     I = nbrs.kneighbors(train, return_distance=False)
-#     I = I[:, 1:]
-#     return I
+def get_nearest_neighbours_old(train, amount):
+    nbrs = NearestNeighbors(n_neighbors=amount+1, metric="euclidean", algorithm='brute').fit(train)
+    I = nbrs.kneighbors(train, return_distance=False)
+    I = I[:, 1:]
+    return I
 
-# def get_nearest_neighbours_old_without_filter(data, queries, amount):
-#     nbrs = NearestNeighbors(n_neighbors=amount, metric="euclidean", algorithm='brute').fit(data)
-#     I = nbrs.kneighbors(queries, return_distance=False)
-#     return I
+def get_nearest_neighbours_old_without_filter(data, queries, amount):
+    nbrs = NearestNeighbors(n_neighbors=amount, metric="euclidean", algorithm='brute').fit(data)
+    I = nbrs.kneighbors(queries, return_distance=False)
+    return I
 
-def get_nearest_neighbours_faiss_within_dataset(dataset, amount, metric, norms):
+def get_nearest_neighbours_faiss_within_dataset(dataset, amount):
     '''
     Find the true nearest neighbours of vectors within a dataset. To avoid returning a datapoint as its own neighbour, we search for amount+1 neighbours and then filter out
     the first vector (ordered by distance so the vector itself should be the first point).
     '''
-    faiss_metric = faiss.METRIC_L2
-    if metric == "angular":
-        print(f"Angular metric detected, normalizing data and replacing faiss metric")
-        dataset = dataset / norms
-        faiss_metric = faiss.METRIC_INNER_PRODUCT
-    index = faiss.IndexFlat(dataset.shape[1], faiss_metric)
-    index.add(dataset)
-    _, I = index.search(dataset, amount+1)
+    nbrs = faiss.IndexFlatL2(dataset.shape[1])
+    nbrs.add(dataset)
+    _, I = nbrs.search(dataset, amount+1)
     I = I[:, 1:]
     return I
 
-def get_nearest_neighbours_faiss_in_different_dataset(dataset, queries, amount, metric, norms):
+def get_nearest_neighbours_faiss_in_different_dataset(dataset, queries, amount):
     '''
     Find the true nearest neighbours of query vectors in dataset. No filtering needed here because the queries do not appear in the dataset.
     '''
-    faiss_metric = faiss.METRIC_L2
-    if metric == "angular":
-        print(f"Angular metric detected, normalizing data and replacing faiss metric")
-        dataset = dataset / norms
-        queries = queries / norms
-        faiss_metric = faiss.METRIC_INNER_PRODUCT
-    index = faiss.IndexFlat(dataset.shape[1], faiss_metric)
-    index.add(dataset)
-    _, I = index.search(queries, amount)
+    nbrs = faiss.IndexFlatL2(dataset.shape[1])
+    nbrs.add(dataset)
+    _, I = nbrs.search(queries, amount)
     return I
 
-def get_nearest_neighbours_faiss_for_single_query(search_space, d, query, amount, metric, norms):
-    '''
-    Find the true nearest neighbours of a single query in a dataset. No filtering needed here because the queries do not appear in the dataset.
-    '''
-    faiss_metric = faiss.METRIC_L2
-    if metric == "angular":
-        print(f"Angular metric detected, normalizing data and replacing faiss metric")
-        search_space = search_space / norms
-        query = query / norms
-        faiss_metric = faiss.METRIC_INNER_PRODUCT
-    index = faiss.IndexFlat(search_space.shape[1], faiss_metric)
-    index.add(search_space)
-    query = query.reshape(1, -1)
-    (dists, neighbours) = index.search(query, requested_amount)
-    return dists, neighbours
-
-def get_train_nearest_neighbours_from_file(dataset, amount, sample_size, metric, dataset_name, norms):
+def get_train_nearest_neighbours_from_file(dataset, amount, sample_size, dataset_name):
     '''
     Helper to read/write nearest neighbour of train data to file so we can test index building without repeating preprocessing each time.
     Should not be used in actual algorithm or experiments.
     '''
     if not os.path.exists(f"data/{dataset_name}-nbrs{amount}-sample{sample_size}.csv"):
         print(f"no nbrs file found for {dataset_name} with amount={amount} and samplesize={sample_size}, calculating {amount} nearest neighbours")
-        I = get_nearest_neighbours_faiss_within_dataset(dataset, amount, metric, norms)
+        I = get_nearest_neighbours_faiss_within_dataset(dataset, amount)
         print("writing neighbours to nbrs file")
         I = np.asarray(I)
         np.savetxt(f"data/{dataset_name}-nbrs{amount}-sample{sample_size}.csv", I, delimiter=",", fmt='%.0f')
@@ -214,8 +187,6 @@ def save_dataset_as_memmap(train, rest, dataset_name, train_on_full_dataset):
         combined = np.concatenate((train, rest), axis=0)
     
     np.save(file_path, combined)
-    norms = np.linalg.norm(combined)
-    np.save(f"{dir_path}memmap_{dataset_name}_norms.npy", norms)
     print(f"Dataset saved to {file_path} with shape {combined.shape}")
 
 def get_best_device():
