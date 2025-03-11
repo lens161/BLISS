@@ -377,8 +377,7 @@ def query(data, index, query_vector, neighbours, m, freq_threshold, requested_am
         final_neighbours, dist_comps = reorder(data, query_vector, np.array(final_results, dtype=int), requested_amount, metric, norms)
         return final_neighbours, dist_comps, recall_single(final_neighbours, neighbours)
 
-def reorder(data, query_vector, candidates, requested_amount, metric):
-    import faiss 
+def reorder(data, query_vector, candidates, requested_amount, metric, norms):
     sp_index = []
     search_space = data[candidates]
     dist_comps = len(search_space)
@@ -386,7 +385,7 @@ def reorder(data, query_vector, candidates, requested_amount, metric):
         sp_index.append(candidates[i])
     # print(f"search_space = {search_space}")
     
-    (dists, neighbours) = get_nearest_neighbours_faiss_for_single_query(search_space, query, amount, metric, norms)
+    (dists, neighbours) = get_nearest_neighbours_faiss_for_single_query(search_space, query, requested_amount, metric, norms)
 
     neighbours = neighbours[0].tolist()
     final_neighbours = []

@@ -54,7 +54,7 @@ def get_nearest_neighbours_faiss_in_different_dataset(dataset, queries, amount, 
     _, I = index.search(queries, amount)
     return I
 
-def get_nearest_neighbours_faiss_for_single_query(search_space, d, query, amount, metric, norms):
+def get_nearest_neighbours_faiss_for_single_query(search_space, query, amount, metric, norms):
     '''
     Find the true nearest neighbours of a single query in a dataset. No filtering needed here because the queries do not appear in the dataset.
     '''
