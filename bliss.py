@@ -323,7 +323,7 @@ def build_index(train, config: Config):
     for r in range(config.r):
         print(f"randomly assigning initial buckets")
         start= time.time()
-        index, bucket_sizes = assign_initial_buckets(sample_size, rest_size, config.r, config.b)
+        index, bucket_sizes = assign_initial_buckets(sample_size, rest_size, r, config.b)
         print(bucket_sizes)
         print("making initial ground truth labels")
         labels = make_ground_truth_labels(config.b, neighbours, index, sample_size, config.device)
