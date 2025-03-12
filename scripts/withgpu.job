@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH --job-name=sift_b4096_shuff     # Job name
+#SBATCH --job-name=global_vs_batched_reass     # Job name
 #SBATCH --output=outputs/job.%j.out     # Name of output file (%j expands to jobId)
 #SBATCH --cpus-per-task=32              # Schedule 64 cores
 #SBATCH --time=10:00:00                 # Max run time (hh:mm:ss)

@@ -77,7 +77,7 @@ if __name__ == "__main__":
     k_values = [2]
     m_values = [2, 5, 10, 15, 20]
 
-    EXP_NAME = "test_shuff_and_global"
+    EXP_NAME = "global_vs_batched_reass"
 
     # add all dataset names that the experiments should be run on
     datasets = ["sift-128-euclidean", 
@@ -85,31 +85,31 @@ if __name__ == "__main__":
                  ]
     
     for dataset in datasets:
-        conf_shuff = Config(dataset_name=dataset, batch_size=2048, r=2, epochs=2, iterations=2, shuffle=True)
+        conf_shuff = Config(dataset_name=dataset, batch_size=2048, r=2, epochs=2, iterations=2, shuffle=False)
         # conf_noshuff = Config(dataset_name=dataset, batch_size=2048, r=1, epochs=1, iterations=1)
         # conf_global = Config(dataset_name=dataset, batch_size=2048, r=1, epochs=1, iterations=1, global_reass=True)
         configs_b.append(conf_shuff)
         # configs_b.append(conf_noshuff)
-        # configs_b.append(conf_global)
+        # configs_b.append(conf_global)s
         configs_q.append(conf_shuff)
         # configs_q.append(conf_noshuff)
         # configs_q.append(conf_global)
 
-    for dataset in datasets:
-        conf_shuff = Config(dataset_name=dataset, k=2, r=4, batch_size=2048, b= 4096, epochs=5, iterations=4, shuffle=True)
-        conf_noshuff = Config(dataset_name=dataset, k=2, r=4, batch_size=2048, b= 4096, epochs=5, iterations=4)
-        conf_gr = Config(dataset_name=dataset, k=2, r=4, batch_size=2048, b= 4096, epochs=5, iterations=4, global_reass=True)
-        configs_b.append(conf_shuff)
-        configs_b.append(conf_noshuff)
-        configs_b.append(conf_gr)
-        for m in m_values:
-            conf_q_shuff = Config(dataset_name=dataset, k=2, r=4, batch_size=2048, b= 4096, epochs=5, iterations=4, m=m, shuffle=True)
-            conf_q_noshuff = Config(dataset_name=dataset, k=2, r=4, batch_size=2048, b= 4096, epochs=5, iterations=4, m=m)
-            conf_q_gr = Config(dataset_name=dataset, k=2, r=4, batch_size=2048, b= 4096, epochs=5, iterations=4, m=m, global_reass=True)
-            configs_q.append(conf_q_shuff)
-            configs_q.append(conf_q_noshuff)
-            configs_q.append(conf_q_gr)
+    # for dataset in datasets:
+    #     conf_shuff = Config(dataset_name=dataset, k=2, r=4, batch_size=2048, b= 4096, epochs=5, iterations=4, shuffle=True)
+    #     conf_noshuff = Config(dataset_name=dataset, k=2, r=4, batch_size=2048, b= 4096, epochs=5, iterations=4)
+    #     conf_gr = Config(dataset_name=dataset, k=2, r=4, batch_size=2048, b= 4096, epochs=5, iterations=4, global_reass=True)
+    #     configs_b.append(conf_shuff)
+    #     configs_b.append(conf_noshuff)
+    #     configs_b.append(conf_gr)
+    #     for m in m_values:
+    #         conf_q_shuff = Config(dataset_name=dataset, k=2, r=4, batch_size=2048, b= 4096, epochs=5, iterations=4, m=m, shuffle=True)
+    #         conf_q_noshuff = Config(dataset_name=dataset, k=2, r=4, batch_size=2048, b= 4096, epochs=5, iterations=4, m=m)
+    #         conf_q_gr = Config(dataset_name=dataset, k=2, r=4, batch_size=2048, b= 4096, epochs=5, iterations=4, m=m, global_reass=True)
+    #         configs_q.append(conf_q_shuff)
+    #         configs_q.append(conf_q_noshuff)
+    #         configs_q.append(conf_q_gr)
 
     build_multiple_indexes_exp(EXP_NAME, configs_b)
-    run_multiple_query_exp(EXP_NAME, configs_q)
+    # run_multiple_query_exp(EXP_NAME, configs_q)
  

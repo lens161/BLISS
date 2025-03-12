@@ -54,11 +54,13 @@ class BLISS_NN(nn.Module):
 
         return x
 
-def train_model(model, dataset, index, sample_size, bucket_sizes, neighbours, config: Config):
+def train_model(model, dataset, index, sample_size, bucket_sizes, neighbours, r, config: Config):
     model.to(config.device)
     criterion = nn.BCEWithLogitsLoss()
     optimizer = optim.Adam(model.parameters(), lr=config.lr)
-    train_loader = DataLoader(dataset, batch_size=config.batch_size, shuffle=True, num_workers=psutil.cpu_count(logical=False))
+    g = torch.Generator()
+    g.manual_seed(r)
+    train_loader = DataLoader(dataset, batch_size=config.batch_size, shuffle=True, num_workers=psutil.cpu_count(logical=False), generator=g)
     all_losses = []
     for i in range(config.iterations):
         model.train() 
@@ -327,9 +329,15 @@ def build_index(train, config: Config):
         labels = make_ground_truth_labels(config.b, neighbours, index, sample_size, config.device)
         dataset.labels = labels # replace old labels in dataset with new labels for current model 
         print(f"setting up model {r+1}")
+        if config.device == torch.device("cpu"):
+            torch.manual_seed(r)
+        elif config.device == torch.device("cuda"):
+            torch.cuda.manual_seed(r)
+        elif config.device == torch.device("mps"):
+            torch.mps.manual_seed(r)
         model = BLISS_NN(DIMENSION, B)
         print(f"training model {r+1}")
-        train_model(model, dataset, index, sample_size, bucket_sizes, neighbours, config)
+        train_model(model, dataset, index, sample_size, bucket_sizes, neighbours, r, config)
         model_path = save_model(model, config.dataset_name, r+1, config.r, config.k, config.b, config.lr, config.shuffle, config.global_reass)
         print(f"model {r+1} saved to {model_path}")
         print(f"model {r+1}: index before full assignment = {index}")
