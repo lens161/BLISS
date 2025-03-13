@@ -5,6 +5,7 @@ import numpy as np
 import time 
 import csv
 import os
+import os
 import pandas as pd
 import matplotlib.pyplot as plt # type: ignore
 
@@ -18,20 +19,25 @@ def build_multiple_indexes_exp(experiment_name, configs):
     mode = 'build'
     stats = []
     for config in configs:
-        r = config.r
-        k = config.k
-        epochs = config.epochs
-        iterations = config.iterations
+        r = config.R
+        k = config.K
+        epochs = config.EPOCHS
+        iterations = config.ITERATIONS
         time_per_r, build_time, memory_usage = run_bliss(config, mode=mode, experiment_name=experiment_name)
-        stats.append({'R':r, 'k':k, 'epochs_per_it':epochs, 'iterations':iterations, 'build_time':build_time, 
-                      'mem':memory_usage, 'shuffle':config.shuffle, 'global_reass': config.global_reass})
+        stats.append({'R':r, 'k':k, 'epochs_per_it':epochs, 'iterations':iterations, 'build_time':build_time, 'mem':memory_usage})
         print(time_per_r)
     foldername = f"results/{experiment_name}"
     if not os.path.exists("results"):
         os.mkdir("results")
     if not os.path.exists(f"results/{experiment_name}"):
         os.mkdir(foldername)
+    foldername = f"results/{experiment_name}"
+    if not os.path.exists("results"):
+        os.mkdir("results")
+    if not os.path.exists(f"results/{experiment_name}"):
+        os.mkdir(foldername)
     df = pd.DataFrame(stats)
+    df.to_csv(f"{foldername}/{experiment_name}_build.csv", index=False)
     df.to_csv(f"{foldername}/{experiment_name}_build.csv", index=False)
 
 def run_multiple_query_exp(experiment_name, configs):
@@ -42,6 +48,7 @@ def run_multiple_query_exp(experiment_name, configs):
         m =config.m
         results = []
         avg_recall, stats, total_query_time = run_bliss(config, mode=mode, experiment_name=experiment_name)
+        avg_recall, stats, total_query_time = run_bliss(config, mode=mode, experiment_name=experiment_name)
         print(f"avg recall = {avg_recall}")
         for (anns, dist_comps, elapsed, recall) in stats:
             results.append({'ANNs': anns, 
@@ -50,7 +57,6 @@ def run_multiple_query_exp(experiment_name, configs):
                             'recall': recall})
         qps = len(stats)/total_query_time
         df = pd.DataFrame(results)
-        plt.figure(figsize=(8, 5))
         plt.scatter(df['distance_computations'], df['recall'], color='blue', s=20)
         plt.xlabel("Distance Computations")
         plt.ylabel("Recall")
@@ -61,9 +67,9 @@ def run_multiple_query_exp(experiment_name, configs):
             os.mkdir("results")
         if not os.path.exists(f"results/{experiment_name}"):
             os.mkdir(foldername)
-        df.to_csv(f"{foldername}/r{r}_k{k}_m{m}_qps{qps:.2f}_avg_rec{avg_recall:.3f}_shf={config.shuffle}_gr={config.global_reass}.csv", index=False)
-        # plt.show()
-        plt.savefig(f"{foldername}/r{r}_k{k}_m{m}_qps{qps:.2f}_avg_rec{avg_recall:.3f}_shf={config.shuffle}_gr={config.global_reass}.png", dpi=300)
+        df.to_csv(f"{foldername}/r{r}_k{k}_m{m}_qps{qps:.2f}_avg_rec{avg_recall:.3f}.csv", index=False)
+        plt.figure(figsize=(8, 5))
+        plt.savefig(f"{foldername}/r{r}_k{k}_m{m}_qps{qps:.2f}_avg_rec{avg_recall:.3f}.png", dpi=300)
 
     return experiment_name, avg_recall, total_query_time, results
 
