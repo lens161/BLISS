@@ -5,7 +5,7 @@ import unittest
 import matplotlib.pyplot as plt # type: ignore
 # import pandas as pd
 import pickle
-import matplotlib.colors as mcolors
+import matplotlib.colors as mcolors  # type: ignore
 # from sklearn.model_selection import train_test_split as sklearn_train_test_split
 from utils import *
 from bliss import *
