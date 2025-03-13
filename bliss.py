@@ -60,7 +60,7 @@ def train_model(model, dataset, index, sample_size, bucket_sizes, neighbours, r,
     optimizer = optim.Adam(model.parameters(), lr=config.lr)
     g = torch.Generator()
     g.manual_seed(r)
-    train_loader = DataLoader(dataset, batch_size=config.batch_size, shuffle=True, num_workers=psutil.cpu_count(logical=False), generator=g)
+    train_loader = DataLoader(dataset, batch_size=config.batch_size, shuffle=True, num_workers=16, generator=g)
     all_losses = []
     for i in range(config.iterations):
         model.train() 
@@ -95,7 +95,7 @@ def reassign_buckets(model, dataset, index, bucket_sizes, sample_size, neighbour
     sample_size, _ = np.shape(dataset.data)
     model.to("cpu")
     model.eval()
-    reassign_loader = DataLoader(dataset, batch_size=config.batch_size, shuffle=config.shuffle, num_workers=psutil.cpu_count(logical=False))
+    reassign_loader = DataLoader(dataset, batch_size=config.batch_size, shuffle=config.shuffle, num_workers=16)
     bucket_sizes[:] = 0
 
     start = time.time()
@@ -132,7 +132,7 @@ def reassign_vector_to_bucket(probability_vector, index, bucket_sizes, k, item_i
 def global_reassign_buckets(model, dataset, index, neighbours, bucket_sizes, config: Config):
 
     model.eval()
-    data_loader = DataLoader(dataset, batch_size=config.batch_size, shuffle=False, num_workers=psutil.cpu_count(logical=False))
+    data_loader = DataLoader(dataset, batch_size=config.batch_size, shuffle=False, num_workers=16)
     
     all_predictions = []
 
@@ -175,7 +175,7 @@ def reassign_buckets_vectorized(model, dataset, index, bucket_sizes, sample_size
     sample_size, _ = np.shape(dataset.data)
     model.to(config.device)
     model.eval()
-    reassign_loader = DataLoader(dataset, batch_size=config.batch_size, shuffle=False, num_workers=psutil.cpu_count(logical=False))
+    reassign_loader = DataLoader(dataset, batch_size=config.batch_size, shuffle=False, num_workers=16)
     
     # create auxiliary tensor representing bucket_sizes
     bucket_sizes_t = torch.zeros(config.B, device=device, dtype=torch.int32)
@@ -450,6 +450,7 @@ def run_bliss(config: Config, mode, experiment_name):
 
     config.experiment_name = experiment_name
     dataset_name = config.dataset_name
+    metric = dataset_name.split("-")[-1]
     print(f"Using device: {config.device}")
     print(dataset_name)
 
@@ -461,6 +462,9 @@ def run_bliss(config: Config, mode, experiment_name):
     inverted_indexes_paths = []
     if mode == 'build':
         data = read_dataset(config.dataset_name, mode= 'train')
+        if metric == "angular":
+            norms = np.linalg.norm(data, axis=1, keepdims=True)
+            data = data / norms
         index, time_per_r, build_time, memory_usage = build_index(data, config)
         inverted_indexes_paths, model_paths = zip(*index)
         return time_per_r, build_time, memory_usage
@@ -491,6 +495,9 @@ def run_bliss(config: Config, mode, experiment_name):
         # print(index)
         
         test, neighbours = read_dataset(dataset_name, mode= 'test')
+        if metric == "angular":
+            norms = np.linalg.norm(test, axis=1, keepdims=True)
+            test = test / norms
 
         print(f"creating tensor array from Test")
         test = torch.from_numpy(test)
