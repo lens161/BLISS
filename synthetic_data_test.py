@@ -13,7 +13,6 @@ from bliss import *
 class TestTrainMethods(unittest.TestCase):
   
     def test_synthetic_data_heavily_clustered(self):
-<<<<<<< HEAD
         N = 1000
         blobs = 1
         R = 4
@@ -60,45 +59,6 @@ class TestTrainMethods(unittest.TestCase):
                 os.mkdir("synthetic_data_results")
 
             plt.savefig(f"synthetic_data_results/N{N}_d{d}_blobs{blobs}_lr{lr}_R{r}_b{b}_epochs{epochs}_itr{iterations}_nbrs{nr_neighbours}.png", format='png')
-=======
-        b = 32
-        k = 2
-        r = 1
-        nr_neighbours = 2
-        batch_size = 256
-        epochs = 5
-        iterations = 20
-        device = torch.device('cpu')
-        lr = 0.001
-        experiment_name = "test"
-        dataset_name = "synthetic_data"
-        data, _ = sklearn.datasets.make_blobs(n_samples=1000, n_features=2, centers=5, random_state=1, cluster_std=0.5)
-        # print(np.shape(data))
-        # print(data)
-
-        index, time_per_r, build_time, memory_usage = build_index(batch_size, epochs, iterations, r, k, nr_neighbours, device, data, dataset_name, b, lr, experiment_name)
-        inverted_indexes_paths, model_paths = zip(*index)
-        # print(inverted_indexes_paths[0])
-        inverted_index = None
-        with open(inverted_indexes_paths[0], 'rb') as f:
-            inverted_index = pickle.load(f)
-        
-        # print(inverted_index)
-        # print(mcolors.XKCD_COLORS)
-        # colourlist = mcolors.XKCD_COLORS.keys()
-
-        plt.figure(figsize = (8,5))
-        for i in range(b):
-            # print(inverted_index[i])
-            relevant_vectors = [data[j] for j in inverted_index[i]]
-            # print(relevant_vectors)
-            flipped = np.transpose(relevant_vectors)
-            # print(flipped)
-            if len(flipped) > 0:
-                plt.scatter(flipped[0], flipped[1], c=list(mcolors.XKCD_COLORS.values())[i], s=1)
-        
-        plt.show()
->>>>>>> 97fb4c0 (Add separate test file for synthetic data visualizations)
 
 
 if __name__ == "__main__":
