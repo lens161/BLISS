@@ -9,6 +9,7 @@ import math
 import csv
 import pickle
 import matplotlib.pyplot as plt # type: ignore
+import matplotlib.pyplot as plt # type: ignore
 from sklearn.model_selection import train_test_split as sklearn_train_test_split
 from urllib.request import Request, urlopen
 from pandas import read_csv
