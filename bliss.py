@@ -329,9 +329,8 @@ def build_index(train, config: Config):
         labels = make_ground_truth_labels(config.b, neighbours, index, sample_size, config.device)
         dataset.labels = labels # replace old labels in dataset with new labels for current model 
         print(f"setting up model {r+1}")
-        if config.device == torch.device("cpu"):
-            torch.manual_seed(r)
-        elif config.device == torch.device("cuda"):
+        torch.manual_seed(r)
+        if config.device == torch.device("cuda"):
             torch.cuda.manual_seed(r)
         elif config.device == torch.device("mps"):
             torch.mps.manual_seed(r)
