@@ -1,4 +1,5 @@
 from sklearn.neighbors import NearestNeighbors
+from datasets import *
 import torch
 import faiss 
 import os
@@ -8,7 +9,6 @@ import traceback
 import math
 import csv
 import pickle
-import matplotlib.pyplot as plt # type: ignore
 import matplotlib.pyplot as plt # type: ignore
 from sklearn.model_selection import train_test_split as sklearn_train_test_split
 from urllib.request import Request, urlopen
@@ -62,9 +62,26 @@ def get_train_nearest_neighbours_from_file(dataset, amount, sample_size, dataset
         I = read_csv(filename, dtype=int, header=None).to_numpy()
     return I
 
-def read_dataset(dataset_name, mode = 'train'):
+def get_1B_dataset(dataset_name, size):
+    if dataset_name == "bigann":
+        return BigANNDataset(size)
+    elif dataset_name == "deep1b":
+        return Deep1BDataset(size)
+    else:
+        print("fuck off")
+
+def read_dataset(dataset_name, mode = 'train', size = 100):
     if not os.path.exists("data"):
         os.mkdir("data")
+
+    if not dataset_name.__contains__("-"): # if one of the billion scale sets
+        dataset = get_1B_dataset(dataset_name, 100)
+        dataset.prepare()
+        fn = dataset.get_dataset_fn()
+        mmap = xbin_mmap(fn, dataset.dtype, maxn=dataset.nb)
+        queries = dataset.get_queries()
+        return mmap, np.array(queries)
+
     path = os.path.join("data", f"{dataset_name}.hdf5")
 
     url = f"https://ann-benchmarks.com/{dataset_name}.hdf5"
