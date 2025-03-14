@@ -75,7 +75,7 @@ if __name__ == "__main__":
     m_values = [2, 5, 10, 15, 20]
     EXP_NAME = "global_vs_batched_reass"
     # add all dataset names that the experiments should be run on
-    datasets = ["sift-128-euclidean", 
+    datasets = ["bigann", 
                 # "glove-100-angular",
                  ]
     

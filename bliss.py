@@ -461,7 +461,7 @@ def run_bliss(config: Config, mode, experiment_name):
 
     inverted_indexes_paths = []
     if mode == 'build':
-        data = read_dataset(config.dataset_name, mode= 'train')
+        data, _ = read_dataset(config.dataset_name, mode= 'train')
         if metric == "angular":
             norms = np.linalg.norm(data, axis=1, keepdims=True)
             data = data / norms
