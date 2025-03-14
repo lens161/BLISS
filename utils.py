@@ -75,18 +75,18 @@ def read_dataset(dataset_name, mode = 'train', size = 100):
         os.mkdir("data")
 
     if not dataset_name.__contains__("-"): # if one of the billion scale sets
-        mmp_path = f"memmaps/memmap_{dataset_name}.npy"
+        mmp_path = f"memmaps/memmap_{dataset_name}_{size}.npy"
         if not os.path.exists(mmp_path):
             print(f"loading {dataset_name}...")
-            dataset = get_1B_dataset(dataset_name, 100)
+            dataset = get_1B_dataset(dataset_name, size)
             dataset.prepare()
             fn = dataset.get_dataset_fn()
             mmap = xbin_mmap(fn, dataset.dtype, maxn=dataset.nb)
             queries = dataset.get_queries()
             print(f"saving {dataset_name} to memmap...")
-            np.save(f"memmaps/{dataset_name}.npy", mmap)
+            np.save(f"memmaps/{dataset_name}_{size}.npy", mmap)
             return mmap, np.array(queries)
-        return np.load(mmp_path, 'r')
+        return np.load(mmp_path, 'r'), 0
 
     path = os.path.join("data", f"{dataset_name}.hdf5")
 

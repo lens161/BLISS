@@ -60,7 +60,7 @@ def train_model(model, dataset, index, sample_size, bucket_sizes, neighbours, r,
     optimizer = optim.Adam(model.parameters(), lr=config.lr)
     g = torch.Generator()
     g.manual_seed(r)
-    train_loader = DataLoader(dataset, batch_size=config.batch_size, shuffle=True, num_workers=16, generator=g)
+    train_loader = DataLoader(dataset, batch_size=config.batch_size, shuffle=True, num_workers=8, generator=g)
     all_losses = []
     for i in range(config.iterations):
         model.train() 
@@ -95,7 +95,7 @@ def reassign_buckets(model, dataset, index, bucket_sizes, sample_size, neighbour
     sample_size, _ = np.shape(dataset.data)
     model.to("cpu")
     model.eval()
-    reassign_loader = DataLoader(dataset, batch_size=config.batch_size, shuffle=config.shuffle, num_workers=16)
+    reassign_loader = DataLoader(dataset, batch_size=config.batch_size, shuffle=config.shuffle, num_workers=8)
     bucket_sizes[:] = 0
 
     start = time.time()
@@ -132,7 +132,7 @@ def reassign_vector_to_bucket(probability_vector, index, bucket_sizes, k, item_i
 def global_reassign_buckets(model, dataset, index, neighbours, bucket_sizes, config: Config):
 
     model.eval()
-    data_loader = DataLoader(dataset, batch_size=config.batch_size, shuffle=False, num_workers=16)
+    data_loader = DataLoader(dataset, batch_size=config.batch_size, shuffle=False, num_workers=8)
     
     all_predictions = []
 
@@ -175,7 +175,7 @@ def reassign_buckets_vectorized(model, dataset, index, bucket_sizes, sample_size
     sample_size, _ = np.shape(dataset.data)
     model.to(config.device)
     model.eval()
-    reassign_loader = DataLoader(dataset, batch_size=config.batch_size, shuffle=False, num_workers=16)
+    reassign_loader = DataLoader(dataset, batch_size=config.batch_size, shuffle=False, num_workers=8)
     
     # create auxiliary tensor representing bucket_sizes
     bucket_sizes_t = torch.zeros(config.B, device=device, dtype=torch.int32)
@@ -245,11 +245,13 @@ def make_ground_truth_labels(B, neighbours, index, sample_size, device):
     return labels
 
 def map_all_to_buckets(rst_vectors, k, bucket_sizes, index, model_path, training_sample_size, DIMENSION, B):
-    rst_vectors = torch.from_numpy(rst_vectors)
+    rst_vectors = torch.from_numpy(rst_vectors).float()
     print(f"training sample size = {training_sample_size}")
     map_model = BLISS_NN(DIMENSION, B)
+    print("loading model")
     map_model.load_state_dict(torch.load(model_path, weights_only=True))
     map_model.eval()
+    print("finished loading model")
 
     for i, vector in enumerate(rst_vectors, start=training_sample_size):
         if i < training_sample_size:
@@ -266,6 +268,7 @@ def map_all_to_buckets(rst_vectors, k, bucket_sizes, index, model_path, training
                 smallest_bucket = cand
                 smallest_bucket_size = size
         
+        print(f"\rassigned vector {i+1} to {smallest_bucket}", end='', flush=True)
         index[i] = smallest_bucket
         bucket_sizes[smallest_bucket] +=1
 
@@ -277,7 +280,10 @@ def invert_index(index, B):
     return inverted_index
 
 def get_sample(train, SIZE, DIMENSION):
-    sample_size = SIZE if SIZE < 10_000_000 else int(0.01*SIZE)
+    # sample_size = SIZE if SIZE < 10_000_000 else int(0.1*SIZE)
+    # if sample_size == 10_000_000:
+    #     sample_size = 1_000_000
+    sample_size = 1_000_000
     print(f"sample size = {sample_size}")
     sample = np.empty((sample_size, DIMENSION))
 
@@ -304,6 +310,8 @@ def build_index(train, config: Config):
     print(f"K = {config.k}, R = {config.r}")
 
     sample, rest, sample_size, rest_size, train_on_full_dataset = get_sample(train, SIZE, DIMENSION)
+    print(f"rest type: {rest.dtype}")
+    print(f"sample type: {sample.dtype}")
 
     print(f"writing train vectors to memmap")
     save_dataset_as_memmap(sample, rest, config.dataset_name, train_on_full_dataset)
@@ -345,6 +353,7 @@ def build_index(train, config: Config):
         if not train_on_full_dataset:
             print("assigning rest of vectors to buckets")
             map_all_to_buckets(rest, config.k, bucket_sizes, index, model_path, sample_size, DIMENSION, config.b)
+            print("\r")
 
         np.set_printoptions(threshold=np.inf, suppress=True)
         print(f"bucket_sizes sum = {np.sum(bucket_sizes)}")
@@ -461,7 +470,7 @@ def run_bliss(config: Config, mode, experiment_name):
 
     inverted_indexes_paths = []
     if mode == 'build':
-        data, _ = read_dataset(config.dataset_name, mode= 'train')
+        data, _ = read_dataset(config.dataset_name, mode= 'train', size=config.datasize)
         if metric == "angular":
             norms = np.linalg.norm(data, axis=1, keepdims=True)
             data = data / norms
@@ -500,7 +509,7 @@ def run_bliss(config: Config, mode, experiment_name):
             test = test / norms
 
         print(f"creating tensor array from Test")
-        test = torch.from_numpy(test)
+        test = torch.from_numpy(test).float()
 
         start = time.time()
         results = query_multiple(data, index, test, neighbours, config.m, config.freq_threshold, config.nr_neighbours)
