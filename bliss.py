@@ -248,10 +248,10 @@ def map_all_to_buckets(rst_vectors, k, bucket_sizes, index, model_path, training
     rst_vectors = torch.from_numpy(rst_vectors).float()
     print(f"training sample size = {training_sample_size}")
     map_model = BLISS_NN(DIMENSION, B)
-    print("loading model")
+    # print("loading model")
     map_model.load_state_dict(torch.load(model_path, weights_only=True))
     map_model.eval()
-    print("finished loading model")
+    # print("finished loading model")
 
     for i, vector in enumerate(rst_vectors, start=training_sample_size):
         if i < training_sample_size:
@@ -268,7 +268,7 @@ def map_all_to_buckets(rst_vectors, k, bucket_sizes, index, model_path, training
                 smallest_bucket = cand
                 smallest_bucket_size = size
         
-        print(f"\rassigned vector {i+1} to {smallest_bucket}", end='', flush=True)
+        # print(f"\rassigned vector {i+1} to {smallest_bucket}", end='', flush=True)
         index[i] = smallest_bucket
         bucket_sizes[smallest_bucket] +=1
 
@@ -503,7 +503,7 @@ def run_bliss(config: Config, mode, experiment_name):
         index = (inverted_indexes, q_models)
         # print(index)
         
-        test, neighbours = read_dataset(dataset_name, mode= 'test')
+        test, neighbours = read_dataset(dataset_name, mode= 'test', size=config.datasize)
         if metric == "angular":
             norms = np.linalg.norm(test, axis=1, keepdims=True)
             test = test / norms
