@@ -9,9 +9,7 @@
 #SBATCH --exclude=cn[16-17]             # Exclude 1080's
 #SBATCH --partition=scavenge            # Run on the scavenge queue
 #SBATCH --mail-type=BEGIN,FAIL,END      # Send an email when the job finishes
-#SBATCH --exclusive                     # get entire machine for task
-#SBATCH --nodelist=cn5                  # request specific machine
-#SBATCH --nodelist=cn11                  # request specific machine
+# SBATCH --exclusive                     # get entire machine for task
 
 
 echo "Running on $(hostname):"

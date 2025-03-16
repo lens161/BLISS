@@ -86,10 +86,10 @@ def read_dataset(dataset_name, mode = 'train', size = 100):
             mmap = xbin_mmap(fn, dataset.dtype, maxn=dataset.nb)
             print(f"saving {dataset_name} to memmap...")
             np.save(f"memmaps/{dataset_name}_{size}.npy", mmap)
-            return mmap, np.array(queries)
-        if mode == "train": 
+            # return mmap, np.array(queries)
+        if mode == 'train': 
             return np.load(mmp_path, 'r'), 0
-        if mode == "test":
+        if mode == 'test':
             return queries, neighbours
 
     path = os.path.join("data", f"{dataset_name}.hdf5")

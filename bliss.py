@@ -382,6 +382,8 @@ def load_model(model_path, dim, b):
 def query_multiple(data, index, vectors, neighbours, m, threshold, requested_amount):
     '''run multiple queries from a set of query vectors i.e. "Test" from the ANN benchmark datsets'''
     size = len(vectors)
+    print("Number of query vectors:", size)
+    print("Number of neighbour entries:", len(neighbours))
     query_times = []
     results = [[] for i in range(len(vectors))]
     for i, vector in enumerate(vectors):
@@ -453,6 +455,10 @@ def recall(results, neighbours):
     return np.mean(recalls)
 
 def recall_single(results, neighbours):
+    results = np.array(results).flatten().tolist()
+    neighbours = np.array(neighbours).flatten().tolist()
+    results = [int(x) for x in results]
+    neighbours = [int(x) for x in neighbours]
     return len(set(results) & set(neighbours))/len(neighbours)
 
 def run_bliss(config: Config, mode, experiment_name):
