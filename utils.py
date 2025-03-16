@@ -80,7 +80,10 @@ def read_dataset(dataset_name, mode = 'train', size = 100):
         dataset = get_1B_dataset(dataset_name, size)
         dataset.prepare()
         queries = dataset.get_queries()
-        neighbours = dataset.get_groundtruth()
+        neighbours, _ = dataset.get_groundtruth()
+        print(f"queries: {queries}")
+        print(f"neigbours: {neighbours}")
+        print(len(neighbours))
         if not os.path.exists(mmp_path):
             fn = dataset.get_dataset_fn()
             mmap = xbin_mmap(fn, dataset.dtype, maxn=dataset.nb)
