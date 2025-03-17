@@ -72,7 +72,7 @@ if __name__ == "__main__":
     # range_K = 2
     range_threshold = 2
     k_values = [2]
-    m_values = [5, 10, 15, 20]
+    m_values = [15]
     EXP_NAME = "first_run_10M_bigann"
     # add all dataset names that the experiments should be run on
     datasets = ["bigann", 
@@ -80,7 +80,7 @@ if __name__ == "__main__":
                  ]
     
     for dataset in datasets:
-        conf = Config(dataset_name=dataset, batch_size=2048)
+        conf = Config(dataset_name=dataset, batch_size=2048, r=2, epochs=2, iterations=2)
         configs_b.append(conf)
         for m in m_values:
             conf_q = Config(dataset_name=dataset, batch_size=2048, m=m, b=4096)
@@ -100,5 +100,5 @@ if __name__ == "__main__":
     #         configs_q.append(conf_q_shuff)
     #         configs_q.append(conf_q_noshuff)
     #         configs_q.append(conf_q_gr)
-    # build_multiple_indexes_exp(EXP_NAME, configs_b)
+    build_multiple_indexes_exp(EXP_NAME, configs_b)
     run_multiple_query_exp(EXP_NAME, configs_q)

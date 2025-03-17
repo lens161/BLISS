@@ -68,7 +68,7 @@ def get_1B_dataset(dataset_name, size):
     elif dataset_name == "deep1b":
         return Deep1BDataset(size)
     else:
-        print("fuck off")
+        print("dataset not supported yet")
 
 def read_dataset(dataset_name, mode = 'train', size = 100):
     if not os.path.exists("data"):
@@ -79,19 +79,20 @@ def read_dataset(dataset_name, mode = 'train', size = 100):
         print(f"loading {dataset_name}...")
         dataset = get_1B_dataset(dataset_name, size)
         dataset.prepare()
+        print(f"dataset size = {dataset.nb_M}")
         queries = dataset.get_queries()
         neighbours, _ = dataset.get_groundtruth()
         print(f"queries: {queries}")
         print(f"neigbours: {neighbours}")
         print(len(neighbours))
         if not os.path.exists(mmp_path):
-            fn = dataset.get_dataset_fn()
-            mmap = xbin_mmap(fn, dataset.dtype, maxn=dataset.nb)
+            data = dataset.get_dataset()
+            mmap = np.lib.format.open_memmap(mmp_path, mode='w+', shape=data.shape, dtype=data.dtype)
             print(f"saving {dataset_name} to memmap...")
-            np.save(f"memmaps/{dataset_name}_{size}.npy", mmap)
+            mmap[:] = data[:]
             # return mmap, np.array(queries)
         if mode == 'train': 
-            return np.load(mmp_path, 'r'), 0
+            return dataset.get_dataset()
         if mode == 'test':
             return queries, neighbours
 

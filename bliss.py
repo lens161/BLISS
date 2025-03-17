@@ -473,6 +473,7 @@ def run_bliss(config: Config, mode, experiment_name):
     inverted_indexes_paths = []
     if mode == 'build':
         data, _ = read_dataset(config.dataset_name, mode= 'train', size=config.datasize)
+        print(f"shape memmap = {data.shape}")
         if metric == "angular":
             norms = np.linalg.norm(data, axis=1, keepdims=True)
             data = data / norms
@@ -506,6 +507,7 @@ def run_bliss(config: Config, mode, experiment_name):
         # print(index)
         
         test, neighbours = read_dataset(dataset_name, mode= 'test', size=config.datasize)
+        print(neighbours.shape)
         if metric == "angular":
             norms = np.linalg.norm(test, axis=1, keepdims=True)
             test = test / norms
