@@ -372,6 +372,77 @@ def build_index(train, config: Config):
     # log_mem(f"after_building_global={config.global_reass}_shuffle={config.shuffle}", memory_usage, config.memlog_path)
     return final_index, time_per_r, build_time, memory_usage
 
+def build_index_2(train, config: Config):
+
+    print("bulding index with preserved order...")
+    SIZE, DIM = np.shape(train)
+
+    sample_size = 1_000_000
+
+    og_order = np.arange(SIZE)
+    np.random.seed(42)
+    np.random.shuffle(og_order)
+    sample_indexes = np.sort(og_order[:sample_size])
+    rest_indexes = np.sort(og_order[sample_size:])
+
+    sample = train[sample_indexes, :]
+    rest = train[rest_indexes, :] if rest_indexes.size > 0 else None
+
+    save_dataset_as_memmap(sample, rest, config.dataset_name, train_on_full_dataset=False)
+
+    print("finding neighbours...")
+    neighbours, _ = get_train_nearest_neighbours_from_file(sample, config.nr_neighbours, sample_size, config.dataset_name)
+
+    labels = []
+    dataset = BLISSDataset(sample, labels, config.device)
+
+    # final assignment arr for entire dataset
+    final_bucket_assignments = np.empty(SIZE, dtype=np.uint32)
+
+    final_index = []
+    time_per_r = []
+    for r in range(config.r):
+        start = time.time()
+
+        sample_buckets, bucket_sizes = assign_initial_buckets(sample_size, rest_indexes.size, r, config.b)
+        final_bucket_assignments[sample_indexes] = sample_buckets
+
+        print("initial bucket assignments for training sample:")
+        print(bucket_sizes)
+
+        print("making initial groundtruth labels ")
+        labels = make_ground_truth_labels(config.b, neighbours, sample_buckets, sample_size, config.device)
+        dataset.labels = labels
+
+        print(f"setting up model {r+1}")
+        torch.manual_seed(r)
+        if config.device == torch.device("cuda"):
+            torch.cuda.manual_seed(r)
+        elif config.device == torch.device("mps"):
+            torch.mps.manual_seed(r)
+        model = BLISS_NN(DIM, config.b)
+        print(f"training model {r+1}")
+        train_model(model, dataset, sample_buckets, sample_size, bucket_sizes, neighbours, r, config)
+        model_path = save_model(model, config.dataset_name, r+1, config.r, config.k, config.b, config.lr, config.shuffle, config.global_reass)
+        print(f"model {r+1} saved to {model_path}.")
+
+        if rest is not None:
+            print("assigning remaining vectors to buckets...")
+            rest_buckets = map_all_to_buckets(rest, config.k, bucket_sizes, sample_buckets, model_path, sample_size, DIM, config.b)
+            final_bucket_assignments[rest_indexes] = rest_buckets
+        
+        np.set_printoptions(threshold=np.inf, suppress=True)
+        print(f"bucket_sizes sum = {np.sum(bucket_sizes)}")
+        print(bucket_sizes)
+        inverted_index = invert_index(final_bucket_assignments, config.b)
+        index_path = save_inverted_index(inverted_index, config.dataset_name, r+1, config.r, config.k, config.b, config.lr, config.shuffle, config.global_reass)
+        final_index.append((index_path, model_path))
+        end = time.time()
+        time_per_r.append(end - start)
+
+    build_time = time.time() - start
+    return final_index, time_per_r, build_time, None
+
 def load_model(model_path, dim, b):
     inf_device = torch.device("cpu")
     model = BLISS_NN(dim, b)
@@ -405,7 +476,7 @@ def query(data, index, query_vector, neighbours, m, freq_threshold, requested_am
         model = models[i]
         model.eval()
         index = inverted_indexes[i]
-        probabilities = model(query_vector)
+        probabilities = torch.sigmoid(model(query_vector))
         # print(probabilities)
         _, m_buckets = torch.topk(probabilities, m)
         m_buckets = m_buckets.tolist()
@@ -425,7 +496,7 @@ def query(data, index, query_vector, neighbours, m, freq_threshold, requested_am
     else:
         final_neighbours, dist_comps = reorder(data, query_vector, np.array(final_results, dtype=int), requested_amount)
         return final_neighbours, dist_comps, recall_single(final_neighbours, neighbours)
-
+    
 def reorder(data, query_vector, candidates, requested_amount):
     import faiss 
     #  TO-DO: get this shit to work....
