@@ -111,7 +111,7 @@ def reassign_buckets(model, dataset, index, bucket_sizes, sample_size, neighbour
     elapsed = finish - start
     process = psutil.Process(os.getpid())
     mem_usage = process.memory_info().rss / (1024 ** 2)
-    log_mem(f"shuffle={config.shuffle}_reassign_buckets", mem_usage, config.memlog_path)
+    # log_mem(f"shuffle={config.shuffle}_reassign_buckets", mem_usage, config.memlog_path)
 
     print(f"Memory usage reassign batched: {mem_usage:.2f} MB")
     print(f"reassigning took {elapsed}")
@@ -148,7 +148,7 @@ def global_reassign_buckets(model, dataset, index, neighbours, bucket_sizes, con
     process = psutil.Process(os.getpid())
     mem_usage = process.memory_info().rss / (1024 ** 2)
     print(f"global ress memory usage: {mem_usage:.2f} MB")
-    log_mem("global_reassign_buckets", mem_usage, config.memlog_path)
+    # log_mem("global_reassign_buckets", mem_usage, config.memlog_path)
     N = all_predictions.size(0)
     
     bucket_sizes[:] = 0
@@ -327,7 +327,7 @@ def build_index(train, config: Config):
     # build R models/indexes
     process = psutil.Process(os.getpid())
     memory_usage = process.memory_info().rss / (1024 ** 2)
-    log_mem(f"before_building_global={config.global_reass}_shuffle={config.shuffle}", memory_usage, config.memlog_path)
+    # log_mem(f"before_building_global={config.global_reass}_shuffle={config.shuffle}", memory_usage, config.memlog_path)
     for r in range(config.r):
         print(f"randomly assigning initial buckets")
         start= time.time()
@@ -369,7 +369,7 @@ def build_index(train, config: Config):
     build_time = all_end-all_start
     process = psutil.Process(os.getpid())
     memory_usage = process.memory_info().rss / (1024 ** 2)
-    log_mem(f"after_building_global={config.global_reass}_shuffle={config.shuffle}", memory_usage, config.memlog_path)
+    # log_mem(f"after_building_global={config.global_reass}_shuffle={config.shuffle}", memory_usage, config.memlog_path)
     return final_index, time_per_r, build_time, memory_usage
 
 def load_model(model_path, dim, b):
@@ -465,10 +465,10 @@ def run_bliss(config: Config, mode, experiment_name):
     print(f"Using device: {config.device}")
     print(dataset_name)
 
-    if not os.path.exists(f"results/{experiment_name}/"):
-        os.mkdir(f"results/{experiment_name}/")
-    MEMLOG_PATH = f"results/{experiment_name}/{experiment_name}_memory_log.csv"
-    config.memlog_path = MEMLOG_PATH
+    # if not os.path.exists(f"results/{experiment_name}/"):
+    #     os.mkdir(f"results/{experiment_name}/")
+    # MEMLOG_PATH = f"results/{experiment_name}/{experiment_name}_memory_log.csv"
+    # config.memlog_path = MEMLOG_PATH
 
     inverted_indexes_paths = []
     if mode == 'build':
