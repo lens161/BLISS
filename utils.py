@@ -92,7 +92,7 @@ def read_dataset(dataset_name, mode = 'train', size = 100):
             mmap[:] = data[:]
             # return mmap, np.array(queries)
         if mode == 'train': 
-            return dataset.get_dataset()
+            return np.load(mmp_path, mmap_mode='r')
         if mode == 'test':
             return queries, neighbours
 
