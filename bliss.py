@@ -506,7 +506,11 @@ def run_bliss(config: Config, mode, experiment_name):
         index = (inverted_indexes, q_models)
         # print(index)
         
-        test, neighbours = read_dataset(dataset_name, mode= 'test', size=config.datasize)
+        # test, neighbours = read_dataset(dataset_name, mode= 'test', size=config.datasize)
+        dataset = BigANNDataset(config.datasize)
+        dataset.prepare()
+        test = dataset.get_queries()
+        neighbours, _ = dataset.get_groundtruth()
         print(neighbours.shape)
         if metric == "angular":
             norms = np.linalg.norm(test, axis=1, keepdims=True)

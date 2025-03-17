@@ -80,10 +80,10 @@ if __name__ == "__main__":
                  ]
     
     for dataset in datasets:
-        conf = Config(dataset_name=dataset, batch_size=2048, r=2, epochs=2, iterations=2, datasize=1)
+        conf = Config(dataset_name=dataset, batch_size=2048)
         configs_b.append(conf)
         for m in m_values:
-            conf_q = Config(dataset_name=dataset, batch_size=2048, m=m, b=4096, datasize=1)
+            conf_q = Config(dataset_name=dataset, batch_size=2048, m=m)
             configs_q.append(conf_q)
     
     # for dataset in datasets:
@@ -100,5 +100,5 @@ if __name__ == "__main__":
     #         configs_q.append(conf_q_shuff)
     #         configs_q.append(conf_q_noshuff)
     #         configs_q.append(conf_q_gr)
-    build_multiple_indexes_exp(EXP_NAME, configs_b)
+    # build_multiple_indexes_exp(EXP_NAME, configs_b)
     run_multiple_query_exp(EXP_NAME, configs_q)
