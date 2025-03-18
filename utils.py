@@ -87,7 +87,10 @@ def read_dataset(dataset_name, mode = 'train', size = 100):
             mmap[:] = data[:]
         if mode == 'train': 
             return np.load(mmp_path, mmap_mode='r'), None
+            return np.load(mmp_path, mmap_mode='r'), None
         if mode == 'test':
+            queries = dataset.get_queries()
+            neighbours, _ = dataset.get_groundtruth()
             queries = dataset.get_queries()
             neighbours, _ = dataset.get_groundtruth()
             return queries, neighbours
@@ -113,6 +116,7 @@ def read_dataset(dataset_name, mode = 'train', size = 100):
         train = f['train']
         train_X = np.array(train)
         print("done reading training data")
+        return train_X, None
         return train_X, None
     if mode == 'test':    
         test = f['test']
@@ -220,13 +224,25 @@ def save_dataset_as_memmap(data, dataset_name):
     #     size_rest, _ = np.shape(rest)
     # size = size_train + size_rest
     # print(f"Total size = {size}")
+    # size_train, dim = np.shape(train)
+    # size_rest = 0
+    # if not train_on_full_dataset:
+    #     size_rest, _ = np.shape(rest)
+    # size = size_train + size_rest
+    # print(f"Total size = {size}")
 
     # combine train and rest if needed
     # if size_rest == 0:
     # combined = train
     # else:
     #     combined = np.concatenate((train, rest), axis=0)
+    # if size_rest == 0:
+    # combined = train
+    # else:
+    #     combined = np.concatenate((train, rest), axis=0)
     
+    np.save(file_path, data)
+    print(f"Dataset saved to {file_path} with shape {data.shape}")
     np.save(file_path, data)
     print(f"Dataset saved to {file_path} with shape {data.shape}")
 

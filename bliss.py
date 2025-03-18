@@ -113,6 +113,7 @@ def reassign_buckets(model, dataset, index, bucket_sizes, sample_size, neighbour
     process = psutil.Process(os.getpid())
     mem_usage = process.memory_info().rss / (1024 ** 2)
     log_mem(f"shuffle={config.shuffle}_reassign_buckets", mem_usage, config.memlog_path)
+    log_mem(f"shuffle={config.shuffle}_reassign_buckets", mem_usage, config.memlog_path)
 
     print(f"Memory usage reassign batched: {mem_usage:.2f} MB")
     print(f"reassigning took {elapsed}", flush=True)
@@ -148,6 +149,7 @@ def global_reassign_buckets(model, dataset, index, neighbours, bucket_sizes, con
     process = psutil.Process(os.getpid())
     mem_usage = process.memory_info().rss / (1024 ** 2)
     print(f"global ress memory usage: {mem_usage:.2f} MB")
+    log_mem("global_reassign_buckets", mem_usage, config.memlog_path)
     log_mem("global_reassign_buckets", mem_usage, config.memlog_path)
     N = all_predictions.size(0)
     
@@ -223,6 +225,7 @@ def assign_initial_buckets(train_size, rest_size, r, B):
     TO-DO: add reference link
     '''
     index = np.zeros(train_size, dtype=np.uint32) # from 0 to train_size-1
+    index = np.zeros(train_size, dtype=np.uint32) # from 0 to train_size-1
     bucket_sizes = np.zeros(B, dtype=np.uint32)
 
     for i in range(train_size):
@@ -245,6 +248,7 @@ def make_ground_truth_labels(B, neighbours, index, sample_size, device):
     return labels
 
 def map_all_to_buckets(rst_vectors, rest_indexes, k, bucket_sizes, index, model_path, training_sample_size, DIMENSION, B):
+def map_all_to_buckets(rst_vectors, rest_indexes, k, bucket_sizes, index, model_path, training_sample_size, DIMENSION, B):
     rst_vectors = torch.from_numpy(rst_vectors).float()
     print(f"training sample size = {training_sample_size}")
     map_model = BLISS_NN(DIMENSION, B)
@@ -253,6 +257,9 @@ def map_all_to_buckets(rst_vectors, rest_indexes, k, bucket_sizes, index, model_
     map_model.eval()
     # print("finished loading model")
 
+    for i, vector in enumerate(rst_vectors):
+        # if i < training_sample_size:
+        #     print("wrong start")
     for i, vector in enumerate(rst_vectors):
         # if i < training_sample_size:
         #     print("wrong start")
@@ -270,6 +277,7 @@ def map_all_to_buckets(rst_vectors, rest_indexes, k, bucket_sizes, index, model_
         
         # print(f"\rassigned vector {i+1} to {smallest_bucket}", end='', flush=True)
         index[rest_indexes[i]] = smallest_bucket
+        index[rest_indexes[i]] = smallest_bucket
         bucket_sizes[smallest_bucket] +=1
 
 
@@ -285,9 +293,14 @@ def build_index(train, config: Config):
     SIZE, DIM = np.shape(train)
 
     sample_size = SIZE if SIZE < 2_000_00 else 1_000_000
+    sample_size = SIZE if SIZE < 2_000_00 else 1_000_000
 
     random_order = np.arange(SIZE)
+    random_order = np.arange(SIZE)
     np.random.seed(42)
+    np.random.shuffle(random_order)
+    sample_indexes = np.sort(random_order[:sample_size])
+    rest_indexes = np.sort(random_order[sample_size:])
     np.random.shuffle(random_order)
     sample_indexes = np.sort(random_order[:sample_size])
     rest_indexes = np.sort(random_order[sample_size:])
@@ -313,10 +326,15 @@ def build_index(train, config: Config):
     process = psutil.Process(os.getpid())
     memory_usage = process.memory_info().rss / (1024 ** 2)
     log_mem(f"before_building_global={config.global_reass}_shuffle={config.shuffle}", memory_usage, config.memlog_path)
+    process = psutil.Process(os.getpid())
+    memory_usage = process.memory_info().rss / (1024 ** 2)
+    log_mem(f"before_building_global={config.global_reass}_shuffle={config.shuffle}", memory_usage, config.memlog_path)
     for r in range(config.r):
         start = time.time()
 
         sample_buckets, bucket_sizes = assign_initial_buckets(sample_size, rest_indexes.size, r, config.b)
+        # final_bucket_assignments[sample_indexes] = sample_buckets
+        print("initial bucket sizes for training sample:")
         # final_bucket_assignments[sample_indexes] = sample_buckets
         print("initial bucket sizes for training sample:")
         print(bucket_sizes)
@@ -339,6 +357,8 @@ def build_index(train, config: Config):
 
         final_bucket_assignments[sample_indexes] = sample_buckets
 
+        final_bucket_assignments[sample_indexes] = sample_buckets
+
         if rest is not None:
             print("assigning remaining vectors to buckets...", flush=True)
             map_all_to_buckets(rest, rest_indexes, config.k, bucket_sizes, final_bucket_assignments, model_path, sample_size, DIM, config.b)
@@ -354,6 +374,9 @@ def build_index(train, config: Config):
         time_per_r.append(end - start)
 
     build_time = time.time() - start
+    process = psutil.Process(os.getpid())
+    memory_usage = process.memory_info().rss / (1024 ** 2)
+    log_mem(f"after_building_global={config.global_reass}_shuffle={config.shuffle}", memory_usage, config.memlog_path)
     process = psutil.Process(os.getpid())
     memory_usage = process.memory_info().rss / (1024 ** 2)
     log_mem(f"after_building_global={config.global_reass}_shuffle={config.shuffle}", memory_usage, config.memlog_path)
@@ -493,6 +516,12 @@ def run_bliss(config: Config, mode, experiment_name):
         index = (inverted_indexes, q_models)
         # print(index)
         
+        test, neighbours = read_dataset(dataset_name, mode= 'test', size=config.datasize)
+        # dataset = BigANNDataset(config.datasize)
+        # dataset.prepare()
+        # test = dataset.get_queries()
+        # neighbours, _ = dataset.get_groundtruth()
+        # print(neighbours.shape)
         test, neighbours = read_dataset(dataset_name, mode= 'test', size=config.datasize)
         # dataset = BigANNDataset(config.datasize)
         # dataset.prepare()
