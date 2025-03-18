@@ -90,22 +90,35 @@ if __name__ == "__main__":
                  ]
     
     heartbeat_process = subprocess.Popen(
-        ['python3', 'subprocess_print.py'],  # Call the script directly
+        ['python3', '-c', '''
+import time
+import datetime
+
+# Function to print the message every 5 minutes
+def subprocess_print():
+    while True:
+        print(f"This process is still running. Timestamp: {datetime.datetime.now()}")
+        time.sleep(10)  # Sleep for 5 minutes
+
+# Start the function
+subprocess_print()
+        '''],
         stdout=sys.stdout,  # Redirect stdout to the main process stdout
         stderr=sys.stderr,  # Optionally redirect stderr to the main process stderr
     )
 
     try:
-        for dataset in datasets:
-            conf = Config(dataset_name=dataset, batch_size=2048, b=4096)
-            configs_b.append(conf)
-            for m in m_values:
-                conf_q = Config(dataset_name=dataset, batch_size=2048, m=m, b=4096)
-                configs_q.append(conf_q)
-        
-        build_multiple_indexes_exp(EXP_NAME, configs_b)
-        run_multiple_query_exp(EXP_NAME, configs_q)
-    
+        while True:
+            for dataset in datasets:
+                conf = Config(dataset_name=dataset, batch_size=2048, b=4096)
+                configs_b.append(conf)
+                for m in m_values:
+                    conf_q = Config(dataset_name=dataset, batch_size=2048, m=m, b=4096)
+                    configs_q.append(conf_q)
+            
+            build_multiple_indexes_exp(EXP_NAME, configs_b)
+            run_multiple_query_exp(EXP_NAME, configs_q)
+
     finally:
         heartbeat_process.terminate()
     
