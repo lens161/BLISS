@@ -81,13 +81,13 @@ def train_model(model, dataset, index, sample_size, bucket_sizes, neighbours, r,
             elapsed = finish-start
             print(f"epoch {epoch} took {elapsed}")
             avg_loss = statistics.mean(epoch_losses)
-            print(f"epoch {epoch} avg. loss = {avg_loss}")
+            print(f"epoch {epoch} avg. loss = {avg_loss}", flush=True)
             all_losses.append(avg_loss)
         if config.global_reass:
             global_reassign_buckets(model, dataset, index, neighbours, bucket_sizes, config)
         else:
             reassign_buckets(model, dataset, index, bucket_sizes, sample_size, neighbours, config)
-        print(f"index after iteration {i} = {index}")
+        print(f"index after iteration {i} = {index}", flush=True)
 
     make_loss_plot(config.lr, config.iterations, config.epochs, config.k, config.b, config.experiment_name, all_losses, config.shuffle, config.global_reass)
  
@@ -114,7 +114,7 @@ def reassign_buckets(model, dataset, index, bucket_sizes, sample_size, neighbour
     log_mem(f"shuffle={config.shuffle}_reassign_buckets", mem_usage, config.memlog_path)
 
     print(f"Memory usage reassign batched: {mem_usage:.2f} MB")
-    print(f"reassigning took {elapsed}")
+    print(f"reassigning took {elapsed}", flush=True)
     print(bucket_sizes)
     new_labels = make_ground_truth_labels(config.b, neighbours, index, sample_size, config.device)
     dataset.labels = new_labels
@@ -316,7 +316,7 @@ def build_index(train, config: Config):
     print(f"writing train vectors to memmap")
     save_dataset_as_memmap(sample, rest, config.dataset_name, train_on_full_dataset)
 
-    print("looking for true neighbours of training sample")
+    print("looking for true neighbours of training sample", flush=True)
     neighbours = get_train_nearest_neighbours_from_file(sample, config.nr_neighbours, sample_size, config.dataset_name)
     print(neighbours)
     labels = []
@@ -333,7 +333,7 @@ def build_index(train, config: Config):
         start= time.time()
         index, bucket_sizes = assign_initial_buckets(sample_size, rest_size, r, config.b)
         print(bucket_sizes)
-        print("making initial ground truth labels")
+        print("making initial ground truth labels", flush=True)
         labels = make_ground_truth_labels(config.b, neighbours, index, sample_size, config.device)
         dataset.labels = labels # replace old labels in dataset with new labels for current model 
         print(f"setting up model {r+1}")
@@ -521,7 +521,7 @@ def run_bliss(config: Config, mode, experiment_name):
 
         anns = [t[0] for t in results]
         RECALL = recall(anns, neighbours)
-        print(f"RECALL = {RECALL}")
+        print(f"RECALL = {RECALL}", flush=True)
 
         return RECALL, results, total_query_time
 

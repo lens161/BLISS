@@ -80,8 +80,8 @@ if __name__ == "__main__":
     # range_K = 2
     range_threshold = 2
     k_values = [2]
-    m_values = [5, 10, 15]
-    EXP_NAME = "test_heartbeat_bigann"
+    m_values = [15]
+    EXP_NAME = "test_heartbeat_bigann_v2"
     # add all dataset names that the experiments should be run on
     datasets = [
                 "bigann",
@@ -97,8 +97,8 @@ import datetime
 # Function to print the message every 5 minutes
 def subprocess_print():
     while True:
-        print(f"This process is still running. Timestamp: {datetime.datetime.now()}")
-        time.sleep(10)  # Sleep for 5 minutes
+        print(f"This process is still running. Timestamp: {datetime.datetime.now()}", flush=True)
+        time.sleep(300)  # Sleep for 5 minutes
 
 # Start the function
 subprocess_print()
