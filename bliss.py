@@ -248,6 +248,7 @@ def make_ground_truth_labels(B, neighbours, index, sample_size, device):
     return labels
 
 def map_all_to_buckets(rst_vectors, rest_indexes, k, bucket_sizes, index, model_path, training_sample_size, DIMENSION, B):
+def map_all_to_buckets(rst_vectors, rest_indexes, k, bucket_sizes, index, model_path, training_sample_size, DIMENSION, B):
     rst_vectors = torch.from_numpy(rst_vectors).float()
     print(f"training sample size = {training_sample_size}")
     map_model = BLISS_NN(DIMENSION, B)
@@ -256,6 +257,9 @@ def map_all_to_buckets(rst_vectors, rest_indexes, k, bucket_sizes, index, model_
     map_model.eval()
     # print("finished loading model")
 
+    for i, vector in enumerate(rst_vectors):
+        # if i < training_sample_size:
+        #     print("wrong start")
     for i, vector in enumerate(rst_vectors):
         # if i < training_sample_size:
         #     print("wrong start")
