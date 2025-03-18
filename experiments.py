@@ -82,11 +82,7 @@ if __name__ == "__main__":
     k_values = [2]
     m_values = [5, 10, 15, 20]
     EXP_NAME = "bigann_new_indexing"
-    m_values = [5, 10, 15, 20]
-    EXP_NAME = "bigann_new_indexing"
     # add all dataset names that the experiments should be run on
-    datasets = [
-                "bigann", 
     datasets = [
                 "bigann", 
                 # "glove-100-angular",
