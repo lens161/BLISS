@@ -69,7 +69,7 @@ def run_multiple_query_exp(experiment_name, configs):
 
 def print_heartbeat():
     while(True):
-        print(f"Process {os.getpid()} is still active. Timestamp: {datetime.datetime.now.time()}")
+        print(f"Process {os.getpid()} is still active. Timestamp: {datetime.datetime.now()}")
         time.sleep(300)
 
 if __name__ == "__main__":
@@ -79,10 +79,12 @@ if __name__ == "__main__":
     # range_K = 2
     range_threshold = 2
     k_values = [2]
-    m_values = [5, 10, 15, 20]
-    EXP_NAME = "first_run_10m_bigann_b8192"
+    m_values = [5, 10, 15]
+    EXP_NAME = "test_heartbeat_bigann"
     # add all dataset names that the experiments should be run on
-    datasets = ["bigann", 
+    datasets = [
+                "bigann",
+                # "sift-128-euclidean", 
                 # "glove-100-angular",
                  ]
     
@@ -110,5 +112,6 @@ if __name__ == "__main__":
     #         configs_q.append(conf_q_shuff)
     #         configs_q.append(conf_q_noshuff)
     #         configs_q.append(conf_q_gr)
-    # build_multiple_indexes_exp(EXP_NAME, configs_b)
+    build_multiple_indexes_exp(EXP_NAME, configs_b)
     run_multiple_query_exp(EXP_NAME, configs_q)
+    heartbeat_process.terminate()

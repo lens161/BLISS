@@ -310,8 +310,8 @@ def build_index(train, config: Config):
     print(f"K = {config.k}, R = {config.r}")
 
     sample, rest, sample_size, rest_size, train_on_full_dataset = get_sample(train, SIZE, DIMENSION)
-    print(f"rest type: {rest.dtype}")
-    print(f"sample type: {sample.dtype}")
+    # print(f"rest type: {rest.dtype}")
+    # print(f"sample type: {sample.dtype}")
 
     print(f"writing train vectors to memmap")
     save_dataset_as_memmap(sample, rest, config.dataset_name, train_on_full_dataset)
@@ -472,7 +472,7 @@ def run_bliss(config: Config, mode, experiment_name):
 
     inverted_indexes_paths = []
     if mode == 'build':
-        data, _ = read_dataset(config.dataset_name, mode= 'train', size=config.datasize)
+        data = read_dataset(config.dataset_name, mode= 'train', size=config.datasize)
         if metric == "angular":
             norms = np.linalg.norm(data, axis=1, keepdims=True)
             data = data / norms
