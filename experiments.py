@@ -7,6 +7,8 @@ import csv
 import os
 import pandas as pd
 import matplotlib.pyplot as plt # type: ignore
+import datetime
+from multiprocessing import Process
 
 def run_experiment(config: Config, mode = 'query'):
     # TO-DO: 
@@ -65,6 +67,11 @@ def run_multiple_query_exp(experiment_name, configs):
 
     return experiment_name, avg_recall, total_query_time, results
 
+def print_heartbeat():
+    while(True):
+        print(f"Process {os.getpid()} is still active. Timestamp: {datetime.datetime.now.time()}")
+        time.sleep(300)
+
 if __name__ == "__main__":
     configs_q = [] # configs for building the index
     configs_b = [] # configs for querying
@@ -73,14 +80,17 @@ if __name__ == "__main__":
     range_threshold = 2
     k_values = [2]
     m_values = [5, 10, 15, 20]
-    EXP_NAME = "first_run_10M_bigann"
+    EXP_NAME = "first_run_10m_bigann_b8192"
     # add all dataset names that the experiments should be run on
     datasets = ["bigann", 
                 # "glove-100-angular",
                  ]
     
+    heartbeat_process = Process(target=print_heartbeat)
+    heartbeat_process.start()
+
     for dataset in datasets:
-        conf = Config(dataset_name=dataset, batch_size=2048)
+        conf = Config(dataset_name=dataset, batch_size=2048, b=4096)
         configs_b.append(conf)
         for m in m_values:
             conf_q = Config(dataset_name=dataset, batch_size=2048, m=m, b=4096)
