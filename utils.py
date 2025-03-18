@@ -68,7 +68,7 @@ def get_1B_dataset(dataset_name, size):
     elif dataset_name == "deep1b":
         return Deep1BDataset(size)
     else:
-        print("fuck off")
+        print("dataset not supported yet")
 
 def read_dataset(dataset_name, mode = 'train', size = 100):
     if not os.path.exists("data"):
@@ -79,20 +79,17 @@ def read_dataset(dataset_name, mode = 'train', size = 100):
         print(f"loading {dataset_name}...")
         dataset = get_1B_dataset(dataset_name, size)
         dataset.prepare()
-        queries = dataset.get_queries()
-        neighbours, _ = dataset.get_groundtruth()
-        print(f"queries: {queries}")
-        print(f"neigbours: {neighbours}")
-        print(len(neighbours))
+        print(f"dataset size = {dataset.nb_M}")
         if not os.path.exists(mmp_path):
-            fn = dataset.get_dataset_fn()
-            mmap = xbin_mmap(fn, dataset.dtype, maxn=dataset.nb)
+            data = dataset.get_dataset()
+            mmap = np.lib.format.open_memmap(mmp_path, mode='w+', shape=data.shape, dtype=data.dtype)
             print(f"saving {dataset_name} to memmap...")
-            np.save(f"memmaps/memmap_{dataset_name}_{size}.npy", mmap)
-            # return mmap, np.array(queries)
+            mmap[:] = data[:]
         if mode == 'train': 
-            return np.load(mmp_path, 'r'), 0
+            return np.load(mmp_path, mmap_mode='r'), None
         if mode == 'test':
+            queries = dataset.get_queries()
+            neighbours, _ = dataset.get_groundtruth()
             return queries, neighbours
 
     path = os.path.join("data", f"{dataset_name}.hdf5")
@@ -116,7 +113,7 @@ def read_dataset(dataset_name, mode = 'train', size = 100):
         train = f['train']
         train_X = np.array(train)
         print("done reading training data")
-        return train_X, 0
+        return train_X, None
     if mode == 'test':    
         test = f['test']
         neighbours = f['neighbors']
@@ -211,27 +208,27 @@ def log_mem(function_name, mem_usage, filepath):
 #     memmap.flush()
 #     return memmap
 
-def save_dataset_as_memmap(train, rest, dataset_name, train_on_full_dataset):
+def save_dataset_as_memmap(data, dataset_name):
     dir_path = "memmaps/"
     if not os.path.exists(dir_path):
         os.mkdir(dir_path)
     file_path = os.path.join(dir_path, f"memmap_{dataset_name}.npy")
 
-    size_train, dim = np.shape(train)
-    size_rest = 0
-    if not train_on_full_dataset:
-        size_rest, _ = np.shape(rest)
-    size = size_train + size_rest
-    print(f"Total size = {size}")
+    # size_train, dim = np.shape(train)
+    # size_rest = 0
+    # if not train_on_full_dataset:
+    #     size_rest, _ = np.shape(rest)
+    # size = size_train + size_rest
+    # print(f"Total size = {size}")
 
     # combine train and rest if needed
-    if size_rest == 0:
-        combined = train
-    else:
-        combined = np.concatenate((train, rest), axis=0)
+    # if size_rest == 0:
+    # combined = train
+    # else:
+    #     combined = np.concatenate((train, rest), axis=0)
     
-    np.save(file_path, combined)
-    print(f"Dataset saved to {file_path} with shape {combined.shape}")
+    np.save(file_path, data)
+    print(f"Dataset saved to {file_path} with shape {data.shape}")
 
 def get_best_device():
     if torch.cuda.is_available():

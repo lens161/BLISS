@@ -80,13 +80,13 @@ if __name__ == "__main__":
     # range_K = 2
     range_threshold = 2
     k_values = [2]
-    m_values = [15]
-    EXP_NAME = "test_heartbeat_bigann_v2"
+    m_values = [5, 10, 15, 20]
+    EXP_NAME = "bigann_new_indexing"
     # add all dataset names that the experiments should be run on
     datasets = [
-                "bigann",
-                # "sift-128-euclidean", 
+                "bigann", 
                 # "glove-100-angular",
+                # "sift-128-euclidean"
                  ]
     
     heartbeat_process = subprocess.Popen(
@@ -108,31 +108,15 @@ subprocess_print()
     )
 
     try:
-        while True:
-            for dataset in datasets:
-                conf = Config(dataset_name=dataset, batch_size=2048, b=4096)
-                configs_b.append(conf)
-                for m in m_values:
-                    conf_q = Config(dataset_name=dataset, batch_size=2048, m=m, b=4096)
-                    configs_q.append(conf_q)
-            
-            build_multiple_indexes_exp(EXP_NAME, configs_b)
-            run_multiple_query_exp(EXP_NAME, configs_q)
-
+        for dataset in datasets:
+            conf = Config(dataset_name=dataset, batch_size=2048, b=4096)
+            configs_b.append(conf)
+            for m in m_values:
+                conf_q = Config(dataset_name=dataset, batch_size=2048, m=m, b=4096)
+                configs_q.append(conf_q)
+        
+        build_multiple_indexes_exp(EXP_NAME, configs_b)
+        run_multiple_query_exp(EXP_NAME, configs_q)
+        
     finally:
         heartbeat_process.terminate()
-    
-    # for dataset in datasets:
-    #     conf_shuff = Config(dataset_name=dataset, k=2, r=4, batch_size=2048, b= 4096, epochs=5, iterations=4, shuffle=True)
-    #     conf_noshuff = Config(dataset_name=dataset, k=2, r=4, batch_size=2048, b= 4096, epochs=5, iterations=4)
-    #     conf_gr = Config(dataset_name=dataset, k=2, r=4, batch_size=2048, b= 4096, epochs=5, iterations=4, global_reass=True)
-    #     configs_b.append(conf_shuff)
-    #     configs_b.append(conf_noshuff)
-    #     configs_b.append(conf_gr)
-    #     for m in m_values:
-    #         conf_q_shuff = Config(dataset_name=dataset, k=2, r=4, batch_size=2048, b= 4096, epochs=5, iterations=4, m=m, shuffle=True)
-    #         conf_q_noshuff = Config(dataset_name=dataset, k=2, r=4, batch_size=2048, b= 4096, epochs=5, iterations=4, m=m)
-    #         conf_q_gr = Config(dataset_name=dataset, k=2, r=4, batch_size=2048, b= 4096, epochs=5, iterations=4, m=m, global_reass=True)
-    #         configs_q.append(conf_q_shuff)
-    #         configs_q.append(conf_q_noshuff)
-    #         configs_q.append(conf_q_gr)
