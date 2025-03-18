@@ -116,7 +116,7 @@ def read_dataset(dataset_name, mode = 'train', size = 100):
         train = f['train']
         train_X = np.array(train)
         print("done reading training data")
-        return train_X
+        return train_X, 0
     if mode == 'test':    
         test = f['test']
         neighbours = f['neighbors']

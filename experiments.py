@@ -8,7 +8,8 @@ import os
 import pandas as pd
 import matplotlib.pyplot as plt # type: ignore
 import datetime
-from multiprocessing import Process
+import subprocess
+import sys
 
 def run_experiment(config: Config, mode = 'query'):
     # TO-DO: 
@@ -88,15 +89,25 @@ if __name__ == "__main__":
                 # "glove-100-angular",
                  ]
     
-    heartbeat_process = Process(target=print_heartbeat)
-    heartbeat_process.start()
+    heartbeat_process = subprocess.Popen(
+        ['python3', 'subprocess_print.py'],  # Call the script directly
+        stdout=sys.stdout,  # Redirect stdout to the main process stdout
+        stderr=sys.stderr,  # Optionally redirect stderr to the main process stderr
+    )
 
-    for dataset in datasets:
-        conf = Config(dataset_name=dataset, batch_size=2048, b=4096)
-        configs_b.append(conf)
-        for m in m_values:
-            conf_q = Config(dataset_name=dataset, batch_size=2048, m=m, b=4096)
-            configs_q.append(conf_q)
+    try:
+        for dataset in datasets:
+            conf = Config(dataset_name=dataset, batch_size=2048, b=4096)
+            configs_b.append(conf)
+            for m in m_values:
+                conf_q = Config(dataset_name=dataset, batch_size=2048, m=m, b=4096)
+                configs_q.append(conf_q)
+        
+        build_multiple_indexes_exp(EXP_NAME, configs_b)
+        run_multiple_query_exp(EXP_NAME, configs_q)
+    
+    finally:
+        heartbeat_process.terminate()
     
     # for dataset in datasets:
     #     conf_shuff = Config(dataset_name=dataset, k=2, r=4, batch_size=2048, b= 4096, epochs=5, iterations=4, shuffle=True)
@@ -112,6 +123,3 @@ if __name__ == "__main__":
     #         configs_q.append(conf_q_shuff)
     #         configs_q.append(conf_q_noshuff)
     #         configs_q.append(conf_q_gr)
-    build_multiple_indexes_exp(EXP_NAME, configs_b)
-    run_multiple_query_exp(EXP_NAME, configs_q)
-    heartbeat_process.terminate()
