@@ -62,65 +62,33 @@ def get_train_nearest_neighbours_from_file(dataset, amount, sample_size, dataset
         I = read_csv(filename, dtype=int, header=None).to_numpy()
     return I
 
-def get_1B_dataset(dataset_name, size):
+def get_dataset_obj(dataset_name, size):
     if dataset_name == "bigann":
         return BigANNDataset(size)
     elif dataset_name == "deep1b":
         return Deep1BDataset(size)
+    elif dataset_name == "sift-128-euclidean":
+        return Sift_128()
+    elif dataset_name == "glove-100-angular":
+        return Glove_100()
     else:
         print("dataset not supported yet")
 
-def read_dataset(dataset_name, mode = 'train', size = 100):
-    if not os.path.exists("data"):
-        os.mkdir("data")
-
-    if not dataset_name.__contains__("-"): # if one of the billion scale sets
-        mmp_path = f"memmaps/memmap_{dataset_name}_{size}.npy"
-        print(f"loading {dataset_name}...")
-        dataset = get_1B_dataset(dataset_name, size)
-        dataset.prepare()
-        print(f"dataset size = {dataset.nb_M}")
-        if not os.path.exists(mmp_path):
-            data = dataset.get_dataset()
-            mmap = np.lib.format.open_memmap(mmp_path, mode='w+', shape=data.shape, dtype=data.dtype)
-            print(f"saving {dataset_name} to memmap...")
-            mmap[:] = data[:]
-        if mode == 'train': 
-            return np.load(mmp_path, mmap_mode='r'), None
-        if mode == 'test':
-            queries = dataset.get_queries()
-            neighbours, _ = dataset.get_groundtruth()
-            return queries, neighbours
-
-    path = os.path.join("data", f"{dataset_name}.hdf5")
-
-    url = f"https://ann-benchmarks.com/{dataset_name}.hdf5"
-
-    if not os.path.exists(path):
-        try:
-            # Add custom headers to bypass 403 error
-            req = Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-            print(f"downloading dataset {dataset_name}...")
-            with urlopen(req) as response, open(path, 'wb') as out_file:
-                out_file.write(response.read())
-        except:
-            traceback.print_exc()
-            raise Exception(f"dataset: {dataset_name} could not be downloaded")
-
-    print(f"reading file: {path}")
-    f = h5py.File(path)
-    if mode == 'train':
-        train = f['train']
-        train_X = np.array(train)
-        print("done reading training data")
-        return train_X, None
-    if mode == 'test':    
-        test = f['test']
-        neighbours = f['neighbors']
-        test_X = np.array(test)
-        neighbours_X = np.array(neighbours)
-        print("done reading testing data")
-        return test_X, neighbours_X
+# def read_dataset(dataset_name, size = 1):
+#     if not os.path.exists("data"):
+#         os.mkdir("data")
+    
+#     mmp_path = f"memmaps/memmap_{dataset_name}_{size}.npy" if size > 1 else f"memmaps/memmap_{dataset_name}.npy"
+#     print(f"loading {dataset_name}...")
+#     dataset = get_dataset(dataset_name, size)
+#     dataset.prepare()
+#     print(f"dataset size = {dataset.nb_M}")
+#     if not os.path.exists(mmp_path):
+#         data = dataset.get_dataset()
+#         mmap = np.lib.format.open_memmap(mmp_path, mode='w+', shape=data.shape, dtype=data.dtype)
+#         print(f"saving {dataset_name} to memmap...")
+#         mmap[:] = data[:]
+#     return dataset
 
 def get_B(n):
     if n > 0:

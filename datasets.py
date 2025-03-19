@@ -7,6 +7,9 @@ import random
 import sys
 import struct
 import time
+from urllib.request import Request, urlopen
+import traceback
+import h5py
 
 import numpy as np
 from scipy.sparse import csr_matrix
@@ -21,6 +24,20 @@ from dataset_io import (
 
 
 BASEDIR = "data/"
+
+# class Dataset_1M():
+#     def prepare(self):
+#         """download datset file if not there"""
+
+#     def get_dataset(self):
+#         """get the datset (without queries and groundtruths)"""
+
+#     def get_queries(self):
+#         """get queries"""
+#     def get_groundtruths(self):
+#         """get grountruths"""
+#     def get_distance(self):
+#         """get metric"""
 
 
 class Dataset():
@@ -99,7 +116,67 @@ class Dataset():
 # Datasets for the competition
 ##############################################################################
 
+class Dataset_1M_BLISS_Format(Dataset):
 
+    def prepare(self):
+        if not os.path.exists(self.basedir):
+            os.makedirs(self.basedir)
+        
+        path = os.path.join("data", f"{self.dataset_name}.hdf5")
+
+        url = f"https://ann-benchmarks.com/{self.dataset_name}.hdf5"
+
+        if not os.path.exists(path):
+            try:
+                # Add custom headers to bypass 403 error
+                req = Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+                print(f"downloading dataset {self.dataset_name}...")
+                with urlopen(req) as response, open(path, 'wb') as out_file:
+                    out_file.write(response.read())
+            except:
+                traceback.print_exc()
+                raise Exception(f"dataset: {self.dataset_name} could not be downloaded")
+        self.data_path = path
+        
+    def get_dataset(self):
+        f = h5py.File(self.data_path)
+        train = f['train']
+        train_X = np.array(train)
+        return train_X
+    
+    def get_queries(self):
+        f = h5py.File(self.data_path)
+        test = f['test']
+        test_X = np.array(test)
+        return test_X
+    
+    def get_groundtruth(self):
+        f = h5py.File(self.data_path)
+        neighbours = f['neighbors']
+        neighbours_X = np.array(neighbours)
+        return neighbours_X
+    
+    def distance(self):
+        return "euclidean"
+    
+class Sift_128(Dataset_1M_BLISS_Format):
+    def __init__(self):
+        self.dataset_name = "sift-128-euclidean"
+        self.data_path = None
+        self.nb = 1000000
+        self.d = 128
+        self.basedir = BASEDIR
+
+class Glove_100(Dataset_1M_BLISS_Format):
+    def __init__(self):
+        self.dataset_name = "sift-128-euclidean"
+        self.data_path = None
+        self.nb = 1183514
+        self.d = 100
+        self.basedir = BASEDIR
+
+    def get_distance(self):
+        return "angular"
 
 class DatasetCompetitionFormat(Dataset):
     """
@@ -363,7 +440,6 @@ class Deep1BDataset(BillionScaleDatasetCompetitionFormat):
 
     def distance(self):
         return "euclidean"
-
 
 
 class Text2Image1B(BillionScaleDatasetCompetitionFormat):

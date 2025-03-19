@@ -109,13 +109,13 @@ subprocess_print()
 
     try:
         for dataset in datasets:
-            conf = Config(dataset_name=dataset, batch_size=2048, b=4096)
+            conf = Config(dataset_name=dataset, batch_size=2048, b=1024)
             configs_b.append(conf)
             for m in m_values:
-                conf_q = Config(dataset_name=dataset, batch_size=2048, m=m, b=4096)
+                conf_q = Config(dataset_name=dataset, batch_size=2048, m=m, b=1024, r=2, epochs=1, iterations=1)
                 configs_q.append(conf_q)
         
-        build_multiple_indexes_exp(EXP_NAME, configs_b)
+        # build_multiple_indexes_exp(EXP_NAME, configs_b)
         run_multiple_query_exp(EXP_NAME, configs_q)
         
     finally:
