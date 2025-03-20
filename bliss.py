@@ -321,6 +321,7 @@ def build_index(train, config: Config):
         sample_buckets, bucket_sizes = assign_initial_buckets(sample_size, rest_indexes.size, r, config.b)
         # final_bucket_assignments[sample_indexes] = sample_buckets
         print("initial bucket sizes for training sample:")
+        np.set_printoptions(threshold=6, suppress=True)
         print(bucket_sizes)
 
         print("making initial groundtruth labels", flush=True)

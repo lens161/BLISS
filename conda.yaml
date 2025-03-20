@@ -18,3 +18,4 @@ dependencies:
       - torch
       - torchvision
       - torchaudio
+      - conda-forge::axel

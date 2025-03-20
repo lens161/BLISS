@@ -81,12 +81,12 @@ if __name__ == "__main__":
     range_threshold = 2
     k_values = [2]
     m_values = [5, 10, 15, 20]
-    EXP_NAME = "bigann_new_indexing"
+    EXP_NAME = "new_indexing_2"
     # add all dataset names that the experiments should be run on
     datasets = [
-                "bigann", 
+                # "bigann", 
                 # "glove-100-angular",
-                # "sift-128-euclidean"
+                "sift-128-euclidean"
                  ]
     
     heartbeat_process = subprocess.Popen(
