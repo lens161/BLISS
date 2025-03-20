@@ -128,8 +128,6 @@ def reassign_vector_to_bucket(probability_vector, index, bucket_sizes, k, item_i
     best_bucket = indices_of_topk_buckets[np.argmin(candidate_sizes)]
     index[item_index] = best_bucket
     bucket_sizes[best_bucket] +=1  
-    if item_index % 10000 == 0:
-        print(f"best bucket = {best_bucket}")
 
 def global_reassign_buckets(model, dataset, index, neighbours, bucket_sizes, config: Config):
 
