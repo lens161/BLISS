@@ -154,7 +154,7 @@ class Dataset_1M_BLISS_Format(Dataset):
         f = h5py.File(self.data_path)
         neighbours = f['neighbors']
         neighbours_X = np.array(neighbours)
-        return neighbours_X
+        return neighbours_X, None
     
     def distance(self):
         return "euclidean"

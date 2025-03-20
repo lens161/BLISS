@@ -128,6 +128,8 @@ def reassign_vector_to_bucket(probability_vector, index, bucket_sizes, k, item_i
     best_bucket = indices_of_topk_buckets[np.argmin(candidate_sizes)]
     index[item_index] = best_bucket
     bucket_sizes[best_bucket] +=1  
+    if item_index % 10000 == 0:
+        print(f"best bucket = {best_bucket}")
 
 def global_reassign_buckets(model, dataset, index, neighbours, bucket_sizes, config: Config):
 
@@ -246,24 +248,13 @@ def make_ground_truth_labels(B, neighbours, index, sample_size, device):
 
 def map_all_to_buckets(data, k, index, bucket_sizes, map_model):
     data = torch.from_numpy(data).float()
-    data.to("cpu")
+    data = data.to("cpu")
+    bucket_sizes[:] = 0 
 
     for i, vector in enumerate(data):
         scores = map_model(vector)
         probabilities = torch.sigmoid(scores)
-        values, candidates = torch.topk(probabilities, k)
-        smallest_bucket = candidates[0]
-        smallest_bucket_size = bucket_sizes[smallest_bucket]
-
-        for cand in candidates:
-            size = bucket_sizes[cand]
-            if size < smallest_bucket_size:
-                smallest_bucket = cand
-                smallest_bucket_size = size
-        
-        index[i] = smallest_bucket
-        bucket_sizes[smallest_bucket] +=1
-
+        reassign_vector_to_bucket(probabilities, index, bucket_sizes, k, i)
 
 def invert_index(index, B):
     inverted_index = [[] for _ in range(B)]
@@ -337,19 +328,23 @@ def build_index(dataset: Dataset, config: Config):
         # final_bucket_assignments[sample_indexes] = sample_buckets
         model.eval()
         model.to("cpu")
+        train = train.to("cpu")
+        index = None
         if sample_size < train_size:
-            index = np.zeros(dtype=int, shape = SIZE) 
-            bucket_sizes = np.zeros(dtype=int, shape = config.b) 
+            index = np.zeros(SIZE, dtype=int)
+            # bucket_sizes = np.zeros(dtype=int, shape = config.b) 
             if config.datasize == 1000:
                 for batch in dataset.get_dataset_iterator():
-                    map_all_to_buckets(batch, config.k, bucket_sizes, final_bucket_assignments, model, sample_size, DIM, config.b)
+                    map_all_to_buckets(batch, config.k, index, bucket_sizes, model)
             else:
                 map_all_to_buckets(train, config.k, index, bucket_sizes, model)
-        
+        else:
+            index = sample_buckets
         np.set_printoptions(threshold=np.inf, suppress=True)
         print(f"bucket_sizes sum = {np.sum(bucket_sizes)}", flush=True)
         print(bucket_sizes)
-        inverted_index = invert_index(index, config.b)
+        inverted_index = invert_index(index, config.b) 
+        # print(f"inv index = {inverted_index}")
         index_path = save_inverted_index(inverted_index, config.dataset_name, r+1, config.r, config.k, config.b, config.lr, config.shuffle, config.global_reass)
         final_index.append((index_path, model_path))
         end = time.time()
@@ -495,7 +490,7 @@ def run_bliss(config: Config, mode, experiment_name):
         index = (inverted_indexes, q_models)
 
         test = dataset.get_queries()
-        neighbours = dataset.get_groundtruth()
+        neighbours, _ = dataset.get_groundtruth()
 
         if dataset.distance() == "angular":
             norms = np.linalg.norm(test, axis=1, keepdims=True)
