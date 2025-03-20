@@ -13,6 +13,8 @@ import psutil  # type: ignore
 import os
 from functools import partial
 from multiprocessing import Pool
+import logging
+import faiss
 
 class BLISSDataset(Dataset):
     def __init__(self, data, labels, device):
@@ -69,6 +71,7 @@ def train_model(model, dataset, index, sample_size, bucket_sizes, neighbours, r,
         for epoch in range(config.epochs):
             epoch_losses = []
             print(f"training epoch ({i}, {epoch})")
+            logging.info(f"Training epoch ({i}, {epoch})")
             start = time.time()
             for batch_data, batch_labels, _ in train_loader:
                 batch_data = batch_data.to(config.device)
@@ -95,6 +98,7 @@ def train_model(model, dataset, index, sample_size, bucket_sizes, neighbours, r,
     make_loss_plot(config.lr, config.iterations, config.epochs, config.k, config.b, config.experiment_name, all_losses, config.shuffle, config.global_reass)
  
 def reassign_buckets(model, dataset, index, bucket_sizes, sample_size, neighbours, config: Config):
+    logging.info(f"Reassigning vectors to new buckets")
     sample_size, _ = np.shape(dataset.data)
     model.to("cpu")
     model.eval()
@@ -249,6 +253,7 @@ def make_ground_truth_labels(B, neighbours, index, sample_size, device):
 def map_all_to_buckets(rst_vectors, rest_indexes, k, bucket_sizes, index, model_path, training_sample_size, DIMENSION, B):
     rst_vectors = torch.from_numpy(rst_vectors).float()
     print(f"training sample size = {training_sample_size}")
+    logging.info(f"Mapping all train vectors to buckets")
     map_model = BLISS_NN(DIMENSION, B)
     # print("loading model")
     map_model.load_state_dict(torch.load(model_path, weights_only=True))
@@ -284,6 +289,7 @@ def invert_index(index, B):
 def build_index(train, config: Config):
 
     print("bulding index with preserved order...")
+    logging.info(f"Started building index")
     SIZE, DIM = np.shape(train)
 
     sample_size = SIZE if SIZE < 2_000_00 else 1_000_000
@@ -302,6 +308,7 @@ def build_index(train, config: Config):
     save_dataset_as_memmap(train, config.dataset_name)
 
     print("finding neighbours...", flush=True)
+    logging.info(f"Finding ground truths for train vectors")
     neighbours = get_train_nearest_neighbours_from_file(sample, config.nr_neighbours, sample_size, config.dataset_name)
 
     labels = []
@@ -316,9 +323,11 @@ def build_index(train, config: Config):
     memory_usage = process.memory_info().rss / (1024 ** 2)
     log_mem(f"before_building_global={config.global_reass}_shuffle={config.shuffle}", memory_usage, config.memlog_path)
     for r in range(config.r):
+        logging.info(f"Training model {r+1}")
         start = time.time()
 
         sample_buckets, bucket_sizes = assign_initial_buckets(sample_size, rest_indexes.size, r, config.b)
+        logging.info(f"Random starting buckets initialized")
         # final_bucket_assignments[sample_indexes] = sample_buckets
         print("initial bucket sizes for training sample:")
         np.set_printoptions(threshold=6, suppress=True)
@@ -376,6 +385,7 @@ def process_query_chunk(chunk, data, index, m, threshold, requested_amount):
 def query_multiple_parallel(data, index, vectors, neighbours, m, threshold, requested_amount, num_workers):
     chunk_size = 200
     query_tasks = [(vectors[i:i+chunk_size], neighbours[i:i+chunk_size]) for i in range(0, len(vectors), chunk_size)]
+    torch.set_num_threads(1)
 
     print(f"Number of query vectors: {len(vectors)}")
     print(f"Number of neighbour entries: {len(neighbours)}")
@@ -432,7 +442,9 @@ def query(data, index, query_vector, neighbours, m, freq_threshold, requested_am
         model = models[i]
         model.eval()
         index = inverted_indexes[i]
-        probabilities = torch.sigmoid(model(query_vector))
+        probabilities = None
+        with torch.no_grad():
+            probabilities = torch.sigmoid(model(query_vector))
         # print(probabilities)
         _, m_buckets = torch.topk(probabilities, m)
         m_buckets = m_buckets.tolist()
@@ -453,9 +465,7 @@ def query(data, index, query_vector, neighbours, m, freq_threshold, requested_am
         final_neighbours, dist_comps = reorder(data, query_vector, np.array(final_results, dtype=int), requested_amount)
         return final_neighbours, dist_comps, recall_single(final_neighbours, neighbours)
     
-def reorder(data, query_vector, candidates, requested_amount):
-    import faiss 
-    #  TO-DO: get this shit to work....
+def reorder(data, query_vector, candidates, requested_amount): 
     n, d = np.shape(data)
     sp_index = []
     search_space = data[candidates]
@@ -508,6 +518,7 @@ def run_bliss(config: Config, mode, experiment_name):
         inverted_indexes_paths, model_paths = zip(*index)
         return time_per_r, build_time, memory_usage
     elif mode == 'query':
+        logging.info("Loading models for inference")
         b = config.b if config.b !=0 else 1024
         config.b = b
         inverted_indexes_paths = []
@@ -533,6 +544,7 @@ def run_bliss(config: Config, mode, experiment_name):
         index = (inverted_indexes, q_models)
         # print(index)
         
+        logging.info("Reading query vectors and ground truths")
         test, neighbours = read_dataset(dataset_name, mode= 'test', size=config.datasize)
         # dataset = BigANNDataset(config.datasize)
         # dataset.prepare()
@@ -546,6 +558,7 @@ def run_bliss(config: Config, mode, experiment_name):
         print(f"creating tensor array from Test")
         test = torch.from_numpy(test).float()
 
+        logging.info("Starting inference")
         num_workers = 16
         start = time.time()
         # results = query_multiple(data, index, test, neighbours, config.m, config.freq_threshold, config.nr_neighbours)
