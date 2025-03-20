@@ -377,8 +377,8 @@ def query_multiple_parallel(data, index, vectors, neighbours, m, threshold, requ
     chunk_size = 200
     query_tasks = [(vectors[i:i+chunk_size], neighbours[i:i+chunk_size]) for i in range(0, len(vectors), chunk_size)]
 
-    print(f"[{os.getpid()}] Number of query vectors: {len(vectors)}")
-    print(f"[{os.getpid()}] Number of neighbour entries: {len(neighbours)}")
+    print(f"Number of query vectors: {len(vectors)}")
+    print(f"Number of neighbour entries: {len(neighbours)}")
     print(f"Splitting queries into chunks of size {chunk_size} and dividing over {num_workers} processes", flush=True)
 
     try:
