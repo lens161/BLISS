@@ -383,7 +383,7 @@ def query_multiple_parallel(data, index, vectors, neighbours, m, threshold, requ
 
     try:
         process_func = partial(process_query_chunk, data=data, index=index, m=m, threshold=threshold, requested_amount=requested_amount)
-        with Pool(processes=8) as pool:
+        with Pool(processes=num_workers) as pool:
             results = pool.map(process_func, query_tasks)
 
         final_results = []
