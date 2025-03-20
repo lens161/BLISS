@@ -11,6 +11,8 @@ from sklearn.utils import murmurhash3_32 as mmh3
 from utils import *
 import psutil  # type: ignore
 import os
+from functools import partial
+from multiprocessing import Pool
 
 class BLISSDataset(Dataset):
     def __init__(self, data, labels, device):
@@ -366,15 +368,52 @@ def load_model(model_path, dim, b):
     model.eval()
     return model
 
-def query_multiple(data, index, vectors, neighbours, m, threshold, requested_amount):
+def process_query_chunk(chunk, data, index, m, threshold, requested_amount):
+    vectors, neighbours = chunk
+    return query_multiple(data, index, vectors, neighbours, m, threshold, requested_amount, parallel=True)
+
+def query_multiple_parallel(data, index, vectors, neighbours, m, threshold, requested_amount, num_workers):
+    chunk_size = 200
+    query_tasks = [(vectors[i:i+chunk_size], neighbours[i:i+chunk_size]) for i in range(0, len(vectors), chunk_size)]
+
+    print(f"[{os.getpid()}] Number of query vectors: {len(vectors)}")
+    print(f"[{os.getpid()}] Number of neighbour entries: {len(neighbours)}")
+    print(f"Splitting queries into chunks of size {chunk_size} and dividing over {num_workers} processes", flush=True)
+
+    try:
+        process_func = partial(process_query_chunk, data=data, index=index, m=m, threshold=threshold, requested_amount=requested_amount)
+        with Pool(processes=8) as pool:
+            results = pool.map(process_func, query_tasks)
+
+        final_results = []
+        for result in results:
+            final_results.extend(result)
+
+        print("\nQuerying completed.")
+    except KeyboardInterrupt:
+        print(f"\nQuerying process interrupted, exiting...")
+        pool.terminate()
+        pool.join()
+        sys.exit(1)
+    except Exception as e:
+        print(f"\nAn error occurred during querying: {e}")
+        pool.terminate()
+        pool.join()
+        sys.exit(1)
+
+    return final_results
+
+def query_multiple(data, index, vectors, neighbours, m, threshold, requested_amount, parallel=False):
     '''run multiple queries from a set of query vectors i.e. "Test" from the ANN benchmark datsets'''
     size = len(vectors)
-    print("Number of query vectors:", size)
-    print("Number of neighbour entries:", len(neighbours))
+    if not parallel:
+        print(f"Number of query vectors: {size}")
+        print(f"Number of neighbour entries: {len(neighbours)}", flush=True)
     query_times = []
     results = [[] for i in range(len(vectors))]
     for i, vector in enumerate(vectors):
-        print(f"\rquerying {i+1} of {size}", end='', flush=True)
+        sys.stdout.write(f"\r[PID: {os.getpid()}] querying {i+1} of {size}       ")
+        sys.stdout.flush()
         start = time.time()
         anns, dist_comps, recall = query(data, index, vector, neighbours[i], m, threshold, requested_amount)
         end = time.time()
@@ -506,8 +545,10 @@ def run_bliss(config: Config, mode, experiment_name):
         print(f"creating tensor array from Test")
         test = torch.from_numpy(test).float()
 
+        num_workers = 16
         start = time.time()
-        results = query_multiple(data, index, test, neighbours, config.m, config.freq_threshold, config.nr_neighbours)
+        # results = query_multiple(data, index, test, neighbours, config.m, config.freq_threshold, config.nr_neighbours)
+        results = query_multiple_parallel(data, index, test, neighbours, config.m, config.freq_threshold, config.nr_neighbours, num_workers)
         end = time.time()
 
         total_query_time = end - start
