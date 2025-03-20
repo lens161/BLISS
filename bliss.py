@@ -328,7 +328,6 @@ def build_index(dataset: Dataset, config: Config):
         # final_bucket_assignments[sample_indexes] = sample_buckets
         model.eval()
         model.to("cpu")
-        train = train.to("cpu")
         index = None
         if sample_size < train_size:
             index = np.zeros(SIZE, dtype=int)
