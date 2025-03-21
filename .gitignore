@@ -18,6 +18,7 @@ synthetic_data_results/
 *.csv
 *.png
 *.txt
+hpc_archive/
 
 # C extensions
 *.so
