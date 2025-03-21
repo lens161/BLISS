@@ -245,11 +245,13 @@ def make_ground_truth_labels(B, neighbours, index, sample_size, device):
     return labels
 
 def map_all_to_buckets(data, k, index, bucket_sizes, map_model):
-    data = torch.from_numpy(data).float()
-    data = data.to("cpu")
+    data = torch.from_numpy(np.copy(data)).float()
+    # data = data.to("cpu")
     bucket_sizes[:] = 0 
 
     for i, vector in enumerate(data):
+        if i % 1000000 == 0:
+            print(f"no worries i am still alive, reasigning vector {i}", Flush=True)
         scores = map_model(vector)
         probabilities = torch.sigmoid(scores)
         reassign_vector_to_bucket(probabilities, index, bucket_sizes, k, i)
@@ -290,7 +292,7 @@ def build_index(dataset: Dataset, config: Config):
     dataset = BLISSDataset(sample, labels, config.device)
 
     # final assignment arr for entire dataset
-    final_bucket_assignments = np.empty(SIZE, dtype=np.uint32)
+    # final_bucket_assignments = np.empty(SIZE, dtype=np.uint32)
 
     final_index = []
     time_per_r = []

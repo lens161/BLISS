@@ -84,9 +84,9 @@ if __name__ == "__main__":
     EXP_NAME = "bigann_refactored_test"
     # add all dataset names that the experiments should be run on
     datasets = [
-                # "bigann", 
+                "bigann",
                 # "glove-100-angular",
-                "sift-128-euclidean"
+                # "sift-128-euclidean"
                  ]
     
     heartbeat_process = subprocess.Popen(
@@ -110,15 +110,15 @@ subprocess_print()
     try:
         # check that datasize in config is set to correct value. (default = 1)
         for dataset in datasets:
-            conf_4 = Config(dataset_name=dataset, batch_size=2048, b=4096)
-            # conf_8 = Config(dataset_name=dataset, batch_size=2048, b=8192, datasize=10)
+            conf_4 = Config(dataset_name=dataset, batch_size=2048, b=4096, datasize=10)
+            conf_8 = Config(dataset_name=dataset, batch_size=2048, b=8192, datasize=10)
             configs_b.append(conf_4)
-            # configs_b.append(conf_8)
+            configs_b.append(conf_8)
             for m in m_values:
-                conf_q4 = Config(dataset_name=dataset, batch_size=2048, m=m, b=4096)
-                # conf_q8 = Config(dataset_name=dataset, batch_size=2048, m=m, b=8192, datasize=10)
+                conf_q4 = Config(dataset_name=dataset, batch_size=2048, m=m, b=4096, datasize=10)
+                conf_q8 = Config(dataset_name=dataset, batch_size=2048, m=m, b=8192, datasize=10)
                 configs_q.append(conf_q4)
-                # configs_q.append(conf_q8)
+                configs_q.append(conf_q8)
         
         build_multiple_indexes_exp(EXP_NAME, configs_b)
         run_multiple_query_exp(EXP_NAME, configs_q)

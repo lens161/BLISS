@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH --job-name=sift_ref_test     # Job name
+#SBATCH --job-name=bigann_ref_test     # Job name
 #SBATCH --output=outputs/job.%j.out     # Name of output file (%j expands to jobId)
 #SBATCH --cpus-per-task=64              # Schedule 64 cores
 #SBATCH --time=24:00:00                 # Max run time (hh:mm:ss)
