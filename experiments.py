@@ -1,15 +1,9 @@
 from config import Config
 from bliss import run_bliss
-from utils import get_best_device
-import numpy as np
-import time 
-import csv
 import os
 import pandas as pd
 import matplotlib.pyplot as plt # type: ignore
-import datetime
-import subprocess
-import sys
+import logging
 
 def run_experiment(config: Config, mode = 'query'):
     # TO-DO: 
@@ -68,11 +62,6 @@ def run_multiple_query_exp(experiment_name, configs):
 
     return experiment_name, avg_recall, total_query_time, results
 
-def print_heartbeat():
-    while(True):
-        print(f"Process {os.getpid()} is still active. Timestamp: {datetime.datetime.now()}")
-        time.sleep(300)
-
 if __name__ == "__main__":
     configs_q = [] # configs for building the index
     configs_b = [] # configs for querying
@@ -80,8 +69,18 @@ if __name__ == "__main__":
     # range_K = 2
     range_threshold = 2
     k_values = [2]
-    m_values = [5, 10, 15, 20]
-    EXP_NAME = "bigann_refactored_test"
+    m_values = [5]
+    EXP_NAME = "test_batched_map_to_all_buckets"
+
+    if not os.path.exists("logs"):
+        os.mkdir("logs")
+
+    logging.basicConfig(
+        filename=f'logs/{EXP_NAME}.log',               # Specify the log file name
+        level=logging.INFO,               # Set the logging level to INFO
+        format='%(asctime)s - %(levelname)s - %(message)s'  # Define the log message format
+    )
+
     # add all dataset names that the experiments should be run on
     datasets = [
                 "bigann",
@@ -89,39 +88,20 @@ if __name__ == "__main__":
                 # "sift-128-euclidean"
                  ]
     
-    heartbeat_process = subprocess.Popen(
-        ['python3', '-c', '''
-import time
-import datetime
-
-# Function to print the message every 5 minutes
-def subprocess_print():
-    while True:
-        print(f"This process is still running. Timestamp: {datetime.datetime.now()}", flush=True)
-        time.sleep(300)  # Sleep for 5 minutes
-
-# Start the function
-subprocess_print()
-        '''],
-        stdout=sys.stdout,  # Redirect stdout to the main process stdout
-        stderr=sys.stderr,  # Optionally redirect stderr to the main process stderr
-    )
-
-    try:
+    logging.info("[Experiment] Experiments started")
         # check that datasize in config is set to correct value. (default = 1)
-        for dataset in datasets:
-            conf_4 = Config(dataset_name=dataset, batch_size=2048, b=4096, datasize=10)
-            conf_8 = Config(dataset_name=dataset, batch_size=2048, b=8192, datasize=10)
-            configs_b.append(conf_4)
-            configs_b.append(conf_8)
-            for m in m_values:
-                conf_q4 = Config(dataset_name=dataset, batch_size=2048, m=m, b=4096, datasize=10)
-                conf_q8 = Config(dataset_name=dataset, batch_size=2048, m=m, b=8192, datasize=10)
-                configs_q.append(conf_q4)
-                configs_q.append(conf_q8)
-        
-        build_multiple_indexes_exp(EXP_NAME, configs_b)
-        run_multiple_query_exp(EXP_NAME, configs_q)
-        
-    finally:
-        heartbeat_process.terminate()
+    for dataset in datasets:
+        conf_4 = Config(dataset_name=dataset, batch_size=2048, b=4096, datasize=10, epochs=1, iterations=1, r= 2)
+        # conf_8 = Config(dataset_name=dataset, batch_size=2048, b=8192, datasize=10)
+        configs_b.append(conf_4)
+        # configs_b.append(conf_8)
+        for m in m_values:
+            conf_q4 = Config(dataset_name=dataset, batch_size=2048, m=m, b=4096, datasize=10, epochs=1, iterations=1, r = 2)
+            # conf_q8 = Config(dataset_name=dataset, batch_size=2048, m=m, b=8192, datasize=10)
+            configs_q.append(conf_q4)
+            # configs_q.append(conf_q8)
+    
+    logging.info(f"[Experiment] Building indexes")
+    build_multiple_indexes_exp(EXP_NAME, configs_b)
+    logging.info(f"[Experiment] Starting query experiments")
+    run_multiple_query_exp(EXP_NAME, configs_q)

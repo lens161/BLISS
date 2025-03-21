@@ -19,3 +19,8 @@ class Config:
         self.device = get_best_device()
         self.experiment_name = None
         self.memlog_path = None
+    
+    def __str__(self):
+        return (f"Config [dataset_name: {self.dataset_name}, r: {self.r}, k: {self.r}, m: {self.m}, b: {self.b}, lr: {self.lr}, global_reass: {self.global_reass}, shuffle: {self.shuffle}, freq_threshold: {self.freq_threshold}, "
+                f"epochs: {self.epochs}, iterations: {self.iterations}, batch_size: {self.batch_size}, nr_neighbours: {self.nr_neighbours}, datasize: {self.datasize}, device: {self.device}, experiment_name: {self.experiment_name}, "
+                f"memlog_path: {self.memlog_path}]")
