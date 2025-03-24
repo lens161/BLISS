@@ -314,6 +314,7 @@ def build_index(train, config: Config):
     time_per_r = []
     process = psutil.Process(os.getpid())
     memory_usage = process.memory_info().rss / (1024 ** 2)
+    bucket_size_stats = []
     log_mem(f"before_building_global={config.global_reass}_shuffle={config.shuffle}", memory_usage, config.memlog_path)
     for r in range(config.r):
         start = time.time()
@@ -355,12 +356,14 @@ def build_index(train, config: Config):
         final_index.append((index_path, model_path))
         end = time.time()
         time_per_r.append(end - start)
+        bucket_size_stats.append(bucket_sizes)
 
     build_time = time.time() - start
     process = psutil.Process(os.getpid())
     memory_usage = process.memory_info().rss / (1024 ** 2)
+    load_balance = calc_load_balance(bucket_size_stats)
     log_mem(f"after_building_global={config.global_reass}_shuffle={config.shuffle}", memory_usage, config.memlog_path)
-    return final_index, time_per_r, build_time, None
+    return final_index, time_per_r, build_time, None, load_balance
 
 def load_model(model_path, dim, b):
     inf_device = torch.device("cpu")
@@ -504,9 +507,9 @@ def run_bliss(config: Config, mode, experiment_name):
         if metric == "angular":
             norms = np.linalg.norm(data, axis=1, keepdims=True)
             data = data / norms
-        index, time_per_r, build_time, memory_usage = build_index(data, config)
+        index, time_per_r, build_time, memory_usage, load_balance = build_index(data, config)
         inverted_indexes_paths, model_paths = zip(*index)
-        return time_per_r, build_time, memory_usage
+        return time_per_r, build_time, memory_usage, load_balance
     elif mode == 'query':
         b = config.b if config.b !=0 else 1024
         config.b = b

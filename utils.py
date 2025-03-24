@@ -185,6 +185,15 @@ def log_mem(function_name, mem_usage, filepath):
             'memory_usage_mb': mem_usage
         })
 
+def calc_load_balance(bucket_size_stats):
+    load_balance_per_model = []
+    for r in bucket_size_stats:
+        load_balance = 1 / np.std(r)
+        load_balance_per_model.append(load_balance)
+
+    avg_load_balance = np.mean(load_balance_per_model)
+    return avg_load_balance
+
 ## function below is old version of save_dataset_as_memmap in case new one fucks something up
 # def save_dataset_as_memmap(train, rest, dataset_name, train_on_full_dataset):
 #     memmap_name = f"memmap_{dataset_name}"

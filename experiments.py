@@ -24,9 +24,9 @@ def build_multiple_indexes_exp(experiment_name, configs):
         k = config.k
         epochs = config.epochs
         iterations = config.iterations
-        time_per_r, build_time, memory_usage = run_bliss(config, mode=mode, experiment_name=experiment_name)
+        time_per_r, build_time, memory_usage, load_balance = run_bliss(config, mode=mode, experiment_name=experiment_name)
         stats.append({'R':r, 'k':k, 'epochs_per_it':epochs, 'iterations':iterations, 'build_time':build_time, 
-                      'mem':memory_usage, 'shuffle':config.shuffle, 'global_reass': config.global_reass})
+                      'mem':memory_usage, 'load_balance':load_balance, 'shuffle':config.shuffle, 'global_reass': config.global_reass})
         print(time_per_r)
     foldername = f"results/{experiment_name}"
     if not os.path.exists("results"):
