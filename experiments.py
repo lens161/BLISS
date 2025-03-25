@@ -102,6 +102,6 @@ if __name__ == "__main__":
             # configs_q.append(conf_q8)
     
     logging.info(f"[Experiment] Building indexes")
-    build_multiple_indexes_exp(EXP_NAME, configs_b)
+    # build_multiple_indexes_exp(EXP_NAME, configs_b)
     logging.info(f"[Experiment] Starting query experiments")
     run_multiple_query_exp(EXP_NAME, configs_q)

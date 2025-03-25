@@ -3,16 +3,14 @@ from datasets import *
 import torch
 import faiss 
 import os
-import h5py
 import numpy as np
-import traceback
 import math
 import csv
 import pickle
 import matplotlib.pyplot as plt # type: ignore
 from sklearn.model_selection import train_test_split as sklearn_train_test_split
-from urllib.request import Request, urlopen
 from pandas import read_csv
+from bliss_model import BLISS_NN
 
 def get_nearest_neighbours_old(train, amount):
     nbrs = NearestNeighbors(n_neighbors=amount+1, metric="euclidean", algorithm='brute').fit(train)
@@ -35,6 +33,34 @@ def get_nearest_neighbours_faiss_within_dataset(dataset, amount):
     _, I = nbrs.search(dataset, amount+1)
     I = I[:, 1:]
     return I
+
+def load_model(model_path, dim, b):
+    inf_device = torch.device("cpu")
+    model = BLISS_NN(dim, b)
+    model.load_state_dict(torch.load(model_path, weights_only=True, map_location=inf_device))
+    model.eval()
+    return model
+
+def make_ground_truth_labels(B, neighbours, index, sample_size, device):
+
+    labels = np.zeros((sample_size, B), dtype=bool)
+
+    for i in range(sample_size):
+        for neighbour in neighbours[i]:
+            bucket = index[neighbour]
+            labels[i, bucket] = True
+    if device != torch.device("cpu"):
+        labels = torch.from_numpy(labels).float()
+    return labels
+
+def reassign_vector_to_bucket(probability_vector, index, bucket_sizes, k, item_index):
+    value, indices_of_topk_buckets = torch.topk(probability_vector, k)
+    # get sizes of candidate buckets
+    candidate_sizes = bucket_sizes[indices_of_topk_buckets]
+    # get bucket at index of smallest bucket from bucket_sizes
+    best_bucket = indices_of_topk_buckets[np.argmin(candidate_sizes)]
+    index[item_index] = best_bucket
+    bucket_sizes[best_bucket] +=1  
 
 def get_nearest_neighbours_faiss_in_different_dataset(dataset, queries, amount):
     '''
@@ -73,22 +99,6 @@ def get_dataset_obj(dataset_name, size):
         return Glove_100()
     else:
         print("dataset not supported yet")
-
-# def read_dataset(dataset_name, size = 1):
-#     if not os.path.exists("data"):
-#         os.mkdir("data")
-    
-#     mmp_path = f"memmaps/memmap_{dataset_name}_{size}.npy" if size > 1 else f"memmaps/memmap_{dataset_name}.npy"
-#     print(f"loading {dataset_name}...")
-#     dataset = get_dataset(dataset_name, size)
-#     dataset.prepare()
-#     print(f"dataset size = {dataset.nb_M}")
-#     if not os.path.exists(mmp_path):
-#         data = dataset.get_dataset()
-#         mmap = np.lib.format.open_memmap(mmp_path, mode='w+', shape=data.shape, dtype=data.dtype)
-#         print(f"saving {dataset_name} to memmap...")
-#         mmap[:] = data[:]
-#     return dataset
 
 def get_B(n):
     if n > 0:
@@ -162,48 +172,12 @@ def calc_load_balance(bucket_size_stats):
     avg_load_balance = np.mean(load_balance_per_model)
     return avg_load_balance
 
-## function below is old version of save_dataset_as_memmap in case new one fucks something up
-# def save_dataset_as_memmap(train, rest, dataset_name, train_on_full_dataset):
-#     memmap_name = f"memmap_{dataset_name}"
-#     memmap_path = f"memmaps/{memmap_name}.npy"
-#     if not os.path.exists("memmaps/"):
-#         os.mkdir("memmaps")
-#     size_train, dim = np.shape(train)
-#     size_rest = 0
-#     if not train_on_full_dataset:
-#         size_rest, _ = np.shape(rest)
-#     size = size_rest + size_train
-#     print(f"size = {size}")
- 
-#     memmap = np.memmap(memmap_path, dtype=float, mode='w+', shape=(size, dim))
-#     if size_rest == 0:
-#         memmap[:] = train[:]
-#     else:
-#         all = np.concatenate((train, rest), axis=0)
-#         memmap[:] = all[:]
-#     # np.append(memmap, rest)
-#     memmap.flush()
-#     return memmap
-
 def save_dataset_as_memmap(data, dataset_name):
     dir_path = "memmaps/"
     if not os.path.exists(dir_path):
         os.mkdir(dir_path)
     file_path = os.path.join(dir_path, f"memmap_{dataset_name}.npy")
 
-    # size_train, dim = np.shape(train)
-    # size_rest = 0
-    # if not train_on_full_dataset:
-    #     size_rest, _ = np.shape(rest)
-    # size = size_train + size_rest
-    # print(f"Total size = {size}")
-
-    # combine train and rest if needed
-    # if size_rest == 0:
-    # combined = train
-    # else:
-    #     combined = np.concatenate((train, rest), axis=0)
-    
     np.save(file_path, data)
     print(f"Dataset saved to {file_path} with shape {data.shape}")
 
@@ -212,7 +186,7 @@ def get_best_device():
         # covers both NVIDIA CUDA and AMD ROCm
         return torch.device("cuda")
     elif torch.backends.mps.is_available():
-        # apple silicon mps
+        # covers apple silicon mps
         return torch.device("mps") 
     else:
         return torch.device("cpu")

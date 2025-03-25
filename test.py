@@ -5,6 +5,10 @@ import unittest
 from sklearn.model_selection import train_test_split as sklearn_train_test_split
 from utils import *
 from bliss import *
+from query import *
+from bliss_model import *
+from datasets import *
+from train import*
 
 def generate_random_array(size: int, dimensions: int, centers: int):
     '''
@@ -30,7 +34,7 @@ def train_test_split(X, test_size):
     return sklearn_train_test_split(X, test_size=test_size, random_state=1)
 
 class TestTrainMethods(unittest.TestCase):
-
+    
     mnist_train, mnist_test, mnist_nbrs = read_dataset("mnist-784-euclidean")
 
     def test_get_B(self):
@@ -141,6 +145,7 @@ class TestTrainMethods(unittest.TestCase):
         data_small = np.array([[1], [5], [88], [100], [125], [130], [132], [150], [273], [500]])
         SIZE_small = 10
         DIMENSION_small = 1
+
         sample_small, rest_small, sample_small_size, rest_small_size, train_bool_small = get_sample(data_small, SIZE_small, DIMENSION_small)
         self.assertEqual(np.shape(sample_small)[0], SIZE_small)
         self.assertEqual(sample_small_size, SIZE_small)

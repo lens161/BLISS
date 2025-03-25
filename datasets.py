@@ -1261,7 +1261,7 @@ class OpenAIEmbedding1M(DatasetCompetitionFormat):
 
     def prepare(self, skip_data=False):
         from datasets import load_dataset
-        import tqdm
+        import tqdm # type: ignore
         import numpy as np
         import faiss
 
