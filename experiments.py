@@ -70,7 +70,7 @@ if __name__ == "__main__":
     range_threshold = 2
     k_values = [2]
     m_values = [5]
-    EXP_NAME = "test_batched_map_to_all_buckets"
+    EXP_NAME = "does_glove_still_glove?"
 
     if not os.path.exists("logs"):
         os.mkdir("logs")
@@ -83,20 +83,20 @@ if __name__ == "__main__":
 
     # add all dataset names that the experiments should be run on
     datasets = [
-                "bigann",
-                # "glove-100-angular",
+                # "bigann",
+                "glove-100-angular",
                 # "sift-128-euclidean"
                  ]
     
     logging.info("[Experiment] Experiments started")
         # check that datasize in config is set to correct value. (default = 1)
     for dataset in datasets:
-        conf_4 = Config(dataset_name=dataset, batch_size=2048, b=4096, datasize=10, epochs=1, iterations=1, r= 2)
+        conf_4 = Config(dataset_name=dataset, batch_size=2048, b= 4096)
         # conf_8 = Config(dataset_name=dataset, batch_size=2048, b=8192, datasize=10)
         configs_b.append(conf_4)
         # configs_b.append(conf_8)
         for m in m_values:
-            conf_q4 = Config(dataset_name=dataset, batch_size=2048, m=m, b=4096, datasize=10, epochs=1, iterations=1, r = 2)
+            conf_q4 = Config(dataset_name=dataset, batch_size=2048, m=m, b=4096)
             # conf_q8 = Config(dataset_name=dataset, batch_size=2048, m=m, b=8192, datasize=10)
             configs_q.append(conf_q4)
             # configs_q.append(conf_q8)

@@ -263,7 +263,7 @@ def map_all_to_buckets_unbatched(data, k, index, bucket_sizes, map_model):
         probabilities = torch.sigmoid(scores)
         reassign_vector_to_bucket(probabilities, index, bucket_sizes, k, i)
 
-def map_all_to_buckets(map_loader, k, index, bucket_sizes, map_model):
+def map_all_to_buckets(map_loader, k, index, bucket_sizes, map_model, start_idx):
     # TO-DO: idx is resetting to 0 with every new batch from the 
     # data = torch.from_numpy(np.copy(data)).float()
     logging.info(f"Mapping all train vectors to buckets")
@@ -273,6 +273,7 @@ def map_all_to_buckets(map_loader, k, index, bucket_sizes, map_model):
             probabilities = torch.sigmoid(scores)
 
             for probability_vector, idx in zip(probabilities, batch_indices):
+                idx = idx + (start_idx) * 1_000_000
                 if idx % 1000000 == 0:
                     print(f"no worries i am still alive, reasigning vector {idx}", flush=True)
                 reassign_vector_to_bucket(probability_vector, index, bucket_sizes, k, idx)
@@ -284,27 +285,50 @@ def invert_index(index, B):
     return inverted_index
 
 def build_index(dataset: Dataset, config: Config):
-    train = dataset.get_dataset()
-    if dataset.distance() == "angular":
-        norms = np.linalg.norm(data, axis=1, keepdims=True)
-        data = data / norms
         
     print("bulding index with preserved order...")
     logging.info(f"Started building index")
     SIZE = dataset.nb
     DIM = dataset.d
 
-    sample_size = SIZE if SIZE < 2_000_00 else 1_000_000
+    sample_size = SIZE if SIZE < 2_000_000 else 1_000_000
+    print(f"sample size after setting it = {sample_size}")
+
+    memmap_path = f"memmaps/{config.dataset_name}_{config.datasize}.npy"
+    mmp_shape = (SIZE, DIM)
+    print(f"mmp shape = {mmp_shape}")
+    mmp = None
+    if not os.path.exists(memmap_path):
+        mmp = np.memmap(memmap_path, mode ="w+", shape=mmp_shape)
+        index = 0
+        if SIZE >= 10_000_000:
+            for batch in dataset.get_dataset_iterator(1_000_000):
+                process = psutil.Process(os.getpid())
+                memory_usage = process.memory_info().rss / (1024 ** 2)
+                log_mem(f"while loading for memmap batch: ", memory_usage, config.memlog_path)
+                print(f"mem usage while loading batch: {memory_usage}")
+                batch_size = len(batch)
+                mmp[index: index + batch_size] = batch
+                del batch
+                index += batch_size
+        else:
+            data = dataset.get_dataset()[:]
+            if dataset.distance() == "angular":
+                norms = np.linalg.norm(data, axis=1, keepdims=True)
+                data= data / norms
+            mmp[:] = data
+        mmp.flush()
     
-    random_order = np.arange(SIZE)
-    np.random.seed(42)
-    np.random.shuffle(random_order)
-    sample_indexes = np.sort(random_order[:sample_size])
-    # rest_indexes = np.sort(random_order[sample_size:])
-
-    sample = train[sample_indexes, :]
-    # rest = train[rest_indexes, :] if rest_indexes.size > 0 else None
-
+    sample = np.zeros(shape=(sample_size, DIM))
+    mmp = np.memmap(memmap_path, mode = 'r', shape = mmp_shape)
+    if sample_size!=SIZE:
+        random_order = np.arange(SIZE)
+        np.random.seed(42)
+        np.random.shuffle(random_order)
+        sample_indexes = np.sort(random_order[:sample_size])
+        sample[:] = mmp[sample_indexes, :]
+    else:
+        sample[:] = mmp
     print(f"sample size = {len(sample)}")
 
     print("finding neighbours...", flush=True)
@@ -345,32 +369,30 @@ def build_index(dataset: Dataset, config: Config):
             torch.mps.manual_seed(r)
         model = BLISS_NN(DIM, config.b)
         print(f"training model {r+1}")
-        train_size = len(train)
-        train_model(model, dataset, sample_buckets, sample_size, bucket_sizes, neighbours, r, train_size, config)
+        train_model(model, dataset, sample_buckets, sample_size, bucket_sizes, neighbours, r, SIZE, config)
         model_path = save_model(model, config.dataset_name, r+1, config.r, config.k, config.b, config.lr, config.shuffle, config.global_reass)
         print(f"model {r+1} saved to {model_path}.")
 
         model.eval()
         model.to("cpu")
         index = None
-        if sample_size < train_size:
-            # OLD VERSION (not batched)
-            if config.datasize == 1000:
-                for batch in dataset.get_dataset_iterator():
-                    map_all_to_buckets_unbatched(batch, config.k, index, bucket_sizes, model)
-            else:
-                map_all_to_buckets_unbatched(train, config.k, index, bucket_sizes, model)
+        if sample_size < SIZE:
+            # # OLD VERSION (not batched)
+            # if config.datasize == 1000:
+            #     for batch in dataset.get_dataset_iterator():
+            #         map_all_to_buckets_unbatched(batch, config.k, index, bucket_sizes, model)
+            # else:
+                # map_all_to_buckets_unbatched(train, config.k, index, bucket_sizes, model)
 
-            # # NEW VERSION (batched) TO-DO: idx resets to 0 with every new bath -> fix this 
-            # bucket_sizes[:] = 0 
-            # index = np.zeros(SIZE, dtype=int)
-            # placeholder = np.zeros(1)
-            # full_data = get_dataset_obj(config.dataset_name, config.datasize)
-            # data_batched = BLISSDataset(None, None, device = torch.device("cpu"), mode='map')
-            # map_loader = DataLoader(data_batched, batch_size=config.batch_size, shuffle=False, num_workers=8)
-            # for batch in full_data.get_dataset_iterator(bs=1_000_000):
-            #     data_batched.data = batch
-            #     map_all_to_buckets(map_loader, config.k, index, bucket_sizes, model)
+            # NEW VERSION (batched) TO-DO: idx resets to 0 with every new bath -> fix this 
+            bucket_sizes[:] = 0 
+            index = np.zeros(SIZE, dtype=int)
+            full_data = get_dataset_obj(config.dataset_name, config.datasize)
+            data_batched = BLISSDataset(None, None, device = torch.device("cpu"), mode='map')
+            map_loader = DataLoader(data_batched, batch_size=config.batch_size, shuffle=False, num_workers=8)
+            for i, batch in enumerate(full_data.get_dataset_iterator(bs=1_000_000)):
+                data_batched.data = batch
+                map_all_to_buckets(map_loader, config.k, index, bucket_sizes, model, i)
         else:
             index = sample_buckets
         np.set_printoptions(threshold=np.inf, suppress=True)
@@ -388,6 +410,7 @@ def build_index(dataset: Dataset, config: Config):
     memory_usage = process.memory_info().rss / (1024 ** 2)
     log_mem(f"after_building_global={config.global_reass}_shuffle={config.shuffle}", memory_usage, config.memlog_path)
     return final_index, time_per_r, build_time, None
+
 
 def load_model(model_path, dim, b):
     inf_device = torch.device("cpu")
@@ -484,14 +507,14 @@ def query(data, index, query_vector, neighbours, m, freq_threshold, requested_am
         return final_neighbours, dist_comps, recall_single(final_neighbours, neighbours)
     
 def reorder(data, query_vector, candidates, requested_amount): 
-    n, d = np.shape(data)
+    size, DIM = np.shape(data)
     sp_index = []
     search_space = data[candidates]
     dist_comps = len(search_space)
     for i in range(len(search_space)):
         sp_index.append(candidates[i])
     # print(f"search_space = {search_space}")
-    index = faiss.IndexFlatL2(d)
+    index = faiss.IndexFlatL2(DIM)
     index.add(search_space)
     query_vector = query_vector.reshape(1, -1)
     (dist, neighbours) = index.search(query_vector, requested_amount)
@@ -526,6 +549,8 @@ def run_bliss(config: Config, mode, experiment_name):
 
     inverted_indexes_paths = []
     dataset = get_dataset_obj(dataset_name, config.datasize)
+    SIZE = dataset.nb
+    DIM = dataset.d
     dataset.prepare()
     if mode == 'build':
         index, time_per_r, build_time, memory_usage = build_index(dataset, config)
@@ -549,17 +574,12 @@ def run_bliss(config: Config, mode, experiment_name):
             with open(path, 'rb') as f:
                 inverted_indexes.append(pickle.load(f))
         
-        # memmap_path = f"memmaps/memmap_{dataset_name}.npy"
-        # data = np.load(memmap_path, mmap_mode='r')
+        memmap_path = f"memmaps/{dataset_name}_{config.datasize}.npy"
+        data = np.memmap(memmap_path, mode='r', shape=(SIZE, DIM)) if SIZE >10_000_000 else np.memmap(memmap_path,shape=(SIZE, DIM), mode='r')[:]
 
-        # _, dim = np.shape(data)
-
-        dim = dataset.d
-
-        data = dataset.get_dataset()
-
-        q_models = [load_model(model_path, dim, b) for model_path in model_paths]
+        q_models = [load_model(model_path, DIM, b) for model_path in model_paths]
         index = (inverted_indexes, q_models)
+
 
         logging.info("Reading query vectors and ground truths")
         test = dataset.get_queries()
@@ -573,7 +593,7 @@ def run_bliss(config: Config, mode, experiment_name):
         test = torch.from_numpy(test).float()
 
         logging.info("Starting inference")
-        num_workers = 16
+        num_workers = 8
         start = time.time()
         # results = query_multiple(data, index, test, neighbours, config.m, config.freq_threshold, config.nr_neighbours)
         results = query_multiple_parallel(data, index, test, neighbours, config.m, config.freq_threshold, config.nr_neighbours, num_workers)

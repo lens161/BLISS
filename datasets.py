@@ -169,7 +169,7 @@ class Sift_128(Dataset_1M_BLISS_Format):
 
 class Glove_100(Dataset_1M_BLISS_Format):
     def __init__(self):
-        self.dataset_name = "sift-128-euclidean"
+        self.dataset_name = "glove-100-angular"
         self.data_path = None
         self.nb = 1183514
         self.d = 100
