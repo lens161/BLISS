@@ -69,8 +69,11 @@ if __name__ == "__main__":
     # range_K = 2
     range_threshold = 2
     k_values = [2]
-    m_values = [5, 10, 15, 20]
-    EXP_NAME = "test_parallel_querying"
+    m_values = [5]
+    EXP_NAME = "does_glove_still_glove?"
+
+    if not os.path.exists("logs"):
+        os.mkdir("logs")
 
     logging.basicConfig(
         filename=f'logs/{EXP_NAME}.log',               # Specify the log file name
@@ -78,24 +81,25 @@ if __name__ == "__main__":
         format='%(asctime)s - %(levelname)s - %(message)s'  # Define the log message format
     )
 
-    if not os.path.exists("logs"):
-        os.mkdir("logs")
-
     # add all dataset names that the experiments should be run on
     datasets = [
-                # "bigann", 
-                # "glove-100-angular",
-                "sift-128-euclidean"
+                # "bigann",
+                "glove-100-angular",
+                # "sift-128-euclidean"
                  ]
     
-
     logging.info("[Experiment] Experiments started")
+        # check that datasize in config is set to correct value. (default = 1)
     for dataset in datasets:
-        conf = Config(dataset_name=dataset, batch_size=2048, b=4096)
-        configs_b.append(conf)
+        conf_4 = Config(dataset_name=dataset, batch_size=2048, b= 4096)
+        # conf_8 = Config(dataset_name=dataset, batch_size=2048, b=8192, datasize=10)
+        configs_b.append(conf_4)
+        # configs_b.append(conf_8)
         for m in m_values:
-            conf_q = Config(dataset_name=dataset, batch_size=2048, m=m, b=4096)
-            configs_q.append(conf_q)
+            conf_q4 = Config(dataset_name=dataset, batch_size=2048, m=m, b=4096)
+            # conf_q8 = Config(dataset_name=dataset, batch_size=2048, m=m, b=8192, datasize=10)
+            configs_q.append(conf_q4)
+            # configs_q.append(conf_q8)
     
     logging.info(f"[Experiment] Building indexes")
     build_multiple_indexes_exp(EXP_NAME, configs_b)
