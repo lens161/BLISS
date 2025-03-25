@@ -175,7 +175,7 @@ class Glove_100(Dataset_1M_BLISS_Format):
         self.d = 100
         self.basedir = BASEDIR
 
-    def get_distance(self):
+    def distance(self):
         return "angular"
 
 class DatasetCompetitionFormat(Dataset):

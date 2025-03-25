@@ -299,7 +299,7 @@ def build_index(dataset: Dataset, config: Config):
     print(f"mmp shape = {mmp_shape}")
     mmp = None
     if not os.path.exists(memmap_path):
-        mmp = np.memmap(memmap_path, mode ="w+", shape=mmp_shape)
+        mmp = np.memmap(memmap_path, mode ="w+", shape=mmp_shape, dtype=np.float32)
         index = 0
         if SIZE >= 10_000_000:
             for batch in dataset.get_dataset_iterator(1_000_000):
@@ -320,7 +320,7 @@ def build_index(dataset: Dataset, config: Config):
         mmp.flush()
     
     sample = np.zeros(shape=(sample_size, DIM))
-    mmp = np.memmap(memmap_path, mode = 'r', shape = mmp_shape)
+    mmp = np.memmap(memmap_path, mode = 'r', shape = mmp_shape, dtype=np.float32)
     if sample_size!=SIZE:
         random_order = np.arange(SIZE)
         np.random.seed(42)
@@ -578,7 +578,7 @@ def run_bliss(config: Config, mode, experiment_name):
                 inverted_indexes.append(pickle.load(f))
         
         memmap_path = f"memmaps/{dataset_name}_{config.datasize}.npy"
-        data = np.memmap(memmap_path, mode='r', shape=(SIZE, DIM)) if SIZE >10_000_000 else np.memmap(memmap_path,shape=(SIZE, DIM), mode='r')[:]
+        data = np.memmap(memmap_path, mode='r', shape=(SIZE, DIM), dtype=np.float32) if SIZE >10_000_000 else np.memmap(memmap_path,shape=(SIZE, DIM), mode='r', dtype=np.float32)[:]
 
         q_models = [load_model(model_path, DIM, b) for model_path in model_paths]
         index = (inverted_indexes, q_models)
