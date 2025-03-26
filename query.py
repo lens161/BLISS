@@ -2,34 +2,25 @@ import numpy as np
 import torch
 from functools import partial
 from multiprocessing import Pool
-import faiss
 import sys
 import time
 import os
+from utils import get_nearest_neighbours_in_different_dataset
 
 def query(data, index, query_vector, neighbours, m, freq_threshold, requested_amount):
-    '''query the index for a single vector'''
+    '''
+    Query the index for a single vector. Get the candidate set of vectors predicted by each of the R models.
+    Then, filter the candidate set based on the frequency threshold.
+    If the number of candidates exceeds the requested amount, reorder using true distance computations.
+    Then return the remaining set of candidates.
+    '''
     inverted_indexes, models = index
     candidates = {}
     for i in range(len(models)):
         model = models[i]
         model.eval()
         index = inverted_indexes[i]
-        probabilities = None
-        with torch.no_grad():
-            probabilities = torch.sigmoid(model(query_vector))
-        # print(probabilities)
-        _, m_buckets = torch.topk(probabilities, m)
-        m_buckets = m_buckets.tolist()
-        seen = set()
-        for bucket in m_buckets:
-            for vector in index[bucket]:
-                seen.add(vector)
-        for vector in seen:
-            f = 0
-            if candidates.__contains__(vector):
-                f = candidates.get(vector)
-            candidates.update({vector: f+1}) 
+        get_candidates_from_model(model, index, candidates, query_vector, m) 
     final_results = [key for key, value in candidates.items() if value >= freq_threshold]
     # print (f"final results = {len(final_results)}")
     if len(final_results) <= requested_amount:
@@ -37,13 +28,39 @@ def query(data, index, query_vector, neighbours, m, freq_threshold, requested_am
     else:
         final_neighbours, dist_comps = reorder(data, query_vector, np.array(final_results, dtype=int), requested_amount)
         return final_neighbours, dist_comps, recall_single(final_neighbours, neighbours)
-    
+
+def get_candidates_from_model(model, index, candidates, query_vector, m):
+    '''
+    For a given model, do a forward pass for query_vector to get the top m buckets for this query. Update the candidate set with all vectors found in those buckets.
+    '''
+    probabilities = None
+    with torch.no_grad():
+        probabilities = torch.sigmoid(model(query_vector))
+    # print(probabilities)
+    _, m_buckets = torch.topk(probabilities, m)
+    m_buckets = m_buckets.tolist()
+    seen = set()
+    for bucket in m_buckets:
+        for vector in index[bucket]:
+            seen.add(vector)
+    for vector in seen:
+        f = 0
+        if candidates.__contains__(vector):
+            f = candidates.get(vector)
+        candidates.update({vector: f+1})
 
 def process_query_chunk(chunk, data, index, m, threshold, requested_amount):
+    '''
+    Helper function to unpack vectors and neighbours from chunk, as partial application can only take one new argument.
+    '''
     vectors, neighbours = chunk
     return query_multiple(data, index, vectors, neighbours, m, threshold, requested_amount, parallel=True)
 
 def query_multiple_parallel(data, index, vectors, neighbours, m, threshold, requested_amount, num_workers):
+    '''
+    Query in parallel. Tasks of chunk_size are created and a process pool is used to process tasks until all tasks have been completed.
+    Each task is sent to query_multiple to be processed as if it was a single-threaded task.
+    '''
     chunk_size = 200
     query_tasks = [(vectors[i:i+chunk_size], neighbours[i:i+chunk_size]) for i in range(0, len(vectors), chunk_size)]
     torch.set_num_threads(1)
@@ -76,7 +93,9 @@ def query_multiple_parallel(data, index, vectors, neighbours, m, threshold, requ
     return final_results
 
 def query_multiple(data, index, vectors, neighbours, m, threshold, requested_amount, parallel=False):
-    '''run multiple queries from a set of query vectors i.e. "Test" from the ANN benchmark datsets'''
+    '''
+    Run multiple queries from a set of query vectors i.e. "Test" from the ANN benchmark datsets.
+    '''
     size = len(vectors)
     if not parallel:
         print(f"Number of query vectors: {size}")
@@ -95,18 +114,18 @@ def query_multiple(data, index, vectors, neighbours, m, threshold, requested_amo
     print("\r")
     return results
     
-def reorder(data, query_vector, candidates, requested_amount): 
-    size, DIM = np.shape(data)
+def reorder(data, query_vector, candidates, requested_amount):
+    '''
+    Do true distance calculations on the candidate set of vectors and return the top 'requested_amount' candidates.
+    ''' 
     sp_index = []
     search_space = data[candidates]
     dist_comps = len(search_space)
     for i in range(len(search_space)):
         sp_index.append(candidates[i])
     # print(f"search_space = {search_space}")
-    index = faiss.IndexFlatL2(DIM)
-    index.add(search_space)
     query_vector = query_vector.reshape(1, -1)
-    (dist, neighbours) = index.search(query_vector, requested_amount)
+    neighbours = get_nearest_neighbours_in_different_dataset(search_space, query_vector, requested_amount)
     neighbours = neighbours[0].tolist()
     final_neighbours = []
     for i in neighbours:
@@ -114,12 +133,16 @@ def reorder(data, query_vector, candidates, requested_amount):
     return final_neighbours, dist_comps
 
 def recall(results, neighbours):
+    '''
+    Calculate mean recall for a set of queries.
+    '''
     recalls = []
     for ann, nn in zip(results, neighbours):
-        # get size of intersection of anns and nns to find the amount of correct anns
-        correct = len(set(ann) & set(nn))
-        recalls.append(correct/len(nn))
+        recalls.append(recall_single(ann, nn))
     return np.mean(recalls)
 
 def recall_single(results, neighbours):
+    '''
+    Calculate recall for an individual query.
+    '''
     return len(set(results) & set(neighbours))/len(neighbours)

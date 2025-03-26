@@ -4,7 +4,8 @@ import time
 import torch
 from torch.utils.data import DataLoader
 from sklearn.utils import murmurhash3_32 as mmh3
-from utils import *
+from utils import Dataset, log_mem, get_train_nearest_neighbours_from_file, save_model, get_dataset_obj, save_inverted_index, calc_load_balance, reassign_vector_to_bucket, load_model
+import pickle
 import psutil  # type: ignore
 import os
 import logging
@@ -187,9 +188,8 @@ def invert_index(index, B):
 def run_bliss(config: Config, mode, experiment_name):
 
     config.experiment_name = experiment_name
-    dataset_name = config.dataset_name
     print(f"Using device: {config.device}")
-    print(dataset_name)
+    print(config.dataset_name)
 
     if not os.path.exists(f"results/{experiment_name}/"):
         os.mkdir(f"results/{experiment_name}/")
@@ -197,7 +197,7 @@ def run_bliss(config: Config, mode, experiment_name):
     config.memlog_path = MEMLOG_PATH
 
     inverted_indexes_paths = []
-    dataset = get_dataset_obj(dataset_name, config.datasize)
+    dataset = get_dataset_obj(config.dataset_name, config.datasize)
     SIZE = dataset.nb
     DIM = dataset.d
     dataset.prepare()
@@ -211,10 +211,10 @@ def run_bliss(config: Config, mode, experiment_name):
         config.b = b
         inverted_indexes_paths = []
         for i in range (config.r):
-            inverted_indexes_paths.append(f"models/{dataset_name}_r{config.r}_k{config.k}_b{config.b}_lr{config.lr}_shf={config.shuffle}_gr={config.global_reass}/index_model{i+1}_{dataset_name}_r{i+1}_k{config.k}_b{config.b}_lr{config.lr}.pkl")
+            inverted_indexes_paths.append(f"models/{config.dataset_name}_r{config.r}_k{config.k}_b{config.b}_lr{config.lr}_shf={config.shuffle}_gr={config.global_reass}/index_model{i+1}_{config.dataset_name}_r{i+1}_k{config.k}_b{config.b}_lr{config.lr}.pkl")
         model_paths = []
         for i in range(config.r):
-            model_paths.append(f"models/{dataset_name}_r{config.r}_k{config.k}_b{config.b}_lr{config.lr}_shf={config.shuffle}_gr={config.global_reass}/model_{dataset_name}_r{i+1}_k{config.k}_b{config.b}_lr{config.lr}.pt")
+            model_paths.append(f"models/{config.dataset_name}_r{config.r}_k{config.k}_b{config.b}_lr{config.lr}_shf={config.shuffle}_gr={config.global_reass}/model_{config.dataset_name}_r{i+1}_k{config.k}_b{config.b}_lr{config.lr}.pt")
 
         print(model_paths)
         print(inverted_indexes_paths)
@@ -223,7 +223,7 @@ def run_bliss(config: Config, mode, experiment_name):
             with open(path, 'rb') as f:
                 inverted_indexes.append(pickle.load(f))
         
-        memmap_path = f"memmaps/{dataset_name}_{config.datasize}.npy"
+        memmap_path = f"memmaps/{config.dataset_name}_{config.datasize}.npy"
         data = np.memmap(memmap_path, mode='r', shape=(SIZE, DIM), dtype=np.float32) if SIZE >10_000_000 else np.memmap(memmap_path,shape=(SIZE, DIM), mode='r', dtype=np.float32)[:]
 
         q_models = [load_model(model_path, DIM, b) for model_path in model_paths]
