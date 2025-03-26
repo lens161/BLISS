@@ -61,7 +61,7 @@ def build_index(dataset: Dataset, config: Config):
 
     print("finding neighbours...", flush=True)
     logging.info(f"Finding ground truths for train vectors")
-    neighbours = get_train_nearest_neighbours_from_file(sample, config.nr_neighbours, sample_size, config.dataset_name)
+    neighbours = get_train_nearest_neighbours_from_file(sample, config.nr_train_neighbours, sample_size, config.dataset_name)
 
     labels = []
     dataset = BLISSDataset(sample, labels, config.device)
@@ -233,6 +233,7 @@ def run_bliss(config: Config, mode, experiment_name):
         logging.info("Reading query vectors and ground truths")
         test = dataset.get_queries()
         neighbours, _ = dataset.get_groundtruth()
+        neighbours = neighbours[:, :config.nr_ann]
 
         if dataset.distance() == "angular":
             norms = np.linalg.norm(test, axis=1, keepdims=True)
@@ -244,8 +245,8 @@ def run_bliss(config: Config, mode, experiment_name):
         logging.info("Starting inference")
         num_workers = 8
         start = time.time()
-        # results = query_multiple(data, index, test, neighbours, config.m, config.freq_threshold, config.nr_neighbours)
-        results = query_multiple_parallel(data, index, test, neighbours, config.m, config.freq_threshold, config.nr_neighbours, num_workers)
+        # results = query_multiple(data, index, test, neighbours, config.m, config.freq_threshold, config.nr_ann)
+        results = query_multiple_parallel(data, index, test, neighbours, config.m, config.freq_threshold, config.nr_ann, num_workers)
         end = time.time()
 
         total_query_time = end - start

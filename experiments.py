@@ -49,7 +49,7 @@ def run_multiple_query_exp(experiment_name, configs):
         plt.figure(figsize=(8, 5))
         plt.scatter(df['distance_computations'], df['recall'], color='blue', s=20)
         plt.xlabel("Distance Computations")
-        plt.ylabel("Recall")
+        plt.ylabel(f"Recall ({config.nr_ann}@{config.nr_ann})")
         plt.title(f"Distance Computations vs Recall R={r} k={k} m={m}")
         plt.grid(True)
         foldername = f"results/{experiment_name}"
@@ -57,8 +57,8 @@ def run_multiple_query_exp(experiment_name, configs):
             os.mkdir("results")
         if not os.path.exists(f"results/{experiment_name}"):
             os.mkdir(foldername)
-        df.to_csv(f"{foldername}/r{r}_k{k}_m{m}_qps{qps:.2f}_avg_rec{avg_recall:.3f}_shf={config.shuffle}_gr={config.global_reass}.csv", index=False)
-        plt.savefig(f"{foldername}/r{r}_k{k}_m{m}_qps{qps:.2f}_avg_rec{avg_recall:.3f}_shf={config.shuffle}_gr={config.global_reass}.png", dpi=300)
+        df.to_csv(f"{foldername}/r{r}_k{k}_m{m}_qps{qps:.2f}_avg_rec{avg_recall:.3f}_shf={config.shuffle}_gr={config.global_reass}_nr_ann={config.nr_ann}.csv", index=False)
+        plt.savefig(f"{foldername}/r{r}_k{k}_m{m}_qps{qps:.2f}_avg_rec{avg_recall:.3f}_shf={config.shuffle}_gr={config.global_reass}_nr_ann={config.nr_ann}.png", dpi=300)
 
     return experiment_name, avg_recall, total_query_time, results
 
@@ -70,7 +70,7 @@ if __name__ == "__main__":
     range_threshold = 2
     k_values = [2]
     m_values = [5]
-    EXP_NAME = "does_glove_still_glove?"
+    EXP_NAME = "test_refactor"
 
     if not os.path.exists("logs"):
         os.mkdir("logs")
@@ -84,19 +84,19 @@ if __name__ == "__main__":
     # add all dataset names that the experiments should be run on
     datasets = [
                 # "bigann",
-                "glove-100-angular",
-                # "sift-128-euclidean"
+                # "glove-100-angular",
+                "sift-128-euclidean"
                  ]
     
     logging.info("[Experiment] Experiments started")
         # check that datasize in config is set to correct value. (default = 1)
     for dataset in datasets:
-        conf_4 = Config(dataset_name=dataset, batch_size=2048, b= 4096)
+        conf_4 = Config(dataset_name=dataset, batch_size=2048, b= 1024)
         # conf_8 = Config(dataset_name=dataset, batch_size=2048, b=8192, datasize=10)
         configs_b.append(conf_4)
         # configs_b.append(conf_8)
         for m in m_values:
-            conf_q4 = Config(dataset_name=dataset, batch_size=2048, m=m, b=4096)
+            conf_q4 = Config(dataset_name=dataset, batch_size=2048, m=m, b=1024)
             # conf_q8 = Config(dataset_name=dataset, batch_size=2048, m=m, b=8192, datasize=10)
             configs_q.append(conf_q4)
             # configs_q.append(conf_q8)
