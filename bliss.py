@@ -244,6 +244,7 @@ def run_bliss(config: Config, mode, experiment_name):
         logging.info("Reading query vectors and ground truths")
         test = dataset.get_queries()
         neighbours, _ = dataset.get_groundtruth()
+        neighbours = neighbours[:, :config.nr_ann]
 
         if dataset.distance() == "angular":
             norms = np.linalg.norm(test, axis=1, keepdims=True)
@@ -255,8 +256,8 @@ def run_bliss(config: Config, mode, experiment_name):
         logging.info("Starting inference")
         num_workers = 8
         start = time.time()
-        # results = query_multiple(data, index, test, neighbours, config.m, config.freq_threshold, config.nr_train_neighbours)
-        results = query_multiple_parallel(data, index, test, neighbours, config.m, config.freq_threshold, config.nr_train_neighbours, num_workers)
+        # results = query_multiple(data, index, test, neighbours, config.m, config.freq_threshold, config.nr_ann)
+        results = query_multiple_parallel(data, index, test, neighbours, config.m, config.freq_threshold, config.nr_ann, num_workers)
         end = time.time()
 
         total_query_time = end - start
