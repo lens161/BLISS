@@ -8,7 +8,7 @@ from config import Config
 
 
 def run_experiment(config: Config, mode = 'query'):
-    # TO-DO: 
+    # TODO: 
     # - seperate query statistics from building statistics
     avg_recall, stats, total_query_time = run_bliss(config, mode= mode)
     return total_query_time, avg_recall, stats
