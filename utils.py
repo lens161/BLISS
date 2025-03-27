@@ -1,4 +1,3 @@
-# from sklearn.neighbors import NearestNeighbors
 from datasets import *
 import torch
 import faiss 
@@ -8,7 +7,6 @@ import math
 import csv
 import pickle
 import matplotlib.pyplot as plt # type: ignore
-from sklearn.model_selection import train_test_split as sklearn_train_test_split
 from pandas import read_csv
 from bliss_model import BLISS_NN
 
@@ -137,19 +135,17 @@ def load_model(model_path, dim, b):
     model.eval()
     return model
 
-def save_inverted_index(inverted_index, offsets, dataset_name, model_num, R, K, B, lr, shuffle, global_reass):
+def save_inverted_index(inverted_index, dataset_name, model_num, R, K, B, lr, shuffle, global_reass):
     '''
     Save an inverted index (for a specific dataset and parameter setting combination) in the models folder and return the path.
     '''
     index_name = f"index_model{model_num}_{dataset_name}_r{model_num}_k{K}_b{B}_lr{lr}"
-    offsets_name = f"offsets_model{model_num}_{dataset_name}_r{model_num}_k{K}_b{B}_lr{lr}"
     directory = f"models/{dataset_name}_r{R}_k{K}_b{B}_lr{lr}_shf={shuffle}_gr={global_reass}/"
     if not os.path.exists(directory):
         os.makedirs(directory, exist_ok=True)
-    index_path = os.path.join(directory, f"{index_name}.npy")
-    offsets_path = os.path.join(directory, f"{offsets_name}.npy")
-    np.save(index_path, inverted_index)
-    np.save(offsets_path, offsets)
+    index_path = os.path.join(directory, f"{index_name}.pkl")
+    with open(index_path, 'wb') as f:
+        pickle.dump(inverted_index, f)
     return index_path
 
 # def load_indexes(dataset_name, R, K):
@@ -181,6 +177,9 @@ Helpers for plots created during index building and collecting statistics.
 '''
 
 def make_loss_plot(learning_rate, iterations, epochs_per_iteration, k, B, experiment_name, all_losses, shuffle, global_reass):
+    '''
+    Plot the total loss of the model after each epoch.
+    '''
     foldername = f"results/{experiment_name}"
     if not os.path.exists("results"):
         os.mkdir("results")
@@ -195,6 +194,9 @@ def make_loss_plot(learning_rate, iterations, epochs_per_iteration, k, B, experi
     plt.savefig(f"{foldername}/training_loss_lr={learning_rate}_I={iterations}_E={epochs_per_iteration}_k{k}_B{B}_shf={shuffle}_gr={global_reass}.png")
 
 def log_mem(function_name, mem_usage, filepath):
+    '''
+    Log memory usage to a file.
+    '''
     file_exists = os.path.isfile(filepath)
     with open(filepath, mode='a', newline='') as csv_file:
         fieldnames = ['function', 'memory_usage_mb']
@@ -207,6 +209,11 @@ def log_mem(function_name, mem_usage, filepath):
         })
 
 def calc_load_balance(bucket_size_stats):
+    '''
+    Calculate the mean load balance of the bucket assignments of all r indexes for a particular dataset.
+    Load balance of a single index is defined as the inverse of the standard deviation of the bucket sizes of that particular index (1-standard deviation).
+    Combined load balance for a dataset is then the mean across load balance of r indexes.
+    '''
     load_balance_per_model = []
     for r in bucket_size_stats:
         load_balance = 1 / np.std(r)
@@ -221,6 +228,9 @@ Other helper functions.
 '''
 
 def get_best_device():
+    '''
+    Get the best available torch device (gpu if available, otherwise cpu).
+    '''
     if torch.cuda.is_available():
         # covers both NVIDIA CUDA and AMD ROCm
         return torch.device("cuda")
