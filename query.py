@@ -31,7 +31,9 @@ def query(data, index, query_vector, neighbours, m, freq_threshold, requested_am
         return final_neighbours, dist_comps, recall_single(final_neighbours, neighbours)
 
 def get_candidates_from_model(model, index, offsets, candidates, query_vector, m):
-
+    '''
+    For a given model, do a forward pass for query_vector to get the top m buckets for this query. Update the candidate set with all vectors found in those buckets.
+    '''
     with torch.no_grad():
         probabilities = torch.sigmoid(model(query_vector))
 
