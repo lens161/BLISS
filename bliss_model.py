@@ -3,6 +3,12 @@ import torch
 from torch import nn
 
 class BLISS_NN(nn.Module):
+    '''
+    Create a pytorch model to use in training.
+    Model consists of input layer (size: amount of dimensions), hidden layer (size: 512) and
+    output layer (size: amount of buckets). Layers are fully connected.
+    Forward pass just provides raw loss and not softmax score as BCEWithLogitsLoss is used.
+    '''
     def __init__(self, input_size, output_size):
         super(BLISS_NN, self).__init__()
         # takes input and projects it to 512 hidden neurons
@@ -23,7 +29,9 @@ class BLISS_NN(nn.Module):
         return x
     
 class BLISSDataset(Dataset):
-    '''The dataset used for handling and loading training samples'''
+    '''
+    The dataset used for handling and loading training samples
+    '''
     def __init__(self, data, labels, device, mode = 'train'):
         self.device = device
         self.labels = labels
