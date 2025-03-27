@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt # type: ignore
 import numpy as np
 import os
 import torch
-from faiss import IndexFlatL2
+from faiss import IndexFlatL2, IndexPQ, vector_to_array
 from pandas import read_csv
 
 import datasets as ds
@@ -254,3 +254,24 @@ def set_torch_seed(seed, device):
         torch.cuda.manual_seed(seed)
     elif device == torch.device("mps"):
         torch.mps.manual_seed(seed)
+
+def quantise(data:np, sample = None, m= 8, nbits = 8):
+    '''quantises the data and return codes and the quantised vectors'''
+    n, d = data.shape
+
+    pq_index = IndexPQ(d, m , nbits)
+
+    # if sample is not None:
+    #     pq_index.train(data)
+    # else:
+    pq_index.train(data)
+
+    pq_index.add(data)
+
+    pq_codes = vector_to_array(pq_index.codes).reshape(n, m)
+
+    # quantised_data = np.empty_like(data)
+    # for i in range(n):
+    #     quantised_data[i] = pq_index.reconstruct(i)
+
+    return pq_codes
