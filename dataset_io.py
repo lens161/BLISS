@@ -1,3 +1,8 @@
+#############################################################################
+# Code from NeurIPS'21 competition (https://big-ann-benchmarks.com/neurips21.html),
+# necessary to use datasets.py file.
+##############################################################################
+
 """
 I/O functions for the fileformats used in the competition.
 """

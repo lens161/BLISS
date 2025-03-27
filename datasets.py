@@ -1,3 +1,9 @@
+#############################################################################
+# Code adapted from NeurIPS'21 competition (https://big-ann-benchmarks.com/neurips21.html)
+# Code for billion-scale datasets is used mostly as is, but handling for million-scale datasets 
+# (from https://ann-benchmarks.com/index.html) has been added to this file.
+##############################################################################
+
 import gzip
 import shutil
 import math
@@ -113,7 +119,7 @@ class Dataset():
 
 
 #############################################################################
-# Datasets for the competition
+# Additional million-scale datasets, not used in competition but added for testing BLISS implementation.
 ##############################################################################
 
 class Dataset_1M_BLISS_Format(Dataset):
@@ -177,6 +183,11 @@ class Glove_100(Dataset_1M_BLISS_Format):
 
     def distance(self):
         return "angular"
+
+
+#############################################################################
+# Datasets for the competition
+##############################################################################
 
 class DatasetCompetitionFormat(Dataset):
     """
@@ -358,7 +369,7 @@ class SSNPPDataset(BillionScaleDatasetCompetitionFormat):
         )
 
         self.base_url = "https://dl.fbaipublicfiles.com/billion-scale-ann-benchmarks/"
-        self.basedir = os.path.join(BASEDIR, "FBssnpp")
+        self.basedir = os.path.join(BASEDIR, "FB_ssnpp")
 
         self.private_nq = 100000
         self.private_qs_url = ""#https://dl.fbaipublicfiles.com/billion-scale-ann-benchmarks/FB_ssnpp_heldout_queries_3307fba121460a56.u8bin"
@@ -442,6 +453,7 @@ class Deep1BDataset(BillionScaleDatasetCompetitionFormat):
         return "euclidean"
 
 
+
 class Text2Image1B(BillionScaleDatasetCompetitionFormat):
     def __init__(self, nb_M=1000):
         self.nb_M = nb_M
@@ -517,7 +529,7 @@ class MSTuringClustered10M(DatasetCompetitionFormat):
         self.gt_fn = "clu_msturing10M_gt100"
         
         self.base_url = "https://comp21storage.z5.web.core.windows.net/comp23/clustered_data/msturing-10M-clustered/"
-        self.basedir = os.path.join(BASEDIR, "MSTuring10Mclustered")
+        self.basedir = os.path.join(BASEDIR, "MSTuring-10M-clustered")
 
         self.private_gt_url = None
         self.private_qs_url = None
@@ -539,7 +551,7 @@ class MSTuringClustered30M(DatasetCompetitionFormat):
         self.gt_fn = "clu_msturing30M_gt100"
         
         self.base_url = "https://comp21storage.z5.web.core.windows.net/comp23/clustered_data/msturing-30M-clustered/"
-        self.basedir = os.path.join(BASEDIR, "MSTuring30Mclustered")
+        self.basedir = os.path.join(BASEDIR, "MSTuring-30M-clustered")
 
         self.private_gt_url = None
         self.private_qs_url = None
@@ -595,7 +607,7 @@ class WikipediaDataset(BillionScaleDatasetCompetitionFormat):
             "wikipedia-100K" if self.nb == 100000 else
             None
         )
-        self.basedir = os.path.join(BASEDIR, "wikipediacohere")
+        self.basedir = os.path.join(BASEDIR, "wikipedia_cohere")
         self.base_url = "https://comp21storage.z5.web.core.windows.net/wiki-cohere-35M/"
 
         self.private_qs_url = None
@@ -640,7 +652,7 @@ class MSMarcoWebSearchDataset(BillionScaleDatasetCompetitionFormat):
             "msmarco-1M-gt100" if self.nb == 1000000 else
             None
         )
-        self.basedir = os.path.join(BASEDIR, "msmarcowebsearch")
+        self.basedir = os.path.join(BASEDIR, "msmarco_websearch")
         self.base_url = "https://msmarco.z22.web.core.windows.net/msmarcowebsearch/vectors/SimANS/passage_vectors/vectors.bin"
         self.query_url = "https://msmarco.z22.web.core.windows.net/msmarcowebsearch/vectors/SimANS/query_vectors/vectors.bin"
         self.gt_url = "https://comp21storage.z5.web.core.windows.net/msmarcowebsearch/"
@@ -1251,7 +1263,7 @@ class RandomFilterDS(RandomDS):
 class OpenAIEmbedding1M(DatasetCompetitionFormat):
     def __init__(self, query_selection_random_seed):
         self.seed = query_selection_random_seed
-        self.basedir = os.path.join(BASEDIR, "openaiembedding1M")
+        self.basedir = os.path.join(BASEDIR, "openai-embedding-1M")
         self.d = 1536
         self.nb = 1000000
         self.nq = 100000
