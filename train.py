@@ -13,6 +13,14 @@ from sklearn.utils import murmurhash3_32 as mmh3
 
 
 def train_model(model, dataset, index, sample_size, bucket_sizes, neighbours, r, train_size, config: Config):
+    '''
+    Train a BLISS model. BCEWithLogitsLoss is used as criterion as the labels are multi-hot encoded.
+    Vectors are passed through the model in batches and the model learns to minimize the loss.
+    After every few epochs (set in config), vectors are reassigned to new buckets based on the current state of the model.
+    For million-scale data, as all data is trained on, the last reassignment will be used as the final assignment.
+    For larger datasets, the last reassignment is skipped, as training is only done in a sample but all remaining data needs to
+    be assigned immediately after training the model.
+    '''
     model.to(config.device)
     criterion = nn.BCEWithLogitsLoss()
     optimizer = optim.Adam(model.parameters(), lr=config.lr)
@@ -52,6 +60,11 @@ def train_model(model, dataset, index, sample_size, bucket_sizes, neighbours, r,
     make_loss_plot(config.lr, config.iterations, config.epochs, config.k, config.b, config.experiment_name, all_losses, config.shuffle, config.global_reass)
  
 def reassign_buckets(model, dataset, index, bucket_sizes, sample_size, neighbours, config: Config):
+    '''
+    Reassign all items in the dataset to new buckets. This function is invoked after every x epochs of training, to improve assignments.
+    To obtain a new bucket for a single vector, the model is used to predict the best buckets for that vector and the least occupied of k buckets
+    is chosen as the new bucket. After all vectors are reassigned, new ground truth labels are generated to continue training.
+    '''
     logging.info(f"Reassigning vectors to new buckets")
     sample_size, _ = np.shape(dataset.data)
     model.to("cpu")
@@ -81,7 +94,9 @@ def reassign_buckets(model, dataset, index, bucket_sizes, sample_size, neighbour
     model.to(config.device)
 
 def global_reassign_buckets(model, dataset, index, neighbours, bucket_sizes, config: Config):
-
+    '''
+    Alternative version of reassign_buckets, where first all bucket predictions are collected and then processed after.
+    '''
     model.eval()
     data_loader = DataLoader(dataset, batch_size=config.batch_size, shuffle=False, num_workers=8)
     
@@ -123,6 +138,11 @@ def global_reassign_buckets(model, dataset, index, neighbours, bucket_sizes, con
 
 
 def reassign_buckets_vectorized(model, dataset, index, bucket_sizes, sample_size, neighbours,device, config: Config):
+    '''
+    Alternative version of reassign_buckets, where buckets are updated in batches.
+    Note: does not give 100% guarantee that the least occupied bucket is selected for each vector, if multiple vectors
+    in a batch are assigned to the same bucket.
+    '''
     sample_size, _ = np.shape(dataset.data)
     model.to(config.device)
     model.eval()
