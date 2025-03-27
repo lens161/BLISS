@@ -1,14 +1,16 @@
 import numpy as np
+import os
 import random
 import sklearn.datasets
 import unittest
 from sklearn.model_selection import train_test_split as sklearn_train_test_split
-from utils import *
-from bliss import *
-from query import *
-from bliss_model import *
-from datasets import *
-from train import*
+
+import utils as ut
+import bliss
+import query
+import datasets as ds
+import train
+from bliss_model import BLISS_NN, BLISSDataset
 
 def generate_random_array(size: int, dimensions: int, centers: int):
     '''
@@ -34,37 +36,43 @@ def train_test_split(X, test_size):
     return sklearn_train_test_split(X, test_size=test_size, random_state=1)
 
 class TestTrainMethods(unittest.TestCase):
-    
-    mnist_train, mnist_test, mnist_nbrs = read_dataset("mnist-784-euclidean")
+
+    @classmethod
+    def setUpClass(cls):
+        cls.mnist_dataset_obj = ut.get_dataset_obj("mnist-784-euclidean", 1)
+        cls.mnist_dataset_obj.prepare()
+        cls.mnist_train = cls.mnist_dataset_obj.get_dataset()
+        cls.mnist_test = cls.mnist_dataset_obj.get_queries()
+        cls.mnist_nbrs, _ = cls.mnist_dataset_obj.get_groundtruth()
 
     def test_get_B(self):
         '''
         Test whether B value is correct according to our specification.
         '''
-        self.assertEqual(get_B(1000000), 1024) # SIFT
-        self.assertEqual(get_B(60000), 256) # MNIST
-        self.assertEqual(get_B(1000000000), 32768) # Billion-scale
-        self.assertEqual(get_B(1), 1) # Single item
+        self.assertEqual(ut.get_B(1000000), 1024) # SIFT
+        self.assertEqual(ut.get_B(60000), 256) # MNIST
+        self.assertEqual(ut.get_B(1000000000), 32768) # Billion-scale
+        self.assertEqual(ut.get_B(1), 1) # Single item
         with self.assertRaises(Exception): # Empty dataset
-            get_B(0)
+            ut.get_B(0)
 
     def test_read_dataset(self):
         '''
         Test whether reading in the dataset gives us an np array of the correct shape.
         '''
-        self.assertEqual(self.__class__.mnist_train.shape[0], 60000) # nr train items
-        self.assertEqual(self.__class__.mnist_test.shape[0], 10000) # nr test items
-        self.assertEqual(self.__class__.mnist_train.shape[1], 784) # dimensions
-        self.assertEqual(self.__class__.mnist_test.shape[1], 784) # dimensions
-        self.assertEqual(self.__class__.mnist_nbrs.shape[0], 10000) # nr test items
-        self.assertEqual(self.__class__.mnist_nbrs.shape[1], 100) # nbrs per test item
+        self.assertEqual(self.mnist_train.shape[0], 60000) # nr train items
+        self.assertEqual(self.mnist_test.shape[0], 10000) # nr test items
+        self.assertEqual(self.mnist_train.shape[1], 784) # dimensions
+        self.assertEqual(self.mnist_test.shape[1], 784) # dimensions
+        self.assertEqual(self.mnist_nbrs.shape[0], 10000) # nr test items
+        self.assertEqual(self.mnist_nbrs.shape[1], 100) # nbrs per test item
 
     def test_get_nearest_neighbours_small(self):
         '''
         Test whether we find the correct nearest neighbours in a sample array.
         '''
         data = np.array([[1], [5], [88], [100], [125], [130], [132], [150], [273], [500]])
-        nbrs = get_nearest_neighbours_faiss_within_dataset(data, 2)
+        nbrs = ut.get_nearest_neighbours_within_dataset(data, 2)
         self.assertTrue(np.array_equal(nbrs[0], [1, 2]))
         self.assertTrue(np.array_equal(nbrs[1], [0, 2]))
         self.assertTrue(np.array_equal(nbrs[2], [3, 4]))
@@ -80,8 +88,8 @@ class TestTrainMethods(unittest.TestCase):
         '''
         Test whether our nearest neighbour function finds the same nearest neighbours for test data in a real dataset.
         '''
-        nbrs_test = get_nearest_neighbours_faiss_in_different_dataset(self.__class__.mnist_train, self.__class__.mnist_test, 100)
-        self.assertTrue(np.array_equal(np.sort(nbrs_test), np.sort(self.__class__.mnist_nbrs)))
+        nbrs_test = ut.get_nearest_neighbours_in_different_dataset(self.mnist_train, self.mnist_test, 100)
+        self.assertTrue(np.array_equal(np.sort(nbrs_test), np.sort(self.mnist_nbrs)))
         
     def test_get_nearest_neighbours_from_file(self):
         '''
@@ -92,8 +100,8 @@ class TestTrainMethods(unittest.TestCase):
         sample_size = 60000
         # check that the file exists already, otherwise the test will just compute neighbours twice
         self.assertTrue(os.path.exists(f"data/{dataset_name}-nbrs{amount}-sample{sample_size}.csv"))
-        file_nbrs = get_train_nearest_neighbours_from_file(self.__class__.mnist_train, amount, sample_size, dataset_name)
-        fresh_nbrs = get_nearest_neighbours_faiss_within_dataset(self.__class__.mnist_train, amount)
+        file_nbrs = ut.get_train_nearest_neighbours_from_file(self.mnist_train, amount, sample_size, dataset_name)
+        fresh_nbrs = ut.get_nearest_neighbours_within_dataset(self.mnist_train, amount)
         self.assertTrue(np.array_equal(np.sort(file_nbrs), np.sort(fresh_nbrs)))
 
     def test_make_ground_truth_labels_small(self):
@@ -103,9 +111,9 @@ class TestTrainMethods(unittest.TestCase):
         B = 3
         data = np.array([[1], [5], [88], [100], [125], [130], [132], [150], [273], [500]])
         index = np.array([0, 0, 2, 1, 0, 1, 1, 2, 2, 0])
-        nbrs = get_nearest_neighbours_faiss_within_dataset(data, 2)
-        device = get_best_device()
-        labels = make_ground_truth_labels(B, nbrs, index, 10, device)
+        nbrs = ut.get_nearest_neighbours_within_dataset(data, 2)
+        device = ut.get_best_device()
+        labels = ut.make_ground_truth_labels(B, nbrs, index, 10, device)
         self.assertTrue(np.array_equal(labels[0], [1, 0, 1]))
         self.assertTrue(np.array_equal(labels[1], [1, 0, 1]))
         self.assertTrue(np.array_equal(labels[2], [1, 1, 0]))
@@ -123,8 +131,8 @@ class TestTrainMethods(unittest.TestCase):
         '''
         N = 10000
         r = 1
-        B = get_B(N)
-        index, counts = assign_initial_buckets(N, 0, r, B)
+        B = ut.get_B(N)
+        index, counts = bliss.assign_initial_buckets(N, r, B)
         self.assertEqual(len(index), N)
         self.assertEqual(len(counts), B)
 
@@ -136,57 +144,39 @@ class TestTrainMethods(unittest.TestCase):
     
     def test_invert_index_small(self):
         testindex = np.array([0, 2, 0, 1, 1, 2, 0, 1, 2, 1])
-        inverted_index = invert_index(testindex, 3)
-        self.assertTrue(np.array_equal(inverted_index[0], np.array([0, 2, 6])))
-        self.assertTrue(np.array_equal(inverted_index[1], np.array([3, 4, 7, 9])))
-        self.assertTrue(np.array_equal(inverted_index[2], np.array([1, 5, 8])))
+        test_buckets = np.unique(testindex, return_counts=True)[1]
+        test_size = testindex.shape[0]
+        inverted_index, offsets = bliss.invert_index(testindex, test_buckets, test_size)
+        self.assertEqual(offsets[0], test_buckets[0])
+        self.assertEqual(offsets[1]-offsets[0], test_buckets[1])
+        self.assertEqual(offsets[2]-offsets[1], test_buckets[2])
+        self.assertTrue(np.array_equal(inverted_index[0:offsets[0]], np.array([0, 2, 6])))
+        self.assertTrue(np.array_equal(inverted_index[offsets[0]:offsets[1]], np.array([3, 4, 7, 9])))
+        self.assertTrue(np.array_equal(inverted_index[offsets[1]:offsets[2]], np.array([1, 5, 8])))
 
-    def test_get_sample(self):
-        data_small = np.array([[1], [5], [88], [100], [125], [130], [132], [150], [273], [500]])
-        SIZE_small = 10
-        DIMENSION_small = 1
+    #TODO: replace with getting training sample from memmap
 
-        sample_small, rest_small, sample_small_size, rest_small_size, train_bool_small = get_sample(data_small, SIZE_small, DIMENSION_small)
-        self.assertEqual(np.shape(sample_small)[0], SIZE_small)
-        self.assertEqual(sample_small_size, SIZE_small)
-        self.assertEqual(np.shape(rest_small), ())
-        self.assertEqual(rest_small_size, 0)
-        self.assertEqual(train_bool_small, True)
+    # def test_get_sample(self):
+    #     data_small = np.array([[1], [5], [88], [100], [125], [130], [132], [150], [273], [500]])
+    #     SIZE_small = 10
+    #     DIMENSION_small = 1
 
-        data_large = np.zeros((11_000_000, 1))
-        SIZE_large = 11_000_000
-        DIMENSION_large = 1
-        sample_large, rest_large, sample_large_size, rest_large_size, train_bool_large = get_sample(data_large, SIZE_large, DIMENSION_large)
-        self.assertEqual(np.shape(sample_large)[0], SIZE_large*0.01)
-        self.assertEqual(sample_large_size, SIZE_large*0.01)
-        self.assertEqual(np.shape(rest_large)[0], SIZE_large*0.99)
-        self.assertEqual(rest_large_size, SIZE_large*0.99)
-        self.assertEqual(train_bool_large, False)
+    #     sample_small, rest_small, sample_small_size, rest_small_size, train_bool_small = get_sample(data_small, SIZE_small, DIMENSION_small)
+    #     self.assertEqual(np.shape(sample_small)[0], SIZE_small)
+    #     self.assertEqual(sample_small_size, SIZE_small)
+    #     self.assertEqual(np.shape(rest_small), ())
+    #     self.assertEqual(rest_small_size, 0)
+    #     self.assertEqual(train_bool_small, True)
 
-    def test_sample_and_memmap_indices_small(self):
-        data_small = np.array([[1], [5], [88], [100], [125], [130], [132], [150], [273], [500]])
-        SIZE_small = 10
-        DIMENSION_small = 1
-        sample_small, rest_small, sample_small_size, rest_small_size, train_bool_small = get_sample(data_small, SIZE_small, DIMENSION_small)
-        memmap_small = save_dataset_as_memmap(sample_small, rest_small, f"test_small_sample", train_bool_small)
-        self.assertTrue(np.array_equal(sample_small, data_small))
-        self.assertTrue(np.array_equal(memmap_small, data_small))
-    
-    def test_sample_and_memmap_indices_large(self):
-        data_large = generate_random_array(11_000_000, 1, 1)
-        SIZE_large = 11_000_000
-        DIMENSION_large = 1
-        sample_large, rest_large, sample_large_size, rest_large_size, train_bool_large = get_sample(data_large, SIZE_large, DIMENSION_large)
-        memmap_large = save_dataset_as_memmap(sample_large, rest_large, f"test_large_sample", train_bool_large)
-        self.assertTrue(np.array_equal(memmap_large[:int(SIZE_large*0.01)], sample_large[:int(SIZE_large*0.01)]))
-
-        for _ in range(0, 1000):
-            rand_idx = random.randrange(sample_large_size)
-            self.assertEqual(memmap_large[rand_idx], sample_large[rand_idx])
-        
-        for _ in range(0, 10000):
-            rand_idx = random.randrange(rest_large_size)
-            self.assertEqual(memmap_large[sample_large_size + rand_idx], rest_large[rand_idx])
+    #     data_large = np.zeros((11_000_000, 1))
+    #     SIZE_large = 11_000_000
+    #     DIMENSION_large = 1
+    #     sample_large, rest_large, sample_large_size, rest_large_size, train_bool_large = get_sample(data_large, SIZE_large, DIMENSION_large)
+    #     self.assertEqual(np.shape(sample_large)[0], SIZE_large*0.01)
+    #     self.assertEqual(sample_large_size, SIZE_large*0.01)
+    #     self.assertEqual(np.shape(rest_large)[0], SIZE_large*0.99)
+    #     self.assertEqual(rest_large_size, SIZE_large*0.99)
+    #     self.assertEqual(train_bool_large, False)
 
     
 if __name__ == "__main__":

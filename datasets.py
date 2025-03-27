@@ -184,6 +184,16 @@ class Glove_100(Dataset_1M_BLISS_Format):
     def distance(self):
         return "angular"
 
+class Mnist_784(Dataset_1M_BLISS_Format):
+    def __init__(self):
+        self.dataset_name = "mnist-784-euclidean"
+        self.data_path = None
+        self.nb = 60000
+        self.d = 784
+        self.basedir = BASEDIR
+    
+    def distance(self):
+        return "euclidean"
 
 #############################################################################
 # Datasets for the competition

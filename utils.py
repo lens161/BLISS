@@ -121,6 +121,8 @@ def get_dataset_obj(dataset_name, size):
         return ds.Sift_128()
     elif dataset_name == "glove-100-angular":
         return ds.Glove_100()
+    elif dataset_name == "mnist-784-euclidean":
+        return ds.Mnist_784()
     else:
         print("dataset not supported yet")
 
