@@ -14,13 +14,14 @@ def query(data, index, query_vector, neighbours, m, freq_threshold, requested_am
     If the number of candidates exceeds the requested amount, reorder using true distance computations.
     Then return the remaining set of candidates.
     '''
-    inverted_indexes, models = index
+    ((indexes, offsets), models) = index
     candidates = {}
     for i in range(len(models)):
         model = models[i]
         model.eval()
-        index = inverted_indexes[i]
-        get_candidates_from_model(model, index, candidates, query_vector, m) 
+        idx = indexes[i]
+        off = offsets[i]
+        get_candidates_from_model(model, idx, off, candidates, query_vector, m) 
     final_results = [key for key, value in candidates.items() if value >= freq_threshold]
     # print (f"final results = {len(final_results)}")
     if len(final_results) <= requested_amount:
@@ -29,25 +30,25 @@ def query(data, index, query_vector, neighbours, m, freq_threshold, requested_am
         final_neighbours, dist_comps = reorder(data, query_vector, np.array(final_results, dtype=int), requested_amount)
         return final_neighbours, dist_comps, recall_single(final_neighbours, neighbours)
 
-def get_candidates_from_model(model, index, candidates, query_vector, m):
-    '''
-    For a given model, do a forward pass for query_vector to get the top m buckets for this query. Update the candidate set with all vectors found in those buckets.
-    '''
-    probabilities = None
+def get_candidates_from_model(model, index, offsets, candidates, query_vector, m):
+
     with torch.no_grad():
         probabilities = torch.sigmoid(model(query_vector))
-    # print(probabilities)
+
     _, m_buckets = torch.topk(probabilities, m)
     m_buckets = m_buckets.tolist()
-    seen = set()
+
+    candidate_list = []
     for bucket in m_buckets:
-        for vector in index[bucket]:
-            seen.add(vector)
-    for vector in seen:
-        f = 0
-        if candidates.__contains__(vector):
-            f = candidates.get(vector)
-        candidates.update({vector: f+1})
+        start = offsets[bucket-1] if bucket != 0 else 0
+        end = offsets[bucket]
+        candidate_list.append(index[start:end])
+    
+    if candidate_list:
+        candidate_list = np.concatenate(candidate_list)
+        unique_candidates, counts = np.unique(candidate_list, return_counts=True)
+        for vec, count in zip(unique_candidates, counts):
+            candidates[vec] = candidates.get(vec, 0) + int(count)
 
 def process_query_chunk(chunk, data, index, m, threshold, requested_amount):
     '''

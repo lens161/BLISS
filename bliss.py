@@ -4,14 +4,16 @@ import time
 import torch
 from torch.utils.data import DataLoader
 from sklearn.utils import murmurhash3_32 as mmh3
-from utils import Dataset, log_mem, get_train_nearest_neighbours_from_file, save_model, get_dataset_obj, save_inverted_index, calc_load_balance, reassign_vector_to_bucket, load_model
-import pickle
+from utils import *
 import psutil  # type: ignore
 import os
 import logging
 from query import query_multiple, query_multiple_parallel, recall
 from bliss_model import BLISS_NN, BLISSDataset
 from train import make_ground_truth_labels, train_model
+import resource
+import sys
+from pympler import asizeof
     
 def build_index(dataset: Dataset, config: Config):
         
@@ -121,12 +123,15 @@ def build_index(dataset: Dataset, config: Config):
                 map_all_to_buckets(map_loader, config.k, index, bucket_sizes, model, global_idx)
         else:
             index = sample_buckets
+        offsets = np.cumsum(bucket_sizes)
+
+        inverted_index = np.zeros(SIZE, dtype=np.uint32)
+        inverted_index = np.argsort(index)
         np.set_printoptions(threshold=np.inf, suppress=True)
         print(f"bucket_sizes sum = {np.sum(bucket_sizes)}", flush=True)
         print(bucket_sizes)
-        inverted_index = invert_index(index, config.b) 
-        # print(f"inv index = {inverted_index}")
-        index_path = save_inverted_index(inverted_index, config.dataset_name, r+1, config.r, config.k, config.b, config.lr, config.shuffle, config.global_reass)
+        # inverted_index = invert_index(index, config.b) 
+        index_path = save_inverted_index(inverted_index, offsets, config.dataset_name, r+1, config.r, config.k, config.b, config.lr, config.shuffle, config.global_reass)
         final_index.append((index_path, model_path))
         end = time.time()
         time_per_r.append(end - start)
@@ -134,10 +139,11 @@ def build_index(dataset: Dataset, config: Config):
 
     build_time = time.time() - start
     process = psutil.Process(os.getpid())
-    memory_usage = process.memory_info().rss / (1024 ** 2)
+    # memory_usage = process.memory_info().rss / (1024 ** 2)
+    peak_mem = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
     load_balance = calc_load_balance(bucket_size_stats)
     log_mem(f"after_building_global={config.global_reass}_shuffle={config.shuffle}", memory_usage, config.memlog_path)
-    return final_index, time_per_r, build_time, None, load_balance
+    return final_index, time_per_r, build_time, peak_mem, load_balance
 
 def assign_initial_buckets(train_size, r, B):
     '''
@@ -153,7 +159,7 @@ def assign_initial_buckets(train_size, r, B):
         index[i] = bucket
         bucket_sizes[bucket] += 1
     
-    return np.array(index), bucket_sizes
+    return np.array(index, dtype=np.uint32), bucket_sizes
 
 def map_all_to_buckets_unbatched(data, k, index, bucket_sizes, map_model):
     data = torch.from_numpy(data).float()
@@ -165,8 +171,6 @@ def map_all_to_buckets_unbatched(data, k, index, bucket_sizes, map_model):
         reassign_vector_to_bucket(probabilities, index, bucket_sizes, k, i)
 
 def map_all_to_buckets(map_loader, k, index, bucket_sizes, map_model, offset):
-    # TO-DO: idx is resetting to 0 with every new batch from the 
-    # data = torch.from_numpy(np.copy(data)).float()
     logging.info(f"Mapping all train vectors to buckets")
     with torch.no_grad():
         for batch, batch_indices in map_loader:
@@ -188,8 +192,9 @@ def invert_index(index, B):
 def run_bliss(config: Config, mode, experiment_name):
 
     config.experiment_name = experiment_name
+    dataset_name = config.dataset_name
     print(f"Using device: {config.device}")
-    print(config.dataset_name)
+    print(dataset_name)
 
     if not os.path.exists(f"results/{experiment_name}/"):
         os.mkdir(f"results/{experiment_name}/")
@@ -197,12 +202,15 @@ def run_bliss(config: Config, mode, experiment_name):
     config.memlog_path = MEMLOG_PATH
 
     inverted_indexes_paths = []
-    dataset = get_dataset_obj(config.dataset_name, config.datasize)
+    dataset = get_dataset_obj(dataset_name, config.datasize)
     SIZE = dataset.nb
     DIM = dataset.d
     dataset.prepare()
     if mode == 'build':
         index, time_per_r, build_time, memory_usage, load_balance = build_index(dataset, config)
+        usage = resource.getrusage(resource.RUSAGE_SELF)
+        peak_mem = usage.ru_maxrss / 1_000_000 if sys.platform == 'darwin' else usage.ru_maxrss / 1000
+        log_mem("peak_mem_building", peak_mem, MEMLOG_PATH)
         inverted_indexes_paths, model_paths = zip(*index)
         return time_per_r, build_time, memory_usage, load_balance
     elif mode == 'query':
@@ -210,30 +218,32 @@ def run_bliss(config: Config, mode, experiment_name):
         b = config.b if config.b !=0 else 1024
         config.b = b
         inverted_indexes_paths = []
-        for i in range (config.r):
-            inverted_indexes_paths.append(f"models/{config.dataset_name}_r{config.r}_k{config.k}_b{config.b}_lr{config.lr}_shf={config.shuffle}_gr={config.global_reass}/index_model{i+1}_{config.dataset_name}_r{i+1}_k{config.k}_b{config.b}_lr{config.lr}.pkl")
+        offsets_paths = []
         model_paths = []
-        for i in range(config.r):
-            model_paths.append(f"models/{config.dataset_name}_r{config.r}_k{config.k}_b{config.b}_lr{config.lr}_shf={config.shuffle}_gr={config.global_reass}/model_{config.dataset_name}_r{i+1}_k{config.k}_b{config.b}_lr{config.lr}.pt")
+        for i in range (config.r):
+            inverted_indexes_paths.append(f"models/{dataset_name}_r{config.r}_k{config.k}_b{config.b}_lr{config.lr}_shf={config.shuffle}_gr={config.global_reass}/index_model{i+1}_{dataset_name}_r{i+1}_k{config.k}_b{config.b}_lr{config.lr}.npy")
+            offsets_paths.append(f"models/{dataset_name}_r{config.r}_k{config.k}_b{config.b}_lr{config.lr}_shf={config.shuffle}_gr={config.global_reass}/offsets_model{i+1}_{dataset_name}_r{i+1}_k{config.k}_b{config.b}_lr{config.lr}.npy")
+            model_paths.append(f"models/{dataset_name}_r{config.r}_k{config.k}_b{config.b}_lr{config.lr}_shf={config.shuffle}_gr={config.global_reass}/model_{dataset_name}_r{i+1}_k{config.k}_b{config.b}_lr{config.lr}.pt")
 
-        print(model_paths)
-        print(inverted_indexes_paths)
-        inverted_indexes = []
-        for path in inverted_indexes_paths:
-            with open(path, 'rb') as f:
-                inverted_indexes.append(pickle.load(f))
+        indexes = np.zeros(shape = (config.r, SIZE), dtype=np.uint32)
+        offsets = np.zeros(shape = (config.r, config.b), dtype=np.uint32)
+        for i, (inv_path, off_path) in enumerate(zip(inverted_indexes_paths, offsets_paths)):
+            inds_load = np.load(inv_path)
+            ind = np.array(inds_load)
+            indexes[i] = ind
+            offs_load = np.load(off_path)
+            off = np.array(offs_load)
+            offsets[i] = off
         
-        memmap_path = f"memmaps/{config.dataset_name}_{config.datasize}.npy"
+        memmap_path = f"memmaps/{dataset_name}_{config.datasize}.npy"
         data = np.memmap(memmap_path, mode='r', shape=(SIZE, DIM), dtype=np.float32) if SIZE >10_000_000 else np.memmap(memmap_path,shape=(SIZE, DIM), mode='r', dtype=np.float32)[:]
 
         q_models = [load_model(model_path, DIM, b) for model_path in model_paths]
-        index = (inverted_indexes, q_models)
-
+        index = ((indexes, offsets), q_models)
 
         logging.info("Reading query vectors and ground truths")
         test = dataset.get_queries()
         neighbours, _ = dataset.get_groundtruth()
-        neighbours = neighbours[:, :config.nr_ann]
 
         if dataset.distance() == "angular":
             norms = np.linalg.norm(test, axis=1, keepdims=True)
@@ -245,8 +255,8 @@ def run_bliss(config: Config, mode, experiment_name):
         logging.info("Starting inference")
         num_workers = 8
         start = time.time()
-        # results = query_multiple(data, index, test, neighbours, config.m, config.freq_threshold, config.nr_ann)
-        results = query_multiple_parallel(data, index, test, neighbours, config.m, config.freq_threshold, config.nr_ann, num_workers)
+        # results = query_multiple(data, index, test, neighbours, config.m, config.freq_threshold, config.nr_train_neighbours)
+        results = query_multiple_parallel(data, index, test, neighbours, config.m, config.freq_threshold, config.nr_train_neighbours, num_workers)
         end = time.time()
 
         total_query_time = end - start
@@ -254,5 +264,7 @@ def run_bliss(config: Config, mode, experiment_name):
         anns = [t[0] for t in results]
         RECALL = recall(anns, neighbours)
         print(f"RECALL = {RECALL}", flush=True)
-
+        usage = resource.getrusage(resource.RUSAGE_SELF)
+        peak_mem = usage.ru_maxrss / 1_000_000 if sys.platform == 'darwin' else usage.ru_maxrss / 1000
+        log_mem("peak_mem_querying", peak_mem, MEMLOG_PATH)
         return RECALL, results, total_query_time

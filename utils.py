@@ -137,17 +137,19 @@ def load_model(model_path, dim, b):
     model.eval()
     return model
 
-def save_inverted_index(inverted_index, dataset_name, model_num, R, K, B, lr, shuffle, global_reass):
+def save_inverted_index(inverted_index, offsets, dataset_name, model_num, R, K, B, lr, shuffle, global_reass):
     '''
     Save an inverted index (for a specific dataset and parameter setting combination) in the models folder and return the path.
     '''
     index_name = f"index_model{model_num}_{dataset_name}_r{model_num}_k{K}_b{B}_lr{lr}"
+    offsets_name = f"offsets_model{model_num}_{dataset_name}_r{model_num}_k{K}_b{B}_lr{lr}"
     directory = f"models/{dataset_name}_r{R}_k{K}_b{B}_lr{lr}_shf={shuffle}_gr={global_reass}/"
     if not os.path.exists(directory):
         os.makedirs(directory, exist_ok=True)
-    index_path = os.path.join(directory, f"{index_name}.pkl")
-    with open(index_path, 'wb') as f:
-        pickle.dump(inverted_index, f)
+    index_path = os.path.join(directory, f"{index_name}.npy")
+    offsets_path = os.path.join(directory, f"{offsets_name}.npy")
+    np.save(index_path, inverted_index)
+    np.save(offsets_path, offsets)
     return index_path
 
 # def load_indexes(dataset_name, R, K):
