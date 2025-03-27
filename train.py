@@ -1,15 +1,16 @@
-import torch
-from torch import nn
-import torch.optim as optim
-from torch.utils.data import DataLoader
 import logging
-from config import Config
-import time
-import statistics
 import numpy as np
-from utils import *
+import os
 import psutil # type: ignore
-from sklearn.utils import murmurhash3_32 as mmh3
+import statistics
+import time
+import torch
+import torch.optim as optim
+from torch import nn
+from torch.utils.data import DataLoader
+
+import utils as ut
+from config import Config
 
 
 def train_model(model, dataset, index, sample_size, bucket_sizes, neighbours, r, train_size, config: Config):
@@ -57,7 +58,7 @@ def train_model(model, dataset, index, sample_size, bucket_sizes, neighbours, r,
         np.set_printoptions(threshold=6, suppress=True)
         print(f"index after iteration {i}: \r{index}", flush=True)
 
-    make_loss_plot(config.lr, config.iterations, config.epochs, config.k, config.b, config.experiment_name, all_losses, config.shuffle, config.global_reass)
+    ut.make_loss_plot(config.lr, config.iterations, config.epochs, config.k, config.b, config.experiment_name, all_losses, config.shuffle, config.global_reass)
  
 def reassign_buckets(model, dataset, index, bucket_sizes, sample_size, neighbours, config: Config):
     '''
@@ -79,17 +80,17 @@ def reassign_buckets(model, dataset, index, bucket_sizes, sample_size, neighbour
             bucket_probabilities = torch.sigmoid(model(batch_data))
 
             for probability_vector, idx in zip(bucket_probabilities, batch_indices):
-                reassign_vector_to_bucket(probability_vector, index, bucket_sizes, config.k, idx)
+                ut.reassign_vector_to_bucket(probability_vector, index, bucket_sizes, config.k, idx)
                      
     finish = time.time()
     elapsed = finish - start
     process = psutil.Process(os.getpid())
     mem_usage = process.memory_info().rss / (1024 ** 2)
-    log_mem(f"shuffle={config.shuffle}_reassign_buckets", mem_usage, config.memlog_path)
+    ut.log_mem(f"shuffle={config.shuffle}_reassign_buckets", mem_usage, config.memlog_path)
 
     print(f"Memory usage reassign batched: {mem_usage:.2f} MB")
     print(f"reassigning took {elapsed}", flush=True)
-    new_labels = make_ground_truth_labels(config.b, neighbours, index, sample_size, config.device)
+    new_labels = ut.make_ground_truth_labels(config.b, neighbours, index, sample_size, config.device)
     dataset.labels = new_labels
     model.to(config.device)
 
@@ -114,7 +115,7 @@ def global_reassign_buckets(model, dataset, index, neighbours, bucket_sizes, con
     process = psutil.Process(os.getpid())
     mem_usage = process.memory_info().rss / (1024 ** 2)
     print(f"global ress memory usage: {mem_usage:.2f} MB")
-    log_mem("global_reassign_buckets", mem_usage, config.memlog_path)
+    ut.log_mem("global_reassign_buckets", mem_usage, config.memlog_path)
     N = all_predictions.size(0)
     
     bucket_sizes[:] = 0
@@ -132,7 +133,7 @@ def global_reassign_buckets(model, dataset, index, neighbours, bucket_sizes, con
     elapsed = finish - start
 
     print(f"reassigning took {elapsed}")
-    new_labels = make_ground_truth_labels(config.b, neighbours, index, N, config.device)
+    new_labels = ut.make_ground_truth_labels(config.b, neighbours, index, N, config.device)
     dataset.labels = new_labels
     print("New bucket sizes:", bucket_sizes)
 
@@ -184,5 +185,5 @@ def reassign_buckets_vectorized(model, dataset, index, bucket_sizes, sample_size
     print(f"Memory usage: {mem_usage / (1024 ** 2):.2f} MB")
     print(f"reassigning vect. took: {end - start:.4f} seconds")
     
-    new_labels = make_ground_truth_labels(config.b, neighbours, index, sample_size, config.device)
+    new_labels = ut.make_ground_truth_labels(config.b, neighbours, index, sample_size, config.device)
     dataset.labels = new_labels

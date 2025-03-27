@@ -1,25 +1,26 @@
-from datasets import *
-import torch
-import faiss 
-import os
-import numpy as np
-import math
 import csv
-import pickle
+import math
 import matplotlib.pyplot as plt # type: ignore
+import numpy as np
+import os
+import torch
+from faiss import IndexFlatL2
 from pandas import read_csv
+
+import datasets as ds
 from bliss_model import BLISS_NN
 
-'''
-Helpers for getting ground truth for train vectors or query vectors.
-'''
+
+######################################################################
+# Helpers for getting ground truth for train vectors or query vectors.
+######################################################################
 
 def get_nearest_neighbours_within_dataset(dataset, amount):
     '''
     Find the true nearest neighbours of vectors within a dataset. To avoid returning a datapoint as its own neighbour, we search for amount+1 neighbours and then filter out
     the first vector (ordered by distance so the vector itself should be the first point).
     '''
-    nbrs = faiss.IndexFlatL2(dataset.shape[1])
+    nbrs = IndexFlatL2(dataset.shape[1])
     nbrs.add(dataset)
     _, I = nbrs.search(dataset, amount+1)
     I = I[:, 1:]
@@ -29,7 +30,7 @@ def get_nearest_neighbours_in_different_dataset(dataset, queries, amount):
     '''
     Find the true nearest neighbours of query vectors in dataset. No filtering needed here because the queries do not appear in the dataset.
     '''
-    nbrs = faiss.IndexFlatL2(dataset.shape[1])
+    nbrs = IndexFlatL2(dataset.shape[1])
     nbrs.add(dataset)
     _, I = nbrs.search(queries, amount)
     return I
@@ -51,9 +52,35 @@ def get_train_nearest_neighbours_from_file(dataset, amount, sample_size, dataset
         I = read_csv(filename, dtype=int, header=None).to_numpy()
     return I
 
-'''
-Helpers for training index
-'''
+######################################################################
+# Helpers for training index
+######################################################################
+
+def normalise_data(data):
+    '''
+    Normalize a dataset (divide vectors by their magnitude).
+    '''
+    norms = np.linalg.norm(data, axis=1, keepdims=True)
+    data = data / norms
+    return data
+
+def get_training_sample_from_memmap(memmap_path, mmp_shape, sample_size, SIZE, DIM):
+    '''
+    Given a dataset (as a memmap), sample data for model training.
+    For small datasets, the full dataset is used to train.
+    For large datasets, a random sample is taken across the dataset. It is assumed the sample size is small enough to load the sample into memory.
+    '''
+    sample = np.zeros(shape=(sample_size, DIM))
+    mmp = np.memmap(memmap_path, mode = 'r', shape = mmp_shape, dtype=np.float32)
+    if sample_size!=SIZE:
+        random_order = np.arange(SIZE)
+        np.random.seed(42)
+        np.random.shuffle(random_order)
+        sample_indexes = np.sort(random_order[:sample_size])
+        sample[:] = mmp[sample_indexes, :]
+    else:
+        sample[:] = mmp
+    return sample
 
 def make_ground_truth_labels(B, neighbours, index, sample_size, device):
     '''
@@ -87,13 +114,13 @@ def get_dataset_obj(dataset_name, size):
     Return a dataset object 
     '''
     if dataset_name == "bigann":
-        return BigANNDataset(size)
+        return ds.BigANNDataset(size)
     elif dataset_name == "deep1b":
-        return Deep1BDataset(size)
+        return ds.Deep1BDataset(size)
     elif dataset_name == "sift-128-euclidean":
-        return Sift_128()
+        return ds.Sift_128()
     elif dataset_name == "glove-100-angular":
-        return Glove_100()
+        return ds.Glove_100()
     else:
         print("dataset not supported yet")
 
@@ -108,9 +135,9 @@ def get_B(n):
     else:
         raise Exception(f"cannot calculate B for empty dataset!")
 
-'''
-Helpers for loading and saving models and indexes.
-'''
+######################################################################
+# Helpers for loading and saving models and indexes.
+######################################################################
 
 def save_model(model, dataset_name, r, R, K, B, lr, shuffle, global_reass):
     '''
@@ -150,33 +177,9 @@ def save_inverted_index(inverted_index, offsets, dataset_name, model_num, R, K, 
     np.save(offsets_path, offsets)
     return index_path
 
-# def load_indexes(dataset_name, R, K):
-#     '''
-#     Load all R inverted indexes for a specific dataset and parameter setting combination.
-#     '''
-#     indexes = []
-#     if not os.path.exists(f"models/{dataset_name}_{R}_{K}/"): 
-#         print("no index found for this data set or configuration: build index first")
-#     else:
-#          for i in range(R):
-#              indexes.append(np.load(f"models/{dataset_name}_{R}_{K}/model_{dataset_name}_r{i}_k{K}.pt"))
-#     return indexes
-
-# def save_dataset_as_memmap(data, dataset_name):
-#     '''
-    
-#     '''
-#     dir_path = "memmaps/"
-#     if not os.path.exists(dir_path):
-#         os.mkdir(dir_path)
-#     file_path = os.path.join(dir_path, f"memmap_{dataset_name}.npy")
-
-#     np.save(file_path, data)
-#     print(f"Dataset saved to {file_path} with shape {data.shape}")
-
-'''
-Helpers for plots created during index building and collecting statistics.
-'''
+######################################################################
+# Helpers for plots created during index building and collecting statistics.
+######################################################################
 
 def make_loss_plot(learning_rate, iterations, epochs_per_iteration, k, B, experiment_name, all_losses, shuffle, global_reass):
     '''
@@ -225,9 +228,9 @@ def calc_load_balance(bucket_size_stats):
     return avg_load_balance
 
 
-'''
-Other helper functions.
-'''
+######################################################################
+# Other helper functions.
+######################################################################
 
 def get_best_device():
     '''

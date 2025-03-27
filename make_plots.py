@@ -1,11 +1,14 @@
-import ast
 import glob
-import csv
-import os
 import matplotlib.pyplot as plt
+import os
 import pandas as pd
 
+
 def find_files(experiment_name):
+    '''
+    Find all the .csv files in an experiment folder to collect the results for different inference parameter combinations within an experiment.
+    Currently, build file is excluded as it is describing results of index building.
+    '''
     parameters_per_file = []
     filepaths = glob.glob(f"results/{experiment_name}/*.csv")
     filepaths = [f for f in filepaths if not f.endswith('build.csv')]
@@ -17,6 +20,9 @@ def find_files(experiment_name):
     return filepaths, parameters_per_file
 
 def compile_results(files):
+    '''
+    Collect results from a set of csv files in one dataframe.
+    '''
     results = []
     dtype_dict = {
         'elapsed': float,
@@ -30,6 +36,9 @@ def compile_results(files):
     return results
 
 def make_recall_vs_distance_comps_plots(results, parameters_per_file, experiment_name):
+    '''
+    Make a plot where recall is compared to nr of distance computations (nr of candidates when candidate set was too large and required true distance computations for reordering).
+    '''
     for i, result in enumerate(results):
         r = parameters_per_file[i]['r']
         k = parameters_per_file[i]['k']
@@ -50,6 +59,9 @@ def make_recall_vs_distance_comps_plots(results, parameters_per_file, experiment
         plt.savefig(f"results/{experiment_name}/{r}_{k}_{m}_qps{qps:.2f}_avg_rec{avg_recall:.3f}.png", dpi=300)
 
 def make_plots(results, parameters_per_file, experiment_name):
+    '''
+    Include all plot functions that should be run here.
+    '''
     make_recall_vs_distance_comps_plots(results, parameters_per_file, experiment_name)
 
 if __name__ == "__main__":

@@ -1,6 +1,7 @@
-from torch.utils.data import Dataset
 import torch
 from torch import nn
+from torch.utils.data import Dataset
+
 
 class BLISS_NN(nn.Module):
     '''

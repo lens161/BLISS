@@ -1,11 +1,33 @@
 import numpy as np
+import os
+import sys
+import time
 import torch
 from functools import partial
 from multiprocessing import Pool
-import sys
-import time
-import os
-from utils import get_nearest_neighbours_in_different_dataset
+
+import utils as ut
+from config import Config
+
+
+def load_data_for_inference(dataset, config: Config, SIZE, DIM):
+    '''
+    For a given dataset, load the load thedataset, test data and ground truths.
+    Data is loaded from an existing memmap (created during index building), so that we can return the memmap address when the dataset is too large to load into memory.
+    Test data (query vectors) and ground truths (true nearest neighbours of test) are read from the original dataset files.
+    '''
+    # keep data as a memmap if the dataset is too large, otherwise load into memory fully
+    memmap_path = f"memmaps/{config.dataset_name}_{config.datasize}.npy"
+    data = np.memmap(memmap_path, mode='r', shape=(SIZE, DIM), dtype=np.float32) if SIZE >10_000_000 else np.memmap(memmap_path,shape=(SIZE, DIM), mode='r', dtype=np.float32)[:]
+
+    test = dataset.get_queries()
+    neighbours, _ = dataset.get_groundtruth()
+    neighbours = neighbours[:, :config.nr_ann]
+
+    if dataset.distance() == "angular":
+        test = ut.normalise_data(test)
+    
+    return data, test, neighbours
 
 def query(data, index, query_vector, neighbours, m, freq_threshold, requested_amount):
     '''
@@ -128,7 +150,7 @@ def reorder(data, query_vector, candidates, requested_amount):
         sp_index.append(candidates[i])
     # print(f"search_space = {search_space}")
     query_vector = query_vector.reshape(1, -1)
-    neighbours = get_nearest_neighbours_in_different_dataset(search_space, query_vector, requested_amount)
+    neighbours = ut.get_nearest_neighbours_in_different_dataset(search_space, query_vector, requested_amount)
     neighbours = neighbours[0].tolist()
     final_neighbours = []
     for i in neighbours:
