@@ -64,6 +64,24 @@ def normalise_data(data):
     data = data / norms
     return data
 
+def get_training_sample(dataset: ds.Dataset, sample_size, SIZE, DIM):
+    if sample_size == SIZE:
+        return dataset.get_dataset(), np.arange(0, SIZE)
+    sample = np.zeros((sample_size, DIM))
+    sample_indexes = np.zeros(sample_size)
+    chunk_size = 1_000_000
+    chunk_sample_size = sample_size / chunk_size
+    index = 0
+    for i, batch in enumerate(dataset.get_dataset_iterator(bs=chunk_size)):
+        random_order = np.arange(len(batch))
+        np.random.seed(i)
+        np.random.shuffle(random_order)
+        chunk_sample_indexes = np.sort(random_order[:chunk_sample_size])
+        sample_indexes[index : index+len(batch)] = chunk_sample_indexes
+        sample[index : index+len(batch)] = batch[chunk_sample_indexes]
+        index += len(batch)
+    return sample, sample_indexes
+
 def get_training_sample_from_memmap(memmap_path, mmp_shape, sample_size, SIZE, DIM):
     '''
     Given a dataset (as a memmap), sample data for model training.
@@ -257,23 +275,8 @@ def set_torch_seed(seed, device):
     elif device == torch.device("mps"):
         torch.mps.manual_seed(seed)
 
-def quantise(data:np, sample = None, m= 8, nbits = 8):
-    '''quantises the data and return codes and the quantised vectors'''
-    n, d = data.shape
-
+def train_pq(training_data, m = 8, nbits = 8):
+    d = training_data.shape[1]
     pq_index = IndexPQ(d, m , nbits)
-
-    # if sample is not None:
-    #     pq_index.train(data)
-    # else:
-    pq_index.train(data)
-
-    pq_index.add(data)
-
-    pq_codes = vector_to_array(pq_index.codes).reshape(n, m)
-
-    # quantised_data = np.empty_like(data)
-    # for i in range(n):
-    #     quantised_data[i] = pq_index.reconstruct(i)
-
-    return pq_codes
+    pq_index.train(training_data)
+    return (pq_index, m)
