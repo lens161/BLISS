@@ -71,8 +71,8 @@ if __name__ == "__main__":
     # range_K = 2
     range_threshold = 2
     k_values = [2]
-    m_values = [2]
-    EXP_NAME = "test_refactor_p4"
+    m_values = [15]
+    EXP_NAME = "revert_old_mem_logging"
 
     if not os.path.exists("logs"):
         os.mkdir("logs")
@@ -93,17 +93,17 @@ if __name__ == "__main__":
     logging.info("[Experiment] Experiments started")
         # check that datasize in config is set to correct value. (default = 1)
     for dataset in datasets:
-        conf_4 = Config(dataset_name=dataset, batch_size=2048, b= 1024, epochs=2, iterations=2)
+        conf_4 = Config(dataset_name=dataset, batch_size=2048, b= 4096)
         # conf_8 = Config(dataset_name=dataset, batch_size=2048, b=8192, datasize=10)
         configs_b.append(conf_4)
         # configs_b.append(conf_8)
         for m in m_values:
-            conf_q4 = Config(dataset_name=dataset, batch_size=2048, m=m, b=1024, epochs=2, iterations=2)
+            conf_q4 = Config(dataset_name=dataset, batch_size=2048, m=m, b=4096)
             # conf_q8 = Config(dataset_name=dataset, batch_size=2048, m=m, b=8192, datasize=10)
             configs_q.append(conf_q4)
             # configs_q.append(conf_q8)
     
     logging.info(f"[Experiment] Building indexes")
-    # build_multiple_indexes_exp(EXP_NAME, configs_b)
+    build_multiple_indexes_exp(EXP_NAME, configs_b)
     logging.info(f"[Experiment] Starting query experiments")
     run_multiple_query_exp(EXP_NAME, configs_q)
