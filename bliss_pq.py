@@ -26,7 +26,7 @@ def build_index(dataset: ds.Dataset, config: Config):
     logging.info(f"Started building index")
     SIZE = dataset.nb
     DIM = dataset.d
-    
+
     sample_size = SIZE if SIZE < 2_000_000 else 1_000_000
     
     # get training sample (unquantised) from dataset iterator
@@ -51,7 +51,6 @@ def build_index(dataset: ds.Dataset, config: Config):
 
     labels = []
     dataset = BLISSDataset(sample, labels, config.device)
-    # log size of dataset obj
 
     final_index = []
     time_per_r = [] 
@@ -78,9 +77,6 @@ def build_index(dataset: ds.Dataset, config: Config):
         print(f"setting up model {r+1}")
         ut.set_torch_seed(r, config.device)
         model = BLISS_NN(config.b)
-        model_size = asizeof.asizeof(model)
-        ut.log_mem("model size before training", model_size, config.memlog_path)
-
         print(f"training model {r+1}")
         train_model(model, dataset, sample_buckets, sample_size, bucket_sizes, neighbours, r, SIZE, config)
         model_path = ut.save_model(model, config.dataset_name, r+1, config.r, config.k, config.b, config.lr, config.shuffle, config.global_reass)
@@ -273,8 +269,8 @@ def run_bliss(config: Config, mode, experiment_name):
         index = load_indexes_and_models(config, SIZE, DIM, b)
         logging.info("Reading query vectors and ground truths")
         data, test, neighbours, index_pq, m = load_data_for_inference(dataset, config, SIZE, DIM)
-        # test = test[:10]
-        # neighbours = neighbours[:10]
+        test = test[:10]
+        neighbours = neighbours[:10]
 
         index_pq.add(test)
         test = vector_to_array(index_pq.codes).reshape(len(test), m)
