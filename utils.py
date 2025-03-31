@@ -113,7 +113,7 @@ def make_ground_truth_labels(B, neighbours, index, sample_size, device):
             bucket = index[neighbour]
             labels[i, bucket] = True
     if device != torch.device("cpu"):
-        labels = torch.from_numpy(labels).float()
+        labels = torch.from_numpy(labels).to(torch.float32)
     return labels
 
 def reassign_vector_to_bucket(probability_vector, index, bucket_sizes, k, item_index):

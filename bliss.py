@@ -58,10 +58,14 @@ def build_index(dataset: ds.Dataset, config: Config):
         print("making initial groundtruth labels", flush=True)
         labels = ut.make_ground_truth_labels(config.b, neighbours, sample_buckets, sample_size, config.device)
         dataset.labels = labels
+        ds_size = asizeof.asizeof(dataset)
+        ut.log_mem("size of training dataset before training (pq)", ds_size, config.memlog_path)
 
         print(f"setting up model {r+1}")
         ut.set_torch_seed(r, config.device)
         model = BLISS_NN(DIM, config.b)
+        model_size = asizeof.asizeof(model)
+        ut.log_mem("model size before training", model_size, config.memlog_path)
         print(f"training model {r+1}")
         train_model(model, dataset, sample_buckets, sample_size, bucket_sizes, neighbours, r, SIZE, config)
         model_path = ut.save_model(model, config.dataset_name, r+1, config.r, config.k, config.b, config.lr, config.shuffle, config.global_reass)
@@ -110,7 +114,7 @@ def map_all_to_buckets_unbatched(data, k, index, bucket_sizes, map_model):
     '''
     Old version of map_all_to_buckets where each vector is processed individually, instead of doing the forward pass in batches.
     '''
-    data = torch.from_numpy(data).float()
+    data = torch.from_numpy(data).to(torch.float32)
     data = data.to("cpu")
 
     for i, vector in enumerate(data):
@@ -273,7 +277,7 @@ def run_bliss(config: Config, mode, experiment_name):
         data, test, neighbours = load_data_for_inference(dataset, config, SIZE, DIM)
 
         print(f"creating tensor array from Test")
-        test = torch.from_numpy(test).float()
+        test = torch.from_numpy(test).to(torch.float32)
 
         logging.info("Starting inference")
         num_workers = 8

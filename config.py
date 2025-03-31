@@ -4,7 +4,9 @@ class Config:
     '''
     Class to set configuration for an experiment. Most parameters have default values which can be overwritten.
     '''
-    def __init__(self, dataset_name, r= 4, k= 2, m = 2, freq_threshold = 2, epochs = 5, iterations = 4, batch_size = 256, nr_train_neighbours = 100, nr_ann = 10, b = 0, lr = 0.001, global_reass=False, shuffle = False, datasize=1):
+    def __init__(self, dataset_name, r= 4, k= 2, m = 2, freq_threshold = 2, 
+                 epochs = 5, iterations = 4, batch_size = 256, nr_train_neighbours = 100, 
+                 nr_ann = 10, b = 0, lr = 0.001, global_reass=False, shuffle = False, datasize=1):
         self.dataset_name = dataset_name
         self.r = r
         self.k = k

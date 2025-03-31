@@ -52,8 +52,6 @@ def build_index(dataset: ds.Dataset, config: Config):
     labels = []
     dataset = BLISSDataset(sample, labels, config.device)
     # log size of dataset obj
-    ds_size = asizeof.asizeof(dataset)
-    ut.log_mem("size of training dataset before training (pq)", ds_size, config.memlog_path)
 
     final_index = []
     time_per_r = [] 
@@ -74,6 +72,8 @@ def build_index(dataset: ds.Dataset, config: Config):
         print("making initial groundtruth labels", flush=True)
         labels = ut.make_ground_truth_labels(config.b, neighbours, sample_buckets, sample_size, config.device)
         dataset.labels = labels
+        ds_size = asizeof.asizeof(dataset)
+        ut.log_mem("size of training dataset before training (pq)", ds_size, config.memlog_path)
 
         print(f"setting up model {r+1}")
         ut.set_torch_seed(r, config.device)

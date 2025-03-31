@@ -8,6 +8,7 @@ import torch
 import torch.optim as optim
 from torch import nn
 from torch.utils.data import DataLoader
+from pympler import asizeof
 
 import utils as ut
 from config import Config
@@ -77,6 +78,8 @@ def reassign_buckets(model, dataset, index, bucket_sizes, sample_size, neighbour
     with torch.no_grad():
         for batch_data, batch_labels, batch_indices in reassign_loader:
             batch_data = batch_data.to("cpu")
+            batch_size = asizeof.asizeof(batch_data)
+            ut.log_mem("batch size during reasignment", batch_size, config.memlog_path)
             bucket_probabilities = torch.sigmoid(model(batch_data))
 
             for probability_vector, idx in zip(bucket_probabilities, batch_indices):

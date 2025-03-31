@@ -40,7 +40,7 @@ class BLISSDataset(Dataset):
         if device == torch.device("cpu"):
             self.data = data
         else:
-            self.data = torch.from_numpy(data).float()
+            self.data = torch.from_numpy(data).to(torch.float16)
 
     def __len__(self):
         return len(self.data)
@@ -49,11 +49,11 @@ class BLISSDataset(Dataset):
         if self.mode == 'train':
         # turn nd.array into tensor when fetched from the Dataset
             if self.device == torch.device("cpu"):
-                vector = torch.from_numpy(self.data[idx]).float()
-                label = torch.from_numpy(self.labels[idx]).float()
+                vector = torch.from_numpy(self.data[idx]).to(torch.float16)
+                label = torch.from_numpy(self.labels[idx]).to(torch.float16)
             else:
                 vector = self.data[idx]
                 label = self.labels[idx]
             return vector, label, idx
         elif self.mode == 'map':
-            return torch.from_numpy(self.data[idx]).float(), idx
+            return torch.from_numpy(self.data[idx]).to(torch.float16), idx
