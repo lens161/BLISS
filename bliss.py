@@ -33,8 +33,7 @@ def build_index(dataset: ds.Dataset, config: Config):
     print(f"sample size = {len(sample)}")
 
     print("finding neighbours...", flush=True)
-    logging.info(f"Finding ground truths for train vectors")
-    neighbours = ut.get_train_nearest_neighbours_from_file(sample, config.nr_train_neighbours, sample_size, config.dataset_name)
+    neighbours = ut.get_train_nearest_neighbours_from_file(sample, config.nr_train_neighbours, sample_size, config.dataset_name, config.datasize)
 
     labels = []
     dataset = BLISSDataset(sample, labels, config.device)
@@ -71,7 +70,7 @@ def build_index(dataset: ds.Dataset, config: Config):
         model.to("cpu")
         index = None
         if sample_size < SIZE:
-            build_full_index(bucket_sizes, SIZE, model, config)
+            index = build_full_index(bucket_sizes, SIZE, model, config)
         else:
             index = sample_buckets
 
@@ -130,8 +129,8 @@ def map_all_to_buckets(map_loader, k, index, bucket_sizes, map_model, offset):
 
             for probability_vector, idx in zip(probabilities, batch_indices):
                 global_idx = idx + offset
-                if offset % 1000000 == 0:
-                    print(f"no worries i am still alive, reasigning vector {idx}", flush=True)
+                if global_idx % 1000000 == 0:
+                    print(f"no worries i am still alive, reassigning vector {global_idx}", flush=True)
                 ut.reassign_vector_to_bucket(probability_vector, index, bucket_sizes, k, global_idx)
 
 def build_full_index(bucket_sizes, SIZE, model, config: Config):
@@ -152,6 +151,8 @@ def build_full_index(bucket_sizes, SIZE, model, config: Config):
     for batch in full_data.get_dataset_iterator(bs=1_000_000):
         data_batched.data = batch
         map_all_to_buckets(map_loader, config.k, index, bucket_sizes, model, global_idx)
+        global_idx += 1_000_000
+    return index
 
 # def invert_index(index, B):
 #     inverted_index = [[] for _ in range(B)]
@@ -203,6 +204,7 @@ def save_dataset_as_memmap(dataset, config: Config, SIZE, DIM):
     Put a dataset into a memmap and return the path where it was saved. 
     Small datasets can be loaded into memory and written to a memmap in one go, larger datasets are processed in chunks.
     '''
+    logging.info("Creating dataset memmap")
     memmap_path = f"memmaps/{config.dataset_name}_{config.datasize}.npy"
     mmp_shape = (SIZE, DIM)
     print(f"mmp shape = {mmp_shape}")
@@ -216,7 +218,7 @@ def save_dataset_as_memmap(dataset, config: Config, SIZE, DIM):
             if dataset.distance() == "angular":
                 data = ut.normalise_data(data)
             mmp[:] = data
-        mmp.flush()
+            mmp.flush()
     return memmap_path, mmp_shape
 
 def fill_memmap_in_batches(dataset, config: Config, mmp):
@@ -224,13 +226,14 @@ def fill_memmap_in_batches(dataset, config: Config, mmp):
     Save the dataset in a memmap in batches if the dataset is too large to load into memory in one go.
     '''
     index = 0
-    for batch in dataset.get_dataset_iterator(1_000_000):
+    for batch in dataset.get_dataset_iterator(bs=1_000_000):
         process = psutil.Process(os.getpid())
         memory_usage = process.memory_info().rss / (1024 ** 2)
         ut.log_mem(f"while loading for memmap batch: ", memory_usage, config.memlog_path)
         print(f"mem usage while loading batch: {memory_usage}")
         batch_size = len(batch)
         mmp[index: index + batch_size] = batch
+        mmp.flush()
         del batch
         index += batch_size
 

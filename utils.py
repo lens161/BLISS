@@ -1,4 +1,5 @@
 import csv
+import logging
 import math
 import matplotlib.pyplot as plt # type: ignore
 import numpy as np
@@ -35,20 +36,23 @@ def get_nearest_neighbours_in_different_dataset(dataset, queries, amount):
     _, I = nbrs.search(queries, amount)
     return I
 
-def get_train_nearest_neighbours_from_file(dataset, amount, sample_size, dataset_name):
+def get_train_nearest_neighbours_from_file(dataset, amount, sample_size, dataset_name, datasize):
     '''
     Helper to read/write nearest neighbour of train data to file so we can test index building without repeating preprocessing each time.
     Should not be used in actual algorithm or experiments where timing the preprocessing is important.
     '''
-    if not os.path.exists(f"data/{dataset_name}-nbrs{amount}-sample{sample_size}.csv"):
+    logging.info(f"Trying to find ground truth for training sample in file")
+    if not os.path.exists(f"data/{dataset_name}-size{datasize}-nbrs{amount}-sample{sample_size}.csv"):
         print(f"no nbrs file found for {dataset_name} with amount={amount} and samplesize={sample_size}, calculating {amount} nearest neighbours")
+        logging.info("No neighbours file found, calculating ground truths of training sample")
         I = get_nearest_neighbours_within_dataset(dataset, amount)
         print("writing neighbours to nbrs file")
         I = np.asarray(I)
-        np.savetxt(f"data/{dataset_name}-nbrs{amount}-sample{sample_size}.csv", I, delimiter=",", fmt='%.0f')
+        np.savetxt(f"data/{dataset_name}-size{datasize}-nbrs{amount}-sample{sample_size}.csv", I, delimiter=",", fmt='%.0f')
     else:
         print(f"found nbrs file for {dataset_name} with amount={amount} and samplesize={sample_size}, reading true nearest neighbours from file")
-        filename = f"data/{dataset_name}-nbrs{amount}-sample{sample_size}.csv"
+        logging.info("Reusing ground truths for training sample from file")
+        filename = f"data/{dataset_name}-size{datasize}-nbrs{amount}-sample{sample_size}.csv"
         I = read_csv(filename, dtype=int, header=None).to_numpy()
     return I
 
@@ -88,6 +92,7 @@ def get_training_sample_from_memmap(memmap_path, mmp_shape, sample_size, SIZE, D
     For small datasets, the full dataset is used to train.
     For large datasets, a random sample is taken across the dataset. It is assumed the sample size is small enough to load the sample into memory.
     '''
+    logging.info("Creating random training sample from memmap")
     sample = np.zeros(shape=(sample_size, DIM))
     mmp = np.memmap(memmap_path, mode = 'r', shape = mmp_shape, dtype=np.float32)
     if sample_size!=SIZE:
@@ -106,6 +111,7 @@ def make_ground_truth_labels(B, neighbours, index, sample_size, device):
     A label is a B-dimensional vector, where each digit is either 0 (false) if that bucket does not contain any
     nearest neighbours of a vector, and 1 (true) if the bucket contains at least one nearest neighbour of that vector.
     '''
+    logging.info("Creating ground truth labels")
     labels = np.zeros((sample_size, B), dtype=bool)
     for i in range(sample_size):
         for neighbour in neighbours[i]:
