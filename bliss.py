@@ -149,8 +149,12 @@ def build_full_index(bucket_sizes, SIZE, model, config: Config):
     data_batched = BLISSDataset(None, None, device = torch.device("cpu"), mode='map')
     map_loader = DataLoader(data_batched, batch_size=config.batch_size, shuffle=False, num_workers=8)
     global_idx = 0
-    for batch in full_data.get_dataset_iterator(bs=1_000_000):
+    for i, batch in enumerate(full_data.get_dataset_iterator(bs=1_000_000)):
         data_batched.data = batch
+        batch = asizeof.asizeof(batch)
+        build_idx_dataset = asizeof.asizeof(data_batched)
+        ut.log_mem(f"batched dataset size at batch {i}", build_idx_dataset, config.memlog_path)
+        ut.log_mem(f"size of batch {i}", batch, config.memlog_path)
         map_all_to_buckets(map_loader, config.k, index, bucket_sizes, model, global_idx)
 
 # def invert_index(index, B):

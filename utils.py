@@ -6,6 +6,7 @@ import os
 import torch
 from faiss import IndexFlatL2, IndexPQ, vector_to_array
 from pandas import read_csv
+from pympler import asizeof
 
 import datasets as ds
 from bliss_model import BLISS_NN
@@ -230,8 +231,9 @@ def log_mem(function_name, mem_usage, filepath):
             writer.writeheader()
         writer.writerow({
             'function': function_name,
-            'memory_usage_mb': mem_usage
+            'memory_usage_mb': mem_usage/1024
         })
+    print(f"logged mem. use of{function_name}: {mem_usage/1024}" )
 
 def calc_load_balance(bucket_size_stats):
     '''
