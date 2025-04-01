@@ -7,6 +7,7 @@ import resource
 import sys
 import time
 import torch
+import tracemalloc
 from faiss import IndexPQ, vector_to_array
 from pympler import asizeof
 from sklearn.utils import murmurhash3_32 as mmh3
@@ -57,6 +58,7 @@ def build_index(dataset: ds.Dataset, config: Config):
     process = psutil.Process(os.getpid())
     memory_usage = process.memory_info().rss / (1024 ** 2)
     bucket_size_stats = []
+    tracemalloc.start()
     ut.log_mem(f"before_building_global={config.global_reass}_shuffle={config.shuffle}", memory_usage, config.memlog_path)
     for r in range(config.r):
         logging.info(f"Training model {r+1}")
@@ -71,12 +73,17 @@ def build_index(dataset: ds.Dataset, config: Config):
         print("making initial groundtruth labels", flush=True)
         labels = ut.make_ground_truth_labels(config.b, neighbours, sample_buckets, sample_size, config.device)
         dataset.labels = labels
+        ds_size = asizeof.asizeof(dataset)
+        ut.log_mem("size of training dataset before training (pq)", ds_size, config.memlog_path)
 
         print(f"setting up model {r+1}")
         ut.set_torch_seed(r, config.device)
         model = BLISS_NN(config.b)
         print(f"training model {r+1}")
         train_model(model, dataset, sample_buckets, sample_size, bucket_sizes, neighbours, r, SIZE, config)
+        current, _ = tracemalloc.get_traced_memory() 
+        print(f"memory during training mdoel {r+1}: {current}")
+        ut.log_mem(f"memory during training model {r+1}", current, config.memlog_path)
         model_path = ut.save_model(model, config.dataset_name, r+1, config.r, config.k, config.b, config.lr, config.shuffle, config.global_reass)
         print(f"model {r+1} saved to {model_path}.")
 
@@ -97,8 +104,10 @@ def build_index(dataset: ds.Dataset, config: Config):
 
     build_time = time.time() - start
     process = psutil.Process(os.getpid())
-    # memory_usage = process.memory_info().rss / (1024 ** 2)
-    peak_mem = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    memory_usage = process.memory_info().rss / (1024 ** 2)
+    # peak_mem = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    _, peak_mem = tracemalloc.get_traced_memory()
+    tracemalloc.stop()
     load_balance = ut.calc_load_balance(bucket_size_stats)
     ut.log_mem(f"after_building_global={config.global_reass}_shuffle={config.shuffle}", memory_usage, config.memlog_path)
     return final_index, time_per_r, build_time, peak_mem, load_balance
@@ -266,12 +275,17 @@ def run_bliss(config: Config, mode, experiment_name):
         logging.info("Loading models for inference")
         index = load_indexes_and_models(config, SIZE, DIM, b)
         logging.info("Reading query vectors and ground truths")
+        tracemalloc.start()
         data, test, neighbours, index_pq, m = load_data_for_inference(dataset, config, SIZE, DIM)
-        test = test[:10]
-        neighbours = neighbours[:10]
+        current, peak = tracemalloc.get_traced_memory()
+        ut.log_mem(f"memory afer loading memmap for inference", current, config.memlog_path)
+        ut.log_mem(f"memory peak after loading memmap for inference", peak, config.memlog_path)
+        tracemalloc.stop()
+        # test = test[:10]
+        # neighbours = neighbours[:10]
 
-        index_pq.add(test)
-        test = vector_to_array(index_pq.codes).reshape(len(test), m)
+        # index_pq.add(test)
+        # test = vector_to_array(index_pq.codes).reshape(len(test), m)
 
         print(f"creating tensor array from Test")
         test = torch.from_numpy(test).int()
@@ -279,7 +293,10 @@ def run_bliss(config: Config, mode, experiment_name):
         logging.info("Starting inference")
         num_workers = 8
         start = time.time()
+        tracemalloc.start()
         results = query_multiple(data, index, test, neighbours, config.m, config.freq_threshold, config.nr_ann)
+        _, peak = tracemalloc.get_traced_memory()
+        ut.log_mem(f"peak memory during querying", peak, config.memlog_path)
         # results = query_multiple_parallel(data, index, test, neighbours, config.m, config.freq_threshold, config.nr_ann, num_workers)
         end = time.time()
 

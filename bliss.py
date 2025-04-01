@@ -1,3 +1,4 @@
+import gc
 import logging
 import numpy as np
 import os
@@ -6,6 +7,7 @@ import resource
 import sys
 import time
 import torch
+import tracemalloc
 from pympler import asizeof
 from torch.utils.data import DataLoader
 from sklearn.utils import murmurhash3_32 as mmh3
@@ -24,6 +26,7 @@ def build_index(dataset: ds.Dataset, config: Config):
     logging.info(f"Started building index")
     SIZE = dataset.nb
     DIM = dataset.d
+    # DIM = 64
 
     sample_size = SIZE if SIZE < 2_000_000 else 1_000_000
 
@@ -43,6 +46,7 @@ def build_index(dataset: ds.Dataset, config: Config):
     process = psutil.Process(os.getpid())
     memory_usage = process.memory_info().rss / (1024 ** 2)
     bucket_size_stats = []
+    tracemalloc.start()
     ut.log_mem(f"before_building_global={config.global_reass}_shuffle={config.shuffle}", memory_usage, config.memlog_path)
     for r in range(config.r):
         logging.info(f"Training model {r+1}")
@@ -57,12 +61,18 @@ def build_index(dataset: ds.Dataset, config: Config):
         print("making initial groundtruth labels", flush=True)
         labels = ut.make_ground_truth_labels(config.b, neighbours, sample_buckets, sample_size, config.device)
         dataset.labels = labels
+        ds_size = asizeof.asizeof(dataset)
+        ut.log_mem("size of training dataset before training (pq)", ds_size, config.memlog_path)
 
         print(f"setting up model {r+1}")
         ut.set_torch_seed(r, config.device)
         model = BLISS_NN(DIM, config.b)
+        model_size = asizeof.asizeof(model)
+        ut.log_mem("model size before training", model_size, config.memlog_path)
         print(f"training model {r+1}")
         train_model(model, dataset, sample_buckets, sample_size, bucket_sizes, neighbours, r, SIZE, config)
+        current, _ = tracemalloc.get_traced_memory() 
+        ut.log_mem(f"memory during training model {r+1}", current, config.memlog_path)
         model_path = ut.save_model(model, config.dataset_name, r+1, config.r, config.k, config.b, config.lr, config.shuffle, config.global_reass)
         print(f"model {r+1} saved to {model_path}.")
 
@@ -73,19 +83,21 @@ def build_index(dataset: ds.Dataset, config: Config):
             index = build_full_index(bucket_sizes, SIZE, model, config)
         else:
             index = sample_buckets
-
+        del model 
         inverted_index, offsets = invert_index(index, bucket_sizes, SIZE)
         index_path = ut.save_inverted_index(inverted_index, offsets, config.dataset_name, r+1, config.r, config.k, config.b, config.lr, config.shuffle, config.global_reass)
+        del inverted_index, offsets
         final_index.append((index_path, model_path))
         end = time.time()
         time_per_r.append(end - start)
         bucket_size_stats.append(bucket_sizes)
 
     build_time = time.time() - start
-    process = psutil.Process(os.getpid())
+    # process = psutil.Process(os.getpid())
     # memory_usage = process.memory_info().rss / (1024 ** 2)
-    peak_mem = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    _, peak_mem = tracemalloc.get_traced_memory()
     load_balance = ut.calc_load_balance(bucket_size_stats)
+    tracemalloc.stop()
     ut.log_mem(f"after_building_global={config.global_reass}_shuffle={config.shuffle}", memory_usage, config.memlog_path)
     return final_index, time_per_r, build_time, peak_mem, load_balance
 
@@ -109,7 +121,7 @@ def map_all_to_buckets_unbatched(data, k, index, bucket_sizes, map_model):
     '''
     Old version of map_all_to_buckets where each vector is processed individually, instead of doing the forward pass in batches.
     '''
-    data = torch.from_numpy(data).float()
+    data = torch.from_numpy(data).to(torch.float32)
     data = data.to("cpu")
 
     for i, vector in enumerate(data):
@@ -151,9 +163,8 @@ def build_full_index(bucket_sizes, SIZE, model, config: Config):
     for batch in full_data.get_dataset_iterator(bs=1_000_000):
         data_batched.data = batch
         map_all_to_buckets(map_loader, config.k, index, bucket_sizes, model, global_idx)
-        global_idx += 1_000_000
+        global_idx += len(batch)
     return index
-
 # def invert_index(index, B):
 #     inverted_index = [[] for _ in range(B)]
 #     for i, bucket in enumerate(index):
@@ -217,6 +228,7 @@ def save_dataset_as_memmap(dataset, config: Config, SIZE, DIM):
             data = dataset.get_dataset()[:]
             if dataset.distance() == "angular":
                 data = ut.normalise_data(data)
+            data = ut.random_projection(data, DIM)
             mmp[:] = data
             mmp.flush()
     return memmap_path, mmp_shape
@@ -235,6 +247,7 @@ def fill_memmap_in_batches(dataset, config: Config, mmp):
         mmp[index: index + batch_size] = batch
         mmp.flush()
         del batch
+        gc.collect()
         index += batch_size
 
 def run_bliss(config: Config, mode, experiment_name):
@@ -269,16 +282,25 @@ def run_bliss(config: Config, mode, experiment_name):
         logging.info("Loading models for inference")
         index = load_indexes_and_models(config, SIZE, DIM, b)
         logging.info("Reading query vectors and ground truths")
+        tracemalloc.start()
         data, test, neighbours = load_data_for_inference(dataset, config, SIZE, DIM)
+        current, peak = tracemalloc.get_traced_memory()
+        ut.log_mem(f"memory afer loading memmap for inference", current, config.memlog_path)
+        ut.log_mem(f"memory peak after loading memmap for inference", peak, config.memlog_path)
+        tracemalloc.stop()
 
         print(f"creating tensor array from Test")
-        test = torch.from_numpy(test).float()
+        test = torch.from_numpy(test).to(torch.float32)
 
         logging.info("Starting inference")
         num_workers = 8
         start = time.time()
-        # results = query_multiple(data, index, test, neighbours, config.m, config.freq_threshold, config.nr_ann)
-        results = query_multiple_parallel(data, index, test, neighbours, config.m, config.freq_threshold, config.nr_ann, num_workers)
+        tracemalloc.start()
+        results = query_multiple(data, index, test, neighbours, config.m, config.freq_threshold, config.nr_ann)
+        # results = query_multiple_parallel(data, index, test, neighbours, config.m, config.freq_threshold, config.nr_ann, num_workers)
+        current, peak  = tracemalloc.get_traced_memory()
+        ut.log_mem("peak memory during querying", peak , config.memlog_path)
+        tracemalloc.stop()
         end = time.time()
 
         total_query_time = end - start

@@ -8,6 +8,7 @@ import torch
 import torch.optim as optim
 from torch import nn
 from torch.utils.data import DataLoader
+from pympler import asizeof
 
 import utils as ut
 from config import Config
@@ -28,37 +29,43 @@ def train_model(model, dataset, index, sample_size, bucket_sizes, neighbours, r,
     g = torch.Generator()
     g.manual_seed(r)
     train_loader = DataLoader(dataset, batch_size=config.batch_size, shuffle=True, num_workers=8, generator=g)
-    all_losses = []
+    all_losses = np.zeros(shape=config.epochs*config.iterations)
+    current_epoch = 0
     for i in range(config.iterations):
         model.train() 
         for epoch in range(config.epochs):
-            epoch_losses = []
+            epoch_loss_sum = 0
+            batch_count = 0
             print(f"training epoch ({i}, {epoch})")
             logging.info(f"Training epoch ({i}, {epoch})")
             start = time.time()
             for batch_data, batch_labels, _ in train_loader:
                 batch_data = batch_data.to(config.device)
                 batch_labels = batch_labels.to(config.device)
+                # if isinstance(batch_labels, torch.Tensor) and batch_labels.is_sparse:
+                #     batch_labels = batch_labels.to_dense()
                 optimizer.zero_grad()
                 probabilities = model(batch_data)
                 loss = criterion(probabilities, batch_labels)
                 loss.backward()
                 optimizer.step()
-                epoch_losses.append(loss.item())
+                batch_count += 1
+                epoch_loss_sum += loss.item()
             finish = time.time()
             elapsed = finish-start
             print(f"epoch {epoch} took {elapsed}")
-            avg_loss = statistics.mean(epoch_losses)
-            print(f"epoch {epoch} avg. loss = {avg_loss}", flush=True)
-            all_losses.append(avg_loss)
+            print(f"epoch {epoch} loss = {epoch_loss_sum}", flush=True)
+            all_losses[current_epoch]
+            current_epoch += 1
         if config.global_reass:
             global_reassign_buckets(model, dataset, index, neighbours, bucket_sizes, config)
         elif ((epoch+1) * (i+1) < config.epochs*config.iterations and sample_size != train_size) or sample_size == train_size:
             reassign_buckets(model, dataset, index, bucket_sizes, sample_size, neighbours, config)
+        torch.cuda.empty_cache()
         np.set_printoptions(threshold=6, suppress=True)
         print(f"index after iteration {i}: \r{index}", flush=True)
 
-    ut.make_loss_plot(config.lr, config.iterations, config.epochs, config.k, config.b, config.experiment_name, all_losses, config.shuffle, config.global_reass)
+    # ut.make_loss_plot(config.lr, config.iterations, config.epochs, config.k, config.b, config.experiment_name, all_losses, config.shuffle, config.global_reass)
  
 def reassign_buckets(model, dataset, index, bucket_sizes, sample_size, neighbours, config: Config):
     '''
@@ -66,33 +73,45 @@ def reassign_buckets(model, dataset, index, bucket_sizes, sample_size, neighbour
     To obtain a new bucket for a single vector, the model is used to predict the best buckets for that vector and the least occupied of k buckets
     is chosen as the new bucket. After all vectors are reassigned, new ground truth labels are generated to continue training.
     '''
-    logging.info(f"Reassigning vectors to new buckets")
+    logging.info("Reassigning vectors to new buckets (improved version)")
     sample_size, _ = np.shape(dataset.data)
-    model.to("cpu")
+    model.to(config.device)
     model.eval()
     reassign_loader = DataLoader(dataset, batch_size=config.batch_size, shuffle=config.shuffle, num_workers=8)
-    bucket_sizes[:] = 0
+    
+    bucket_sizes[:] = 0  
 
     start = time.time()
     with torch.no_grad():
-        for batch_data, batch_labels, batch_indices in reassign_loader:
-            batch_data = batch_data.to("cpu")
-            bucket_probabilities = torch.sigmoid(model(batch_data))
+        for batch_data, _, batch_indices in reassign_loader:
 
-            for probability_vector, idx in zip(bucket_probabilities, batch_indices):
-                ut.reassign_vector_to_bucket(probability_vector, index, bucket_sizes, config.k, idx)
-                     
+            batch_data = batch_data.to(config.device)
+            bucket_probabilities = torch.sigmoid(model(batch_data))
+            bucket_probabilities_cpu = bucket_probabilities.cpu()
+
+            _, candidate_buckets = torch.topk(bucket_probabilities_cpu, config.k, dim=1)
+            candidate_buckets_np = candidate_buckets.numpy()
+            
+            for i, item_index in enumerate(batch_indices):
+                candidates = candidate_buckets_np[i]
+                candidate_sizes = bucket_sizes[candidates]
+                best_bucket = candidates[np.argmin(candidate_sizes)]
+                index[item_index] = best_bucket
+                bucket_sizes[best_bucket] += 1
+
     finish = time.time()
     elapsed = finish - start
     process = psutil.Process(os.getpid())
     mem_usage = process.memory_info().rss / (1024 ** 2)
-    ut.log_mem(f"shuffle={config.shuffle}_reassign_buckets", mem_usage, config.memlog_path)
+    ut.log_mem(f"improved_reassign_buckets_shuffle={config.shuffle}", mem_usage, config.memlog_path)
 
-    print(f"Memory usage reassign batched: {mem_usage:.2f} MB")
-    print(f"reassigning took {elapsed}", flush=True)
+    print(f"Memory usage (improved reassign): {mem_usage:.2f} MB")
+    print(f"Reassigning took {elapsed:.2f} seconds", flush=True)
+    
     new_labels = ut.make_ground_truth_labels(config.b, neighbours, index, sample_size, config.device)
     dataset.labels = new_labels
     model.to(config.device)
+
 
 def global_reassign_buckets(model, dataset, index, neighbours, bucket_sizes, config: Config):
     '''

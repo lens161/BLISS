@@ -117,8 +117,8 @@ def make_ground_truth_labels(B, neighbours, index, sample_size, device):
         for neighbour in neighbours[i]:
             bucket = index[neighbour]
             labels[i, bucket] = True
-    if device != torch.device("cpu"):
-        labels = torch.from_numpy(labels).float()
+    # if device != torch.device("cpu"):
+    #     labels = torch.from_numpy(labels).to(torch.float32)
     return labels
 
 def reassign_vector_to_bucket(probability_vector, index, bucket_sizes, k, item_index):
@@ -286,3 +286,8 @@ def train_pq(training_data, m = 8, nbits = 8):
     pq_index = IndexPQ(d, m , nbits)
     pq_index.train(training_data)
     return (pq_index, m)
+
+def random_projection(X, target_dim):
+    original_dim = X.shape[1]
+    R = np.random.randn(original_dim, target_dim) / np.sqrt(target_dim)
+    return np.dot(X, R)
