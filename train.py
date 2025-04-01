@@ -108,7 +108,7 @@ def reassign_buckets(model, dataset, index, bucket_sizes, sample_size, neighbour
     print(f"Reassigning took {elapsed:.2f} seconds", flush=True)
     
     new_labels = ut.make_ground_truth_labels(config.b, neighbours, index, sample_size, config.device)
-    dataset.labels = new_labels.to_sparse()
+    dataset.labels = new_labels
     model.to(config.device)
 
 
