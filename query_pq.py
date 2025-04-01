@@ -138,6 +138,7 @@ def query_multiple(data, index, vectors, neighbours, m, threshold, requested_amo
         sys.stdout.write(f"\r[PID: {os.getpid()}] querying {i+1} of {size}       ")
         sys.stdout.flush()
         start = time.time()
+        quantised_nbrs = 
         anns, dist_comps, recall = query(data, index, vector, neighbours[i], m, threshold, requested_amount)
         end = time.time()
         elapsed = end - start

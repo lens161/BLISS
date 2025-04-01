@@ -7,6 +7,7 @@ import resource
 import sys
 import time
 import torch
+import tracemalloc
 from faiss import IndexPQ, vector_to_array
 from pympler import asizeof
 from sklearn.utils import murmurhash3_32 as mmh3
@@ -268,12 +269,17 @@ def run_bliss(config: Config, mode, experiment_name):
         logging.info("Loading models for inference")
         index = load_indexes_and_models(config, SIZE, DIM, b)
         logging.info("Reading query vectors and ground truths")
+        tracemalloc.start()
         data, test, neighbours, index_pq, m = load_data_for_inference(dataset, config, SIZE, DIM)
-        test = test[:10]
-        neighbours = neighbours[:10]
+        current, peak = tracemalloc.get_traced_memory()
+        ut.log_mem(f"memory afer loading memmap for inference", current, config.memlog_path)
+        ut.log_mem(f"memory peak after loading memmap for inference", peak, config.memlog_path)
+        tracemalloc.stop()
+        # test = test[:10]
+        # neighbours = neighbours[:10]
 
-        index_pq.add(test)
-        test = vector_to_array(index_pq.codes).reshape(len(test), m)
+        # index_pq.add(test)
+        # test = vector_to_array(index_pq.codes).reshape(len(test), m)
 
         print(f"creating tensor array from Test")
         test = torch.from_numpy(test).int()
@@ -281,7 +287,10 @@ def run_bliss(config: Config, mode, experiment_name):
         logging.info("Starting inference")
         num_workers = 8
         start = time.time()
+        tracemalloc.start()
         results = query_multiple(data, index, test, neighbours, config.m, config.freq_threshold, config.nr_ann)
+        _, peak = tracemalloc.get_traced_memory()
+        ut.log_mem(f"peak memory during querying", peak, config.memlog_path)
         # results = query_multiple_parallel(data, index, test, neighbours, config.m, config.freq_threshold, config.nr_ann, num_workers)
         end = time.time()
 

@@ -78,18 +78,16 @@ def reassign_buckets(model, dataset, index, bucket_sizes, sample_size, neighbour
     with torch.no_grad():
         for batch_data, batch_labels, batch_indices in reassign_loader:
             batch_data = batch_data.to("cpu")
-            batch_size = asizeof.asizeof(batch_data)
-            ut.log_mem("batch size during reasignment", batch_size, config.memlog_path)
             bucket_probabilities = torch.sigmoid(model(batch_data))
 
             for probability_vector, idx in zip(bucket_probabilities, batch_indices):
                 ut.reassign_vector_to_bucket(probability_vector, index, bucket_sizes, config.k, idx)
+    mem_usage = process.memory_info().rss / (1024 ** 2)
+    ut.log_mem(f"shuffle={config.shuffle}_reassign_buckets", mem_usage, config.memlog_path)
                      
     finish = time.time()
     elapsed = finish - start
     process = psutil.Process(os.getpid())
-    mem_usage = process.memory_info().rss / (1024 ** 2)
-    ut.log_mem(f"shuffle={config.shuffle}_reassign_buckets", mem_usage, config.memlog_path)
 
     print(f"Memory usage reassign batched: {mem_usage:.2f} MB")
     print(f"reassigning took {elapsed}", flush=True)
