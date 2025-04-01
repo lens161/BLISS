@@ -292,6 +292,7 @@ def run_bliss(config: Config, mode, experiment_name):
         results = query_multiple_parallel(data, index, test, neighbours, config.m, config.freq_threshold, config.nr_ann, num_workers)
         current, peak  = tracemalloc.get_traced_memory()
         ut.log_mem("peak memory during querying", peak , config.memlog_path)
+        tracemalloc.stop()
         end = time.time()
 
         total_query_time = end - start

@@ -58,6 +58,7 @@ def build_index(dataset: ds.Dataset, config: Config):
     process = psutil.Process(os.getpid())
     memory_usage = process.memory_info().rss / (1024 ** 2)
     bucket_size_stats = []
+    tracemalloc.start()
     ut.log_mem(f"before_building_global={config.global_reass}_shuffle={config.shuffle}", memory_usage, config.memlog_path)
     for r in range(config.r):
         logging.info(f"Training model {r+1}")
@@ -80,6 +81,9 @@ def build_index(dataset: ds.Dataset, config: Config):
         model = BLISS_NN(config.b)
         print(f"training model {r+1}")
         train_model(model, dataset, sample_buckets, sample_size, bucket_sizes, neighbours, r, SIZE, config)
+        current, _ = tracemalloc.get_traced_memory() 
+        print(f"memory during training mdoel {r+1}: {current}")
+        ut.log_mem(f"memory during training model {r+1}", current, config.memlog_path)
         model_path = ut.save_model(model, config.dataset_name, r+1, config.r, config.k, config.b, config.lr, config.shuffle, config.global_reass)
         print(f"model {r+1} saved to {model_path}.")
 
@@ -100,8 +104,10 @@ def build_index(dataset: ds.Dataset, config: Config):
 
     build_time = time.time() - start
     process = psutil.Process(os.getpid())
-    # memory_usage = process.memory_info().rss / (1024 ** 2)
-    peak_mem = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    memory_usage = process.memory_info().rss / (1024 ** 2)
+    # peak_mem = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    _, peak_mem = tracemalloc.get_traced_memory()
+    tracemalloc.stop()
     load_balance = ut.calc_load_balance(bucket_size_stats)
     ut.log_mem(f"after_building_global={config.global_reass}_shuffle={config.shuffle}", memory_usage, config.memlog_path)
     return final_index, time_per_r, build_time, peak_mem, load_balance
