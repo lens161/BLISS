@@ -42,6 +42,8 @@ def train_model(model, dataset, index, sample_size, bucket_sizes, neighbours, r,
             for batch_data, batch_labels, _ in train_loader:
                 batch_data = batch_data.to(config.device)
                 batch_labels = batch_labels.to(config.device)
+                if isinstance(batch_labels, torch.Tensor) and batch_labels.is_sparse:
+                    batch_labels = batch_labels.to_dense()
                 optimizer.zero_grad()
                 probabilities = model(batch_data)
                 loss = criterion(probabilities, batch_labels)
@@ -70,34 +72,45 @@ def reassign_buckets(model, dataset, index, bucket_sizes, sample_size, neighbour
     To obtain a new bucket for a single vector, the model is used to predict the best buckets for that vector and the least occupied of k buckets
     is chosen as the new bucket. After all vectors are reassigned, new ground truth labels are generated to continue training.
     '''
-    logging.info(f"Reassigning vectors to new buckets")
+    logging.info("Reassigning vectors to new buckets (improved version)")
     sample_size, _ = np.shape(dataset.data)
-    model.to("cpu")
+    model.to(config.device)
     model.eval()
     reassign_loader = DataLoader(dataset, batch_size=config.batch_size, shuffle=config.shuffle, num_workers=8)
-    bucket_sizes[:] = 0
+    
+    bucket_sizes[:] = 0  
 
     start = time.time()
     with torch.no_grad():
-        for batch_data, batch_labels, batch_indices in reassign_loader:
-            batch_data = batch_data.to("cpu")
-            bucket_probabilities = torch.sigmoid(model(batch_data))
+        for batch_data, _, batch_indices in reassign_loader:
 
-            for probability_vector, idx in zip(bucket_probabilities, batch_indices):
-                ut.reassign_vector_to_bucket(probability_vector, index, bucket_sizes, config.k, idx)
-    process = psutil.Process(os.getpid())
-    mem_usage = process.memory_info().rss / (1024 ** 2)
-    ut.log_mem(f"shuffle={config.shuffle}_reassign_buckets", mem_usage, config.memlog_path)
-                     
+            batch_data = batch_data.to(config.device)
+            bucket_probabilities = torch.sigmoid(model(batch_data))
+            bucket_probabilities_cpu = bucket_probabilities.cpu()
+
+            _, candidate_buckets = torch.topk(bucket_probabilities_cpu, config.k, dim=1)
+            candidate_buckets_np = candidate_buckets.numpy()
+            
+            for i, item_index in enumerate(batch_indices):
+                candidates = candidate_buckets_np[i]
+                candidate_sizes = bucket_sizes[candidates]
+                best_bucket = candidates[np.argmin(candidate_sizes)]
+                index[item_index] = best_bucket
+                bucket_sizes[best_bucket] += 1
+
     finish = time.time()
     elapsed = finish - start
     process = psutil.Process(os.getpid())
+    mem_usage = process.memory_info().rss / (1024 ** 2)
+    ut.log_mem(f"improved_reassign_buckets_shuffle={config.shuffle}", mem_usage, config.memlog_path)
 
-    print(f"Memory usage reassign batched: {mem_usage:.2f} MB")
-    print(f"reassigning took {elapsed}", flush=True)
+    print(f"Memory usage (improved reassign): {mem_usage:.2f} MB")
+    print(f"Reassigning took {elapsed:.2f} seconds", flush=True)
+    
     new_labels = ut.make_ground_truth_labels(config.b, neighbours, index, sample_size, config.device)
-    dataset.labels = new_labels
+    dataset.labels = new_labels.to_sparse()
     model.to(config.device)
+
 
 def global_reassign_buckets(model, dataset, index, neighbours, bucket_sizes, config: Config):
     '''
