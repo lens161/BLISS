@@ -280,3 +280,8 @@ def train_pq(training_data, m = 8, nbits = 8):
     pq_index = IndexPQ(d, m , nbits)
     pq_index.train(training_data)
     return (pq_index, m)
+
+def random_projection(X, target_dim):
+    original_dim = X.shape[1]
+    R = np.random.randn(original_dim, target_dim) / np.sqrt(target_dim)
+    return np.dot(X, R)
