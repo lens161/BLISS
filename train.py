@@ -42,8 +42,8 @@ def train_model(model, dataset, index, sample_size, bucket_sizes, neighbours, r,
             for batch_data, batch_labels, _ in train_loader:
                 batch_data = batch_data.to(config.device)
                 batch_labels = batch_labels.to(config.device)
-                if isinstance(batch_labels, torch.Tensor) and batch_labels.is_sparse:
-                    batch_labels = batch_labels.to_dense()
+                # if isinstance(batch_labels, torch.Tensor) and batch_labels.is_sparse:
+                #     batch_labels = batch_labels.to_dense()
                 optimizer.zero_grad()
                 probabilities = model(batch_data)
                 loss = criterion(probabilities, batch_labels)
@@ -61,6 +61,7 @@ def train_model(model, dataset, index, sample_size, bucket_sizes, neighbours, r,
             global_reassign_buckets(model, dataset, index, neighbours, bucket_sizes, config)
         elif ((epoch+1) * (i+1) < config.epochs*config.iterations and sample_size != train_size) or sample_size == train_size:
             reassign_buckets(model, dataset, index, bucket_sizes, sample_size, neighbours, config)
+        torch.cuda.empty_cache()
         np.set_printoptions(threshold=6, suppress=True)
         print(f"index after iteration {i}: \r{index}", flush=True)
 

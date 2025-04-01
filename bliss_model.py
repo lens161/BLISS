@@ -20,7 +20,6 @@ class BLISS_NN(nn.Module):
         # output layer maps 512 hidden neurons to output neurons (representing the buckets)
         self.fc2 = nn.Linear(512, output_size)
         # turns all output values into softmax values that sum to 1 -> probabilities
-        # self.sigmoid = nn.Sigmoid(dim=1)
 
     def forward(self, x):
         x = self.fc1(x)
@@ -38,10 +37,6 @@ class BLISSDataset(Dataset):
         self.labels = labels
         self.mode = mode
         self.data = data
-        # if device == torch.device("cpu"):
-        #     self.data = data
-        # else:
-        #     self.data = torch.from_numpy(data).float()
 
     def __len__(self):
         return len(self.data)
@@ -50,13 +45,6 @@ class BLISSDataset(Dataset):
         if self.mode == 'train':
             vector = torch.from_numpy(self.data[idx]).float()
             label = torch.from_numpy(self.labels[idx]).float()
-        # turn nd.array into tensor when fetched from the Dataset
-            # if self.device == torch.device("cpu"):
-            #     vector = torch.from_numpy(self.data[idx]).float()
-            #     label = torch.from_numpy(self.labels[idx]).float()
-            # else:
-            #     vector = self.data[idx]
-            #     label = self.labels[idx]
             return vector, label, idx
         elif self.mode == 'map':
             return torch.from_numpy(self.data[idx]).float(), idx

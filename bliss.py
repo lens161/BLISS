@@ -1,3 +1,4 @@
+import gc
 import logging
 import numpy as np
 import os
@@ -24,8 +25,8 @@ def build_index(dataset: ds.Dataset, config: Config):
     print("bulding index...")
     logging.info(f"Started building index")
     SIZE = dataset.nb
-    # DIM = dataset.d
-    DIM = 64
+    DIM = dataset.d
+    # DIM = 64
 
     sample_size = SIZE if SIZE < 2_000_000 else 1_000_000
 
@@ -83,8 +84,10 @@ def build_index(dataset: ds.Dataset, config: Config):
             build_full_index(bucket_sizes, SIZE, model, config)
         else:
             index = sample_buckets
+        del model 
         inverted_index, offsets = invert_index(index, bucket_sizes, SIZE)
         index_path = ut.save_inverted_index(inverted_index, offsets, config.dataset_name, r+1, config.r, config.k, config.b, config.lr, config.shuffle, config.global_reass)
+        del inverted_index, offsets
         final_index.append((index_path, model_path))
         end = time.time()
         time_per_r.append(end - start)
@@ -226,7 +229,7 @@ def save_dataset_as_memmap(dataset, config: Config, SIZE, DIM):
                 data = ut.normalise_data(data)
             data = ut.random_projection(data, DIM)
             mmp[:] = data
-        mmp.flush()
+            mmp.flush()
     return memmap_path, mmp_shape
 
 def fill_memmap_in_batches(dataset, config: Config, mmp):
@@ -241,7 +244,9 @@ def fill_memmap_in_batches(dataset, config: Config, mmp):
         print(f"mem usage while loading batch: {memory_usage}")
         batch_size = len(batch)
         mmp[index: index + batch_size] = batch
+        mmp.flush()
         del batch
+        gc.collect()
         index += batch_size
 
 def run_bliss(config: Config, mode, experiment_name):
@@ -290,8 +295,8 @@ def run_bliss(config: Config, mode, experiment_name):
         num_workers = 8
         start = time.time()
         tracemalloc.start()
-        # results = query_multiple(data, index, test, neighbours, config.m, config.freq_threshold, config.nr_ann)
-        results = query_multiple_parallel(data, index, test, neighbours, config.m, config.freq_threshold, config.nr_ann, num_workers)
+        results = query_multiple(data, index, test, neighbours, config.m, config.freq_threshold, config.nr_ann)
+        # results = query_multiple_parallel(data, index, test, neighbours, config.m, config.freq_threshold, config.nr_ann, num_workers)
         current, peak  = tracemalloc.get_traced_memory()
         ut.log_mem("peak memory during querying", peak , config.memlog_path)
         tracemalloc.stop()
