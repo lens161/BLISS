@@ -81,7 +81,7 @@ def build_index(dataset: ds.Dataset, config: Config):
         model.to("cpu")
         index = None
         if sample_size < SIZE:
-            build_full_index(bucket_sizes, SIZE, model, config)
+            index = build_full_index(bucket_sizes, SIZE, model, config)
         else:
             index = sample_buckets
         del model 
@@ -164,7 +164,8 @@ def build_full_index(bucket_sizes, SIZE, model, config: Config):
     for batch in full_data.get_dataset_iterator(bs=1_000_000):
         data_batched.data = batch
         map_all_to_buckets(map_loader, config.k, index, bucket_sizes, model, global_idx)
-
+        global_idx += len(batch)
+    return index
 # def invert_index(index, B):
 #     inverted_index = [[] for _ in range(B)]
 #     for i, bucket in enumerate(index):
