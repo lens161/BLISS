@@ -72,7 +72,7 @@ if __name__ == "__main__":
     range_threshold = 2
     k_values = [2]
     m_values = [15]
-    EXP_NAME = "revert_old_mem_logging"
+    EXP_NAME = "sift-RP_1"
 
     if not os.path.exists("logs"):
         os.mkdir("logs")

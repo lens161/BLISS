@@ -24,7 +24,8 @@ def build_index(dataset: ds.Dataset, config: Config):
     print("bulding index...")
     logging.info(f"Started building index")
     SIZE = dataset.nb
-    DIM = dataset.d
+    # DIM = dataset.d
+    DIM = 64
 
     sample_size = SIZE if SIZE < 2_000_000 else 1_000_000
 
@@ -223,6 +224,7 @@ def save_dataset_as_memmap(dataset, config: Config, SIZE, DIM):
             data = dataset.get_dataset()[:]
             if dataset.distance() == "angular":
                 data = ut.normalise_data(data)
+            data = ut.random_projection(data, DIM)
             mmp[:] = data
         mmp.flush()
     return memmap_path, mmp_shape

@@ -29,11 +29,13 @@ def train_model(model, dataset, index, sample_size, bucket_sizes, neighbours, r,
     g = torch.Generator()
     g.manual_seed(r)
     train_loader = DataLoader(dataset, batch_size=config.batch_size, shuffle=True, num_workers=8, generator=g)
-    all_losses = []
+    all_losses = np.zeros(shape=config.epochs*config.iterations)
+    current_epoch = 0
     for i in range(config.iterations):
         model.train() 
         for epoch in range(config.epochs):
-            epoch_losses = []
+            epoch_loss_sum = 0
+            batch_count = 0
             print(f"training epoch ({i}, {epoch})")
             logging.info(f"Training epoch ({i}, {epoch})")
             start = time.time()
@@ -45,13 +47,14 @@ def train_model(model, dataset, index, sample_size, bucket_sizes, neighbours, r,
                 loss = criterion(probabilities, batch_labels)
                 loss.backward()
                 optimizer.step()
-                epoch_losses.append(loss.item())
+                batch_count += 1
+                epoch_loss_sum += loss.item()
             finish = time.time()
             elapsed = finish-start
             print(f"epoch {epoch} took {elapsed}")
-            avg_loss = statistics.mean(epoch_losses)
-            print(f"epoch {epoch} avg. loss = {avg_loss}", flush=True)
-            all_losses.append(avg_loss)
+            print(f"epoch {epoch} loss = {epoch_loss_sum}", flush=True)
+            all_losses[current_epoch]
+            current_epoch += 1
         if config.global_reass:
             global_reassign_buckets(model, dataset, index, neighbours, bucket_sizes, config)
         elif ((epoch+1) * (i+1) < config.epochs*config.iterations and sample_size != train_size) or sample_size == train_size:
@@ -59,7 +62,7 @@ def train_model(model, dataset, index, sample_size, bucket_sizes, neighbours, r,
         np.set_printoptions(threshold=6, suppress=True)
         print(f"index after iteration {i}: \r{index}", flush=True)
 
-    ut.make_loss_plot(config.lr, config.iterations, config.epochs, config.k, config.b, config.experiment_name, all_losses, config.shuffle, config.global_reass)
+    # ut.make_loss_plot(config.lr, config.iterations, config.epochs, config.k, config.b, config.experiment_name, all_losses, config.shuffle, config.global_reass)
  
 def reassign_buckets(model, dataset, index, bucket_sizes, sample_size, neighbours, config: Config):
     '''
