@@ -20,7 +20,6 @@ from config import Config
 from query_pq import query_multiple, query_multiple_parallel, recall, load_data_for_inference
 from train import train_model
 
-    
 def build_index(dataset: ds.Dataset, config: Config):
         
     print("bulding index...")
