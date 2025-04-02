@@ -22,7 +22,7 @@ def build_multiple_indexes_exp(experiment_name, configs):
         iterations = config.iterations
         time_per_r, build_time, memory_usage, load_balance = run_bliss(config, mode=mode, experiment_name=experiment_name)
         stats.append({'R':r, 'k':k, 'epochs_per_it':epochs, 'iterations':iterations, 'build_time':build_time, 
-                      'mem':memory_usage, 'load_balance':load_balance, 'shuffle':config.shuffle, 'global_reass': config.global_reass})
+                      'mem':memory_usage, 'load_balance':load_balance, 'shuffle':config.shuffle, 'reass_mode': config.reass_mode})
         print(time_per_r)
     foldername = f"results/{experiment_name}"
     if not os.path.exists("results"):
@@ -59,8 +59,8 @@ def run_multiple_query_exp(experiment_name, configs):
             os.mkdir("results")
         if not os.path.exists(f"results/{experiment_name}"):
             os.mkdir(foldername)
-        df.to_csv(f"{foldername}/r{r}_k{k}_m{m}_qps{qps:.2f}_avg_rec{avg_recall:.3f}_shf={config.shuffle}_gr={config.global_reass}_nr_ann={config.nr_ann}.csv", index=False)
-        plt.savefig(f"{foldername}/r{r}_k{k}_m{m}_qps{qps:.2f}_avg_rec{avg_recall:.3f}_shf={config.shuffle}_gr={config.global_reass}_nr_ann={config.nr_ann}.png", dpi=300)
+        df.to_csv(f"{foldername}/r{r}_k{k}_m{m}_qps{qps:.2f}_avg_rec{avg_recall:.3f}_shf={config.shuffle}_reass={config.reass_mode}_nr_ann={config.nr_ann}.csv", index=False)
+        plt.savefig(f"{foldername}/r{r}_k{k}_m{m}_qps{qps:.2f}_avg_rec{avg_recall:.3f}_shf={config.shuffle}_reass={config.reass_mode}_nr_ann={config.nr_ann}.png", dpi=300)
 
     return experiment_name, avg_recall, total_query_time, results
 

@@ -48,7 +48,7 @@ def build_index(dataset: ds.Dataset, config: Config):
     memory_usage = process.memory_info().rss / (1024 ** 2)
     bucket_size_stats = []
     tracemalloc.start()
-    ut.log_mem(f"before_building_global={config.global_reass}_shuffle={config.shuffle}", memory_usage, config.memlog_path)
+    ut.log_mem(f"before_building_reass={config.reass_mode}_shuffle={config.shuffle}", memory_usage, config.memlog_path)
     for r in range(config.r):
         logging.info(f"Training model {r+1}")
         start = time.time()
@@ -74,7 +74,7 @@ def build_index(dataset: ds.Dataset, config: Config):
         train_model(model, dataset, sample_buckets, sample_size, bucket_sizes, neighbours, r, SIZE, config)
         current, _ = tracemalloc.get_traced_memory() 
         ut.log_mem(f"memory during training model {r+1}", current, config.memlog_path)
-        model_path = ut.save_model(model, config.dataset_name, r+1, config.r, config.k, config.b, config.lr, config.shuffle, config.global_reass)
+        model_path = ut.save_model(model, config.dataset_name, r+1, config.r, config.k, config.b, config.lr, config.shuffle, config.reass_mode)
         print(f"model {r+1} saved to {model_path}.")
 
         model.eval()
@@ -86,7 +86,7 @@ def build_index(dataset: ds.Dataset, config: Config):
             index = sample_buckets
         del model 
         inverted_index, offsets = invert_index(index, bucket_sizes, SIZE)
-        index_path = ut.save_inverted_index(inverted_index, offsets, config.dataset_name, r+1, config.r, config.k, config.b, config.lr, config.shuffle, config.global_reass)
+        index_path = ut.save_inverted_index(inverted_index, offsets, config.dataset_name, r+1, config.r, config.k, config.b, config.lr, config.shuffle, config.reass_mode)
         del inverted_index, offsets
         final_index.append((index_path, model_path))
         end = time.time()
@@ -99,7 +99,7 @@ def build_index(dataset: ds.Dataset, config: Config):
     _, peak_mem = tracemalloc.get_traced_memory()
     load_balance = ut.calc_load_balance(bucket_size_stats)
     tracemalloc.stop()
-    ut.log_mem(f"after_building_global={config.global_reass}_shuffle={config.shuffle}", memory_usage, config.memlog_path)
+    ut.log_mem(f"after_building_reass={config.reass_mode}_shuffle={config.shuffle}", memory_usage, config.memlog_path)
     return final_index, time_per_r, build_time, peak_mem, load_balance
 
 def assign_initial_buckets(train_size, r, B):

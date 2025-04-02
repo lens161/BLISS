@@ -199,13 +199,13 @@ def load_model(model_path, dim, b):
     model.eval()
     return model
 
-def save_inverted_index(inverted_index, offsets, dataset_name, model_num, R, K, B, lr, shuffle, global_reass):
+def save_inverted_index(inverted_index, offsets, dataset_name, model_num, R, K, B, lr, shuffle, reass_mode):
     '''
     Save an inverted index (for a specific dataset and parameter setting combination) in the models folder and return the path.
     '''
     index_name = f"index_model{model_num}_{dataset_name}_r{model_num}_k{K}_b{B}_lr{lr}"
     offsets_name = f"offsets_model{model_num}_{dataset_name}_r{model_num}_k{K}_b{B}_lr{lr}"
-    directory = f"models/{dataset_name}_r{R}_k{K}_b{B}_lr{lr}_shf={shuffle}_gr={global_reass}/"
+    directory = f"models/{dataset_name}_r{R}_k{K}_b{B}_lr{lr}_shf={shuffle}_reass={reass_mode}/"
     if not os.path.exists(directory):
         os.makedirs(directory, exist_ok=True)
     index_path = os.path.join(directory, f"{index_name}.npy")
@@ -218,7 +218,7 @@ def save_inverted_index(inverted_index, offsets, dataset_name, model_num, R, K, 
 # Helpers for plots created during index building and collecting statistics.
 ######################################################################
 
-def make_loss_plot(learning_rate, iterations, epochs_per_iteration, k, B, experiment_name, all_losses, shuffle, global_reass):
+def make_loss_plot(learning_rate, iterations, epochs_per_iteration, k, B, experiment_name, all_losses, shuffle, reass_mode):
     '''
     Plot the total loss of the model after each epoch.
     '''
@@ -233,7 +233,7 @@ def make_loss_plot(learning_rate, iterations, epochs_per_iteration, k, B, experi
     plt.xlabel('Epoch (accumulated over iterations)')
     plt.ylabel('Average Loss')
     plt.grid(True)
-    plt.savefig(f"{foldername}/training_loss_lr={learning_rate}_I={iterations}_E={epochs_per_iteration}_k{k}_B{B}_shf={shuffle}_gr={global_reass}.png")
+    plt.savefig(f"{foldername}/training_loss_lr={learning_rate}_I={iterations}_E={epochs_per_iteration}_k{k}_B{B}_shf={shuffle}_reass={reass_mode}.png")
 
 def log_mem(function_name, mem_usage, filepath):
     '''

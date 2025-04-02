@@ -65,7 +65,7 @@ def train_model(model, dataset, index, sample_size, bucket_sizes, neighbours, r,
         np.set_printoptions(threshold=6, suppress=True)
         print(f"index after iteration {i}: \r{index}", flush=True)
 
-    # ut.make_loss_plot(config.lr, config.iterations, config.epochs, config.k, config.b, config.experiment_name, all_losses, config.shuffle, config.global_reass)
+    ut.make_loss_plot(config.lr, config.iterations, config.epochs, config.k, config.b, config.experiment_name, all_losses, config.shuffle, config.reass_mode)
 
 def reassign_buckets(model, dataset, index, bucket_sizes, sample_size, neighbours, config: Config):
     '''
@@ -127,7 +127,7 @@ def reassign_base(model, dataset, index, neighbours, bucket_sizes, config: Confi
     process = psutil.Process(os.getpid())
     mem_usage = process.memory_info().rss / (1024 ** 2)
     print(f"global ress memory usage: {mem_usage:.2f} MB")
-    ut.log_mem("global_reassign_buckets", mem_usage, config.memlog_path)
+    ut.log_mem("reassign_base", mem_usage, config.memlog_path)
 
     bucket_sizes[:] = 0
     for i in range(N):
