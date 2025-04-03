@@ -18,7 +18,6 @@ from bliss_model import BLISS_NN, BLISSDataset
 from config import Config
 from query import query_multiple, query_multiple_parallel, recall, load_data_for_inference
 from train import train_model
-
     
 def build_index(dataset: ds.Dataset, config: Config):
         
@@ -38,7 +37,7 @@ def build_index(dataset: ds.Dataset, config: Config):
     print("finding neighbours...", flush=True)
     neighbours = ut.get_train_nearest_neighbours_from_file(sample, config.nr_train_neighbours, sample_size, config.dataset_name, config.datasize)
 
-    labels = []
+    labels = torch.zeros((1, 1))
     dataset = BLISSDataset(sample, labels, config.device)
 
     final_index = []
@@ -59,7 +58,9 @@ def build_index(dataset: ds.Dataset, config: Config):
         print(bucket_sizes)
 
         print("making initial groundtruth labels", flush=True)
+        s = time.time()
         labels = ut.make_ground_truth_labels(config.b, neighbours, sample_buckets, sample_size, config.device)
+        print(f"make ground truth labels time {time.time()-s}")
         dataset.labels = labels
         ds_size = asizeof.asizeof(dataset)
         ut.log_mem("size of training dataset before training (pq)", ds_size, config.memlog_path)
@@ -123,27 +124,29 @@ def map_all_to_buckets(map_loader, k, index, bucket_sizes, map_model, offset, de
     '''
     logging.info(f"Mapping all train vectors to buckets")
     with torch.no_grad():
-        for batch_data, _, batch_indices in map_loader:
+        for batch_data, batch_indices in map_loader:
             candidate_buckets = ut.get_topk_buckets_for_batch(batch_data, k, map_model, device).numpy()
-            
             for i, item_index in enumerate(batch_indices):
-                item_idx = item_idx + offset
-                ut.reassign_vector_to_bucket(index, bucket_sizes, candidate_buckets, i, item_index)
+                item_idx = item_index + offset
+                ut.reassign_vector_to_bucket(index, bucket_sizes, candidate_buckets, i, item_idx)
 
 def map_all_to_buckets_base(index, bucket_sizes, full_data, data_batched, data_loader, N, k, model, device):
-    candidate_buckets = np.zeros(shape= (N, k)) # all topk buckets per vector shape = (N, k).
+    candidate_buckets = np.zeros(shape= (N, k), dtype=np.uint32) # all topk buckets per vector shape = (N, k).
     offset = 0
+    print("started map all", flush=True)
     for batch in full_data.get_dataset_iterator(bs = 1_000_00):
         data_batched.data = batch
+        print("getting batch from full data")
         ut.get_all_topk_buckets(data_loader, k, candidate_buckets, model, offset, device)
         offset += len(batch)
+    print("finished getting topk", flush=True)
 
     for i in range(N):
         ut.reassign_vector_to_bucket(index, bucket_sizes, candidate_buckets, i, i)
 
 def build_full_index(bucket_sizes, SIZE, model, config: Config):
     bucket_sizes[:] = 0 
-    index = np.zeros(SIZE, dtype=int)
+    index = np.zeros(SIZE, dtype=np.uint32)
     full_data = ut.get_dataset_obj(config.dataset_name, config.datasize)
     data_batched = BLISSDataset(None, None, device = torch.device("cpu"), mode='build')
     map_loader = DataLoader(data_batched, batch_size=config.batch_size, shuffle=False, num_workers=8)
@@ -156,30 +159,32 @@ def build_full_index(bucket_sizes, SIZE, model, config: Config):
         global_idx = 0
         for batch in full_data.get_dataset_iterator(bs=1_000_000):
             data_batched.data = batch
-            map_all_to_buckets(map_loader, config.k, index, bucket_sizes, model, global_idx)
+            map_all_to_buckets(map_loader, config.k, index, bucket_sizes, model, global_idx, config.device)
             global_idx += len(batch)
 
     elif config.reass_mode == 2:
         # Do all forward passes sequentially and then do reassignments in batches
-        candidate_buckets = np.zeros(shape= (SIZE, config.k)) # all topk buckets per vector shape = (N, k).
+        candidate_buckets = np.zeros(shape= (SIZE, config.k), dtype=np.uint32) # all topk buckets per vector shape = (N, k).
         offset = 0
         for batch in full_data.get_dataset_iterator(bs = 1_000_00):
             data_batched.data = batch
             ut.get_all_topk_buckets(map_loader, config.k, candidate_buckets, model, offset, config.device)
             offset += len(batch)
 
-        chunk_size = 1024
-        for i in range(start=0, stop=SIZE, step=chunk_size):
+        chunk_size = 5000
+        for i in range(0, SIZE, chunk_size):
             # get the topk buckets per vector
             topk_per_vector = candidate_buckets[i : min(i + chunk_size, SIZE)] # shape = (chunk_size, k)
             # get sizes of cnadidates per vector
             candidate_sizes_per_vector = bucket_sizes[topk_per_vector]
             # get the least ocupied of each candidate set 
-            least_occupied = topk_per_vector[np.argmin(candidate_sizes_per_vector, axis=1)] # shape = (chunk_size, 1)
+            # least_occupied = topk_per_vector[np.argmin(candidate_sizes_per_vector, axis = 1)] # shape = (chunk_size, 1)
+            row_indices = np.arange(topk_per_vector.shape[0])
+            col_indices = np.argmin(candidate_sizes_per_vector, axis=1)
+            least_occupied = topk_per_vector[row_indices, col_indices]
             index[i : min(i + chunk_size, SIZE)] = least_occupied
 
             bucket_increments = np.bincount(least_occupied, minlength=len(bucket_sizes))
-            print(bucket_increments)
             bucket_sizes = np.add(bucket_sizes, bucket_increments)
 
     elif config.reass_mode == 3:

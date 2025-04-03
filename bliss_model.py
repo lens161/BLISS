@@ -43,8 +43,8 @@ class BLISSDataset(Dataset):
 
     def __getitem__(self, idx):
         if self.mode == 'train':
-            vector = torch.from_numpy(self.data[idx]).float()
-            label = torch.from_numpy(self.labels[idx]).float()
+            vector = torch.from_numpy(self.data[idx]).to(torch.float32)
+            label = self.labels[idx].float()
             return vector, label, idx
         elif self.mode == 'build':
             return torch.from_numpy(self.data[idx]).float(), idx
