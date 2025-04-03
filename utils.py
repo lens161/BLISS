@@ -42,8 +42,8 @@ def get_train_nearest_neighbours_from_file(dataset, amount, sample_size, dataset
     Helper to read/write nearest neighbour of train data to file so we can test index building without repeating preprocessing each time.
     Should not be used in actual algorithm or experiments where timing the preprocessing is important.
     '''
-    if not os.path.exists(f"data/{dataset_name}-nbrs{amount}-sample{sample_size}.csv"):
-        filename = f"data/{dataset_name}-nbrs{amount}-sample{sample_size}.csv"
+    if not os.path.exists(f"data/{dataset_name}-size{datasize}-nbrs{amount}-sample{sample_size}.csv"):
+        filename = f"data/{dataset_name}-size{datasize}-nbrs{amount}-sample{sample_size}.csv"
         print(f"no nbrs file found for {dataset_name} with amount={amount} and samplesize={sample_size}, calculating {amount} nearest neighbours")
         logging.info("No neighbours file found, calculating ground truths of training sample")
         I = get_nearest_neighbours_within_dataset(dataset, amount)
