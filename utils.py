@@ -4,6 +4,7 @@ import math
 import matplotlib.pyplot as plt # type: ignore
 import numpy as np
 import os
+import time
 import torch
 from faiss import IndexFlatL2, IndexPQ, vector_to_array
 from pandas import read_csv
@@ -42,11 +43,14 @@ def get_train_nearest_neighbours_from_file(dataset, amount, sample_size, dataset
     Should not be used in actual algorithm or experiments where timing the preprocessing is important.
     '''
     if not os.path.exists(f"data/{dataset_name}-nbrs{amount}-sample{sample_size}.csv"):
+        filename = f"data/{dataset_name}-nbrs{amount}-sample{sample_size}.csv"
         print(f"no nbrs file found for {dataset_name} with amount={amount} and samplesize={sample_size}, calculating {amount} nearest neighbours")
         I = get_nearest_neighbours_within_dataset(dataset, amount)
         print("writing neighbours to nbrs file")
         I = np.asarray(I)
-        np.savetxt(f"data/{dataset_name}-nbrs{amount}-sample{sample_size}.csv", I, delimiter=",", fmt='%.0f')
+        with open(filename, "w") as f: 
+            np.savetxt(f, I, delimiter=",", fmt='%.0f')
+
     else:
         print(f"found nbrs file for {dataset_name} with amount={amount} and samplesize={sample_size}, reading true nearest neighbours from file")
         filename = f"data/{dataset_name}-nbrs{amount}-sample{sample_size}.csv"
@@ -89,7 +93,7 @@ def get_training_sample_from_memmap(memmap_path, mmp_shape, sample_size, SIZE, D
     For small datasets, the full dataset is used to train.
     For large datasets, a random sample is taken across the dataset. It is assumed the sample size is small enough to load the sample into memory.
     '''
-    sample = np.zeros(shape=(sample_size, DIM))
+    sample = np.zeros(shape=(sample_size, DIM), dtype=np.float32)
     mmp = np.memmap(memmap_path, mode = 'r', shape = mmp_shape, dtype=np.float32)
     if sample_size!=SIZE:
         random_order = np.arange(SIZE)
@@ -107,14 +111,24 @@ def make_ground_truth_labels(B, neighbours, index, sample_size, device):
     A label is a B-dimensional vector, where each digit is either 0 (false) if that bucket does not contain any
     nearest neighbours of a vector, and 1 (true) if the bucket contains at least one nearest neighbour of that vector.
     '''
+    start = time.time()
     labels = np.zeros((sample_size, B), dtype=bool)
-    for i in range(sample_size):
-        for neighbour in neighbours[i]:
-            bucket = index[neighbour]
-            labels[i, bucket] = True
+    # for each vector i create an array of amount of neighbours
+    vectors = np.concatenate([np.full(len(n), i) for i, n in enumerate(neighbours)])
+    # build column indices by applying the mapping to each neighbour array.
+    buckets = np.concatenate([index[n] for n in neighbours])
+    # Use advanced indexing to set the corresponding entries to True.
+    labels[vectors, buckets] = True
+    # for i in range(sample_size):
+    #     # buckets = index[neighbours[i]]
+    #     # labels1[i, buckets] = 1
+    #     for neighbour in neighbours[i]:
+    #         bucket = index[neighbour]
+    #         labels2[i, bucket] = True
+    print(f"making ground truch labels {time.time()-start}")
     # if device != torch.device("cpu"):
     #     labels = torch.from_numpy(labels).to(torch.float32)
-    return labels
+    return torch.from_numpy(labels)
 
 def reassign_vector_to_bucket(index, bucket_sizes, candidate_buckets, i, item_index):
     '''
@@ -129,12 +143,14 @@ def reassign_vector_to_bucket(index, bucket_sizes, candidate_buckets, i, item_in
 def get_all_topk_buckets(loader, k, candidate_buckets, map_model, offset, device):
     logging.info(f"Mapping all train vectors to buckets (baseline)")
     start_idx = offset
+    start = time.time()
     with torch.no_grad():
         for batch_data, _, in loader:
             batch_size = len(batch_data)
             batch_candidate_buckets = get_topk_buckets_for_batch(batch_data, k, map_model, device).numpy()
             candidate_buckets[start_idx : start_idx + batch_size, :] = batch_candidate_buckets
             start_idx += batch_size
+    print(f"getting top k took {time.time()-start}")
 
 def get_topk_buckets_for_batch(batch_data, k, map_model, device):
     batch_data = batch_data.to(device)

@@ -145,7 +145,7 @@ def reorder(data, query_vector, candidates, requested_amount):
     Do true distance calculations on the candidate set of vectors and return the top 'requested_amount' candidates.
     ''' 
     sp_index = []
-    search_space = data[candidates]
+    search_space = np.copy(data[candidates])
     dist_comps = len(search_space)
     for i in range(len(search_space)):
         sp_index.append(candidates[i])

@@ -94,17 +94,17 @@ if __name__ == "__main__":
     logging.info("[Experiment] Experiments started")
         # check that datasize in config is set to correct value. (default = 1)
     for dataset in datasets:
-        for rm in reass_modes:
-            if rm != 0:
-                conf_4 = Config(dataset_name=dataset, batch_size=2048, b=4096, reass_mode=rm, datasize=10)
+        # for rm in reass_modes:
+        #     if rm != 0:
+        conf_4 = Config(dataset_name=dataset, batch_size=2048, b=4096, reass_mode=0, datasize=10, r= 2, epochs = 1, iterations=1)
             # conf_8 = Config(dataset_name=dataset, batch_size=2048, b=8192, datasize=10)
-                configs_b.append(conf_4)
+        configs_b.append(conf_4)
         # configs_b.append(conf_8)
-        for rm in reass_modes:
-            for m in m_values:
-                conf_q4 = Config(dataset_name=dataset, batch_size=2048, m=m, b=4096, reass_mode=rm, datasize=10)
+        # for rm in reass_modes:
+        for m in m_values:
+            conf_q4 = Config(dataset_name=dataset, batch_size=2048, m=m, b=4096, reass_mode=1, datasize=10)
                 # conf_q8 = Config(dataset_name=dataset, batch_size=2048, m=m, b=8192, datasize=10)
-                configs_q.append(conf_q4)
+            configs_q.append(conf_q4)
                 # configs_q.append(conf_q8)
     
     logging.info(f"[Experiment] Building indexes")
