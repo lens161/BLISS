@@ -124,15 +124,14 @@ def map_all_to_buckets(map_loader, k, index, bucket_sizes, map_model, offset, de
     '''
     logging.info(f"Mapping all train vectors to buckets")
     with torch.no_grad():
-        for batch_data, _, batch_indices in map_loader:
+        for batch_data, batch_indices in map_loader:
             candidate_buckets = ut.get_topk_buckets_for_batch(batch_data, k, map_model, device).numpy()
-            
             for i, item_index in enumerate(batch_indices):
-                item_idx = item_idx + offset
-                ut.reassign_vector_to_bucket(index, bucket_sizes, candidate_buckets, i, item_index)
+                item_idx = item_index + offset
+                ut.reassign_vector_to_bucket(index, bucket_sizes, candidate_buckets, i, item_idx)
 
 def map_all_to_buckets_base(index, bucket_sizes, full_data, data_batched, data_loader, N, k, model, device):
-    candidate_buckets = np.zeros(shape= (N, k)) # all topk buckets per vector shape = (N, k).
+    candidate_buckets = np.zeros(shape= (N, k), dtype=np.uint32) # all topk buckets per vector shape = (N, k).
     offset = 0
     for batch in full_data.get_dataset_iterator(bs = 1_000_00):
         data_batched.data = batch
@@ -144,7 +143,7 @@ def map_all_to_buckets_base(index, bucket_sizes, full_data, data_batched, data_l
 
 def build_full_index(bucket_sizes, SIZE, model, config: Config):
     bucket_sizes[:] = 0 
-    index = np.zeros(SIZE, dtype=int)
+    index = np.zeros(SIZE, dtype=np.uint32)
     full_data = ut.get_dataset_obj(config.dataset_name, config.datasize)
     data_batched = BLISSDataset(None, None, device = torch.device("cpu"), mode='build')
     map_loader = DataLoader(data_batched, batch_size=config.batch_size, shuffle=False, num_workers=8)
@@ -157,7 +156,7 @@ def build_full_index(bucket_sizes, SIZE, model, config: Config):
         global_idx = 0
         for batch in full_data.get_dataset_iterator(bs=1_000_000):
             data_batched.data = batch
-            map_all_to_buckets(map_loader, config.k, index, bucket_sizes, model, global_idx)
+            map_all_to_buckets(map_loader, config.k, index, bucket_sizes, model, global_idx, config.device)
             global_idx += len(batch)
 
     elif config.reass_mode == 2:

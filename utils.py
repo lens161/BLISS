@@ -130,10 +130,10 @@ def get_all_topk_buckets(loader, k, candidate_buckets, map_model, offset, device
     logging.info(f"Mapping all train vectors to buckets (baseline)")
     start_idx = offset
     with torch.no_grad():
-        for batch_data, _, _ in loader:
+        for batch_data, _, in loader:
             batch_size = len(batch_data)
-            candidate_buckets = get_topk_buckets_for_batch(batch_data, k, map_model, device)
-            candidate_buckets[start_idx : start_idx + batch_size, :] = candidate_buckets
+            batch_candidate_buckets = get_topk_buckets_for_batch(batch_data, k, map_model, device).numpy()
+            candidate_buckets[start_idx : start_idx + batch_size, :] = batch_candidate_buckets
             start_idx += batch_size
 
 def get_topk_buckets_for_batch(batch_data, k, map_model, device):

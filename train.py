@@ -126,7 +126,7 @@ def reassign_base(model, dataset, index, neighbours, bucket_sizes, config: Confi
     # all_predictions = torch.cat(all_predictions, dim=0) 
     process = psutil.Process(os.getpid())
     mem_usage = process.memory_info().rss / (1024 ** 2)
-    print(f"global ress memory usage: {mem_usage:.2f} MB")
+    print(f"basline reass memory usage: {mem_usage:.2f} MB")
     ut.log_mem("reassign_base", mem_usage, config.memlog_path)
 
     bucket_sizes[:] = 0
