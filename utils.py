@@ -121,17 +121,33 @@ def make_ground_truth_labels(B, neighbours, index, sample_size, device):
     #     labels = torch.from_numpy(labels).to(torch.float32)
     return labels
 
-def reassign_vector_to_bucket(probability_vector, index, bucket_sizes, k, item_index):
+def reassign_vector_to_bucket(index, bucket_sizes, candidate_buckets, i, item_index):
     '''
     Reassign a vector to the least occupied of the top-k buckets predicted by the model.
     '''
-    value, indices_of_topk_buckets = torch.topk(probability_vector, k)
-    # get sizes of candidate buckets
-    candidate_sizes = bucket_sizes[indices_of_topk_buckets]
-    # get bucket at index of smallest bucket from bucket_sizes
-    best_bucket = indices_of_topk_buckets[np.argmin(candidate_sizes)]
+    candidates = candidate_buckets[i]
+    candidate_sizes = bucket_sizes[candidates]
+    best_bucket = candidates[np.argmin(candidate_sizes)]
     index[item_index] = best_bucket
-    bucket_sizes[best_bucket] +=1  
+    bucket_sizes[best_bucket] += 1
+
+def get_all_topk_buckets(loader, k, candidate_buckets, map_model, offset, device):
+    logging.info(f"Mapping all train vectors to buckets (baseline)")
+    start_idx = offset
+    with torch.no_grad():
+        for batch_data, _, _ in loader:
+            batch_size = len(batch_data)
+            candidate_buckets = get_topk_buckets_for_batch(batch_data, k, map_model, device)
+            candidate_buckets[start_idx : start_idx + batch_size, :] = candidate_buckets
+            start_idx += batch_size
+
+def get_topk_buckets_for_batch(batch_data, k, map_model, device):
+    batch_data = batch_data.to(device)
+    bucket_probabilities = torch.sigmoid(map_model(batch_data))
+    bucket_probabilities_cpu = bucket_probabilities.cpu()
+    _, candidate_buckets = torch.topk(bucket_probabilities_cpu, k, dim=1)
+
+    return candidate_buckets
 
 def get_dataset_obj(dataset_name, size):
     '''
@@ -165,12 +181,12 @@ def get_B(n):
 # Helpers for loading and saving models and indexes.
 ######################################################################
 
-def save_model(model, dataset_name, r, R, K, B, lr, shuffle, global_reass):
+def save_model(model, dataset_name, r, R, K, B, lr, shuffle, reass_mode):
     '''
     Save a (trained) model in the models folder and return the path.
     '''
     model_name = f"model_{dataset_name}_r{r}_k{K}_b{B}_lr{lr}"
-    directory = f"models/{dataset_name}_r{R}_k{K}_b{B}_lr{lr}_shf={shuffle}_gr={global_reass}/"
+    directory = f"models/{dataset_name}_r{R}_k{K}_b{B}_lr{lr}_shf={shuffle}_reass={reass_mode}/"
     MODEL_PATH = os.path.join(directory, f"{model_name}.pt")
     
     os.makedirs(directory, exist_ok=True)
@@ -188,13 +204,13 @@ def load_model(model_path, dim, b):
     model.eval()
     return model
 
-def save_inverted_index(inverted_index, offsets, dataset_name, model_num, R, K, B, lr, shuffle, global_reass):
+def save_inverted_index(inverted_index, offsets, dataset_name, model_num, R, K, B, lr, shuffle, reass_mode):
     '''
     Save an inverted index (for a specific dataset and parameter setting combination) in the models folder and return the path.
     '''
     index_name = f"index_model{model_num}_{dataset_name}_r{model_num}_k{K}_b{B}_lr{lr}"
     offsets_name = f"offsets_model{model_num}_{dataset_name}_r{model_num}_k{K}_b{B}_lr{lr}"
-    directory = f"models/{dataset_name}_r{R}_k{K}_b{B}_lr{lr}_shf={shuffle}_gr={global_reass}/"
+    directory = f"models/{dataset_name}_r{R}_k{K}_b{B}_lr{lr}_shf={shuffle}_reass={reass_mode}/"
     if not os.path.exists(directory):
         os.makedirs(directory, exist_ok=True)
     index_path = os.path.join(directory, f"{index_name}.npy")
@@ -207,7 +223,7 @@ def save_inverted_index(inverted_index, offsets, dataset_name, model_num, R, K, 
 # Helpers for plots created during index building and collecting statistics.
 ######################################################################
 
-def make_loss_plot(learning_rate, iterations, epochs_per_iteration, k, B, experiment_name, all_losses, shuffle, global_reass):
+def make_loss_plot(learning_rate, iterations, epochs_per_iteration, k, B, experiment_name, all_losses, shuffle, reass_mode):
     '''
     Plot the total loss of the model after each epoch.
     '''
@@ -222,7 +238,7 @@ def make_loss_plot(learning_rate, iterations, epochs_per_iteration, k, B, experi
     plt.xlabel('Epoch (accumulated over iterations)')
     plt.ylabel('Average Loss')
     plt.grid(True)
-    plt.savefig(f"{foldername}/training_loss_lr={learning_rate}_I={iterations}_E={epochs_per_iteration}_k{k}_B{B}_shf={shuffle}_gr={global_reass}.png")
+    plt.savefig(f"{foldername}/training_loss_lr={learning_rate}_I={iterations}_E={epochs_per_iteration}_k{k}_B{B}_shf={shuffle}_reass={reass_mode}.png")
 
 def log_mem(function_name, mem_usage, filepath):
     '''

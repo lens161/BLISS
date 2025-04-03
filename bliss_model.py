@@ -46,6 +46,6 @@ class BLISSDataset(Dataset):
             vector = torch.from_numpy(self.data[idx]).float()
             label = torch.from_numpy(self.labels[idx]).float()
             return vector, label, idx
-        elif self.mode == 'map':
+        elif self.mode == 'build':
             return torch.from_numpy(self.data[idx]).float(), idx
  

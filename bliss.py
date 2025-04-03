@@ -47,7 +47,7 @@ def build_index(dataset: ds.Dataset, config: Config):
     memory_usage = process.memory_info().rss / (1024 ** 2)
     bucket_size_stats = []
     tracemalloc.start()
-    ut.log_mem(f"before_building_global={config.global_reass}_shuffle={config.shuffle}", memory_usage, config.memlog_path)
+    ut.log_mem(f"before_building_reass={config.reass_mode}_shuffle={config.shuffle}", memory_usage, config.memlog_path)
     for r in range(config.r):
         logging.info(f"Training model {r+1}")
         start = time.time()
@@ -73,11 +73,11 @@ def build_index(dataset: ds.Dataset, config: Config):
         train_model(model, dataset, sample_buckets, sample_size, bucket_sizes, neighbours, r, SIZE, config)
         current, _ = tracemalloc.get_traced_memory() 
         ut.log_mem(f"memory during training model {r+1}", current, config.memlog_path)
-        model_path = ut.save_model(model, config.dataset_name, r+1, config.r, config.k, config.b, config.lr, config.shuffle, config.global_reass)
+        model_path = ut.save_model(model, config.dataset_name, r+1, config.r, config.k, config.b, config.lr, config.shuffle, config.reass_mode)
         print(f"model {r+1} saved to {model_path}.")
 
         model.eval()
-        model.to("cpu")
+        model.to(config.device)
         index = None
         if sample_size < SIZE:
             index = build_full_index(bucket_sizes, SIZE, model, config)
@@ -85,7 +85,7 @@ def build_index(dataset: ds.Dataset, config: Config):
             index = sample_buckets
         del model 
         inverted_index, offsets = invert_index(index, bucket_sizes, SIZE)
-        index_path = ut.save_inverted_index(inverted_index, offsets, config.dataset_name, r+1, config.r, config.k, config.b, config.lr, config.shuffle, config.global_reass)
+        index_path = ut.save_inverted_index(inverted_index, offsets, config.dataset_name, r+1, config.r, config.k, config.b, config.lr, config.shuffle, config.reass_mode)
         del inverted_index, offsets
         final_index.append((index_path, model_path))
         end = time.time()
@@ -98,7 +98,7 @@ def build_index(dataset: ds.Dataset, config: Config):
     _, peak_mem = tracemalloc.get_traced_memory()
     load_balance = ut.calc_load_balance(bucket_size_stats)
     tracemalloc.stop()
-    ut.log_mem(f"after_building_global={config.global_reass}_shuffle={config.shuffle}", memory_usage, config.memlog_path)
+    ut.log_mem(f"after_building_reass={config.reass_mode}_shuffle={config.shuffle}", memory_usage, config.memlog_path)
     return final_index, time_per_r, build_time, peak_mem, load_balance
 
 def assign_initial_buckets(train_size, r, B):
@@ -117,59 +117,79 @@ def assign_initial_buckets(train_size, r, B):
     
     return np.array(index, dtype=np.uint32), bucket_sizes
 
-def map_all_to_buckets_unbatched(data, k, index, bucket_sizes, map_model):
-    '''
-    Old version of map_all_to_buckets where each vector is processed individually, instead of doing the forward pass in batches.
-    '''
-    data = torch.from_numpy(data).to(torch.float32)
-    data = data.to("cpu")
-
-    for i, vector in enumerate(data):
-        scores = map_model(vector)
-        probabilities = torch.sigmoid(scores)
-        ut.reassign_vector_to_bucket(probabilities, index, bucket_sizes, k, i)
-
-def map_all_to_buckets(map_loader, k, index, bucket_sizes, map_model, offset):
+def map_all_to_buckets(map_loader, k, index, bucket_sizes, map_model, offset, device):
     '''
     Do a forward pass on the model with batches of vectors, then assign the vectors to a bucket one by one.
     '''
     logging.info(f"Mapping all train vectors to buckets")
     with torch.no_grad():
-        for batch, batch_indices in map_loader:
-            scores = map_model(batch)
-            probabilities = torch.sigmoid(scores)
+        for batch_data, _, batch_indices in map_loader:
+            candidate_buckets = ut.get_topk_buckets_for_batch(batch_data, k, map_model, device).numpy()
+            
+            for i, item_index in enumerate(batch_indices):
+                item_idx = item_idx + offset
+                ut.reassign_vector_to_bucket(index, bucket_sizes, candidate_buckets, i, item_index)
 
-            for probability_vector, idx in zip(probabilities, batch_indices):
-                global_idx = idx + offset
-                if global_idx % 1000000 == 0:
-                    print(f"no worries i am still alive, reassigning vector {global_idx}", flush=True)
-                ut.reassign_vector_to_bucket(probability_vector, index, bucket_sizes, k, global_idx)
+def map_all_to_buckets_base(index, bucket_sizes, full_data, data_batched, data_loader, N, k, model, device):
+    candidate_buckets = np.zeros(shape= (N, k)) # all topk buckets per vector shape = (N, k).
+    offset = 0
+    for batch in full_data.get_dataset_iterator(bs = 1_000_00):
+        data_batched.data = batch
+        ut.get_all_topk_buckets(data_loader, k, candidate_buckets, model, offset, device)
+        offset += len(batch)
+
+    for i in range(N):
+        ut.reassign_vector_to_bucket(index, bucket_sizes, candidate_buckets, i, i)
 
 def build_full_index(bucket_sizes, SIZE, model, config: Config):
-    # # OLD VERSION (not batched)
-    # if config.datasize == 1000:
-    #     for batch in dataset.get_dataset_iterator():
-    #         map_all_to_buckets_unbatched(batch, config.k, index, bucket_sizes, model)
-    # else:
-        # map_all_to_buckets_unbatched(train, config.k, index, bucket_sizes, model)
-
-    # NEW VERSION (batched) TODO: idx resets to 0 with every new bath -> fix this 
     bucket_sizes[:] = 0 
     index = np.zeros(SIZE, dtype=int)
     full_data = ut.get_dataset_obj(config.dataset_name, config.datasize)
-    data_batched = BLISSDataset(None, None, device = torch.device("cpu"), mode='map')
+    data_batched = BLISSDataset(None, None, device = torch.device("cpu"), mode='build')
     map_loader = DataLoader(data_batched, batch_size=config.batch_size, shuffle=False, num_workers=8)
-    global_idx = 0
-    for batch in full_data.get_dataset_iterator(bs=1_000_000):
-        data_batched.data = batch
-        map_all_to_buckets(map_loader, config.k, index, bucket_sizes, model, global_idx)
-        global_idx += len(batch)
-    return index
-# def invert_index(index, B):
-#     inverted_index = [[] for _ in range(B)]
-#     for i, bucket in enumerate(index):
-#         inverted_index[bucket].append(i)
-#     return inverted_index
+    # map all vectors to buckets using the chosen reassignment strategy
+    start = time.time()
+    if config.reass_mode == 0: # baseline implementation 
+        map_all_to_buckets_base(index, bucket_sizes, full_data, data_batched, map_loader, SIZE, config.k, model, config.device)
+
+    elif config.reass_mode == 1: # reassign all vectors in a foward pass batch directly 
+        global_idx = 0
+        for batch in full_data.get_dataset_iterator(bs=1_000_000):
+            data_batched.data = batch
+            map_all_to_buckets(map_loader, config.k, index, bucket_sizes, model, global_idx)
+            global_idx += len(batch)
+
+    elif config.reass_mode == 2:
+        # Do all forward passes sequentially and then do reassignments in batches
+        candidate_buckets = np.zeros(shape= (SIZE, config.k)) # all topk buckets per vector shape = (N, k).
+        offset = 0
+        for batch in full_data.get_dataset_iterator(bs = 1_000_00):
+            data_batched.data = batch
+            ut.get_all_topk_buckets(map_loader, config.k, candidate_buckets, model, offset, config.device)
+            offset += len(batch)
+
+        chunk_size = 1024
+        for i in range(start=0, stop=SIZE, step=chunk_size):
+            # get the topk buckets per vector
+            topk_per_vector = candidate_buckets[i : min(i + chunk_size, SIZE)] # shape = (chunk_size, k)
+            # get sizes of cnadidates per vector
+            candidate_sizes_per_vector = bucket_sizes[topk_per_vector]
+            # get the least ocupied of each candidate set 
+            least_occupied = topk_per_vector[np.argmin(candidate_sizes_per_vector, axis=1)] # shape = (chunk_size, 1)
+            index[i : min(i + chunk_size, SIZE)] = least_occupied
+
+            bucket_increments = np.bincount(least_occupied, minlength=len(bucket_sizes))
+            print(bucket_increments)
+            bucket_sizes = np.add(bucket_sizes, bucket_increments)
+
+    elif config.reass_mode == 3:
+        # Alternate fowardpasses wih batched reassignment -> vectorised assignment of a whole batch of buckets at once
+        pass
+
+    end = time.time()
+    logging.info(f"final assignment mode:{config.reass_mode} took {end-start} seconds")
+
+    return index 
 
 def invert_index(index, bucket_sizes, SIZE):
     '''
@@ -191,9 +211,9 @@ def load_indexes_and_models(config: Config, SIZE, DIM, b):
     offsets_paths = []
     model_paths = []
     for i in range (config.r):
-        inverted_indexes_paths.append(f"models/{config.dataset_name}_r{config.r}_k{config.k}_b{config.b}_lr{config.lr}_shf={config.shuffle}_gr={config.global_reass}/index_model{i+1}_{config.dataset_name}_r{i+1}_k{config.k}_b{config.b}_lr{config.lr}.npy")
-        offsets_paths.append(f"models/{config.dataset_name}_r{config.r}_k{config.k}_b{config.b}_lr{config.lr}_shf={config.shuffle}_gr={config.global_reass}/offsets_model{i+1}_{config.dataset_name}_r{i+1}_k{config.k}_b{config.b}_lr{config.lr}.npy")
-        model_paths.append(f"models/{config.dataset_name}_r{config.r}_k{config.k}_b{config.b}_lr{config.lr}_shf={config.shuffle}_gr={config.global_reass}/model_{config.dataset_name}_r{i+1}_k{config.k}_b{config.b}_lr{config.lr}.pt")
+        inverted_indexes_paths.append(f"models/{config.dataset_name}_r{config.r}_k{config.k}_b{config.b}_lr{config.lr}_shf={config.shuffle}_reass={config.reass_mode}/index_model{i+1}_{config.dataset_name}_r{i+1}_k{config.k}_b{config.b}_lr{config.lr}.npy")
+        offsets_paths.append(f"models/{config.dataset_name}_r{config.r}_k{config.k}_b{config.b}_lr{config.lr}_shf={config.shuffle}_reass={config.reass_mode}/offsets_model{i+1}_{config.dataset_name}_r{i+1}_k{config.k}_b{config.b}_lr{config.lr}.npy")
+        model_paths.append(f"models/{config.dataset_name}_r{config.r}_k{config.k}_b{config.b}_lr{config.lr}_shf={config.shuffle}_reass={config.reass_mode}/model_{config.dataset_name}_r{i+1}_k{config.k}_b{config.b}_lr{config.lr}.pt")
 
     indexes = np.zeros(shape = (config.r, SIZE), dtype=np.uint32)
     offsets = np.zeros(shape = (config.r, config.b), dtype=np.uint32)

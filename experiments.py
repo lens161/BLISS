@@ -22,7 +22,7 @@ def build_multiple_indexes_exp(experiment_name, configs):
         iterations = config.iterations
         time_per_r, build_time, memory_usage, load_balance = run_bliss(config, mode=mode, experiment_name=experiment_name)
         stats.append({'R':r, 'k':k, 'epochs_per_it':epochs, 'iterations':iterations, 'build_time':build_time, 
-                      'mem':memory_usage, 'load_balance':load_balance, 'shuffle':config.shuffle, 'global_reass': config.global_reass})
+                      'mem':memory_usage, 'load_balance':load_balance, 'shuffle':config.shuffle, 'reass_mode': config.reass_mode})
         print(time_per_r)
     foldername = f"results/{experiment_name}"
     if not os.path.exists("results"):
@@ -59,8 +59,8 @@ def run_multiple_query_exp(experiment_name, configs):
             os.mkdir("results")
         if not os.path.exists(f"results/{experiment_name}"):
             os.mkdir(foldername)
-        df.to_csv(f"{foldername}/r{r}_k{k}_m{m}_qps{qps:.2f}_avg_rec{avg_recall:.3f}_shf={config.shuffle}_gr={config.global_reass}_nr_ann={config.nr_ann}.csv", index=False)
-        plt.savefig(f"{foldername}/r{r}_k{k}_m{m}_qps{qps:.2f}_avg_rec{avg_recall:.3f}_shf={config.shuffle}_gr={config.global_reass}_nr_ann={config.nr_ann}.png", dpi=300)
+        df.to_csv(f"{foldername}/r{r}_k{k}_m{m}_qps{qps:.2f}_avg_rec{avg_recall:.3f}_shf={config.shuffle}_reass={config.reass_mode}_nr_ann={config.nr_ann}.csv", index=False)
+        plt.savefig(f"{foldername}/r{r}_k{k}_m{m}_qps{qps:.2f}_avg_rec{avg_recall:.3f}_shf={config.shuffle}_reass={config.reass_mode}_nr_ann={config.nr_ann}.png", dpi=300)
 
     return experiment_name, avg_recall, total_query_time, results
 
@@ -71,8 +71,9 @@ if __name__ == "__main__":
     # range_K = 2
     range_threshold = 2
     k_values = [2]
-    m_values = [15]
-    EXP_NAME = "sift-bool-labels"
+    m_values = [10]
+    reass_modes = [0, 1, 2]
+    EXP_NAME = "reass_mode_0-2"
 
     if not os.path.exists("logs"):
         os.mkdir("logs")
@@ -85,23 +86,25 @@ if __name__ == "__main__":
 
     # add all dataset names that the experiments should be run on
     datasets = [
-                # "bigann",
+                "bigann",
                 # "glove-100-angular",
-                "sift-128-euclidean"
+                # "sift-128-euclidean"
                  ]
     
     logging.info("[Experiment] Experiments started")
         # check that datasize in config is set to correct value. (default = 1)
     for dataset in datasets:
-        conf_4 = Config(dataset_name=dataset, batch_size=2048, b=4096)
-        # conf_8 = Config(dataset_name=dataset, batch_size=2048, b=8192, datasize=10)
-        configs_b.append(conf_4)
+        for rm in reass_modes:
+            conf_4 = Config(dataset_name=dataset, batch_size=2048, b=4096, reass_mode=rm, datasize=10)
+            # conf_8 = Config(dataset_name=dataset, batch_size=2048, b=8192, datasize=10)
+            configs_b.append(conf_4)
         # configs_b.append(conf_8)
-        for m in m_values:
-            conf_q4 = Config(dataset_name=dataset, batch_size=2048, m=m, b=4096)
-            # conf_q8 = Config(dataset_name=dataset, batch_size=2048, m=m, b=8192, datasize=10)
-            configs_q.append(conf_q4)
-            # configs_q.append(conf_q8)
+        for rm in reass_modes:
+            for m in m_values:
+                conf_q4 = Config(dataset_name=dataset, batch_size=2048, m=m, b=4096, reass_mode=rm, datasize=10)
+                # conf_q8 = Config(dataset_name=dataset, batch_size=2048, m=m, b=8192, datasize=10)
+                configs_q.append(conf_q4)
+                # configs_q.append(conf_q8)
     
     logging.info(f"[Experiment] Building indexes")
     build_multiple_indexes_exp(EXP_NAME, configs_b)

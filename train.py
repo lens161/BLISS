@@ -57,16 +57,16 @@ def train_model(model, dataset, index, sample_size, bucket_sizes, neighbours, r,
             print(f"epoch {epoch} loss = {epoch_loss_sum}", flush=True)
             all_losses[current_epoch]
             current_epoch += 1
-        if config.global_reass:
-            global_reassign_buckets(model, dataset, index, neighbours, bucket_sizes, config)
-        elif ((epoch+1) * (i+1) < config.epochs*config.iterations and sample_size != train_size) or sample_size == train_size:
+        # if config.reass_mode == 0:
+            # reassign_base(model, dataset, index, neighbours, bucket_sizes, config)
+        if ((epoch+1) * (i+1) < config.epochs*config.iterations and sample_size != train_size) or sample_size == train_size:
             reassign_buckets(model, dataset, index, bucket_sizes, sample_size, neighbours, config)
         torch.cuda.empty_cache()
         np.set_printoptions(threshold=6, suppress=True)
         print(f"index after iteration {i}: \r{index}", flush=True)
 
-    # ut.make_loss_plot(config.lr, config.iterations, config.epochs, config.k, config.b, config.experiment_name, all_losses, config.shuffle, config.global_reass)
- 
+    ut.make_loss_plot(config.lr, config.iterations, config.epochs, config.k, config.b, config.experiment_name, all_losses, config.shuffle, config.reass_mode)
+
 def reassign_buckets(model, dataset, index, bucket_sizes, sample_size, neighbours, config: Config):
     '''
     Reassign all items in the dataset to new buckets. This function is invoked after every x epochs of training, to improve assignments.
@@ -90,14 +90,10 @@ def reassign_buckets(model, dataset, index, bucket_sizes, sample_size, neighbour
             bucket_probabilities_cpu = bucket_probabilities.cpu()
 
             _, candidate_buckets = torch.topk(bucket_probabilities_cpu, config.k, dim=1)
-            candidate_buckets_np = candidate_buckets.numpy()
+            candidate_buckets = candidate_buckets.numpy()
             
             for i, item_index in enumerate(batch_indices):
-                candidates = candidate_buckets_np[i]
-                candidate_sizes = bucket_sizes[candidates]
-                best_bucket = candidates[np.argmin(candidate_sizes)]
-                index[item_index] = best_bucket
-                bucket_sizes[best_bucket] += 1
+                ut.reassign_vector_to_bucket(index, bucket_sizes, candidate_buckets, i, item_index)
 
     finish = time.time()
     elapsed = finish - start
@@ -112,41 +108,30 @@ def reassign_buckets(model, dataset, index, bucket_sizes, sample_size, neighbour
     dataset.labels = new_labels
     model.to(config.device)
 
-
-def global_reassign_buckets(model, dataset, index, neighbours, bucket_sizes, config: Config):
+def reassign_base(model, dataset, index, neighbours, bucket_sizes, config: Config):
     '''
-    Alternative version of reassign_buckets, where first all bucket predictions are collected and then processed after.
+    Baseline implementation from the original BLISS code from <insert github link>. 
+    Used for reference to compare to our improved version.
     '''
     model.eval()
+    model.to(config.device)
     data_loader = DataLoader(dataset, batch_size=config.batch_size, shuffle=False, num_workers=8)
+    N = len(index)
     
-    all_predictions = []
+    candidate_buckets = np.zeros(shape = (N, config.k))
 
-    start = time.time()
-    with torch.no_grad():
-        for batch_data, _, batch_indices in data_loader:
-            batch_data = batch_data.to(config.device)
-            probabilities = torch.sigmoid(model(batch_data))
-            all_predictions.append(probabilities.cpu())
-    
+    start = time.time() 
+    ut.get_all_topk_buckets(data_loader, config.k, candidate_buckets, model, 0, config.device)
     # concatenate all predictions along the 0th dimension -> create tensor of predictions per vector of shape(N, B)
-    all_predictions = torch.cat(all_predictions, dim=0) 
+    # all_predictions = torch.cat(all_predictions, dim=0) 
     process = psutil.Process(os.getpid())
     mem_usage = process.memory_info().rss / (1024 ** 2)
     print(f"global ress memory usage: {mem_usage:.2f} MB")
-    ut.log_mem("global_reassign_buckets", mem_usage, config.memlog_path)
-    N = all_predictions.size(0)
-    
+    ut.log_mem("reassign_base", mem_usage, config.memlog_path)
+
     bucket_sizes[:] = 0
-    
     for i in range(N):
-        probs = all_predictions[i]
-        _, candidate_buckets = torch.topk(probs, config.k)
-        candidate_buckets = candidate_buckets.numpy()
-        candidate_sizes = bucket_sizes[candidate_buckets]
-        best_candidate = candidate_buckets[np.argmin(candidate_sizes)]
-        index[i] = best_candidate
-        bucket_sizes[best_candidate] += 1
+        ut.reassign_vector_to_bucket(index, bucket_sizes, candidate_buckets, i, i)
     
     finish = time.time()
     elapsed = finish - start
@@ -157,52 +142,52 @@ def global_reassign_buckets(model, dataset, index, neighbours, bucket_sizes, con
     print("New bucket sizes:", bucket_sizes)
 
 
-def reassign_buckets_vectorized(model, dataset, index, bucket_sizes, sample_size, neighbours,device, config: Config):
-    '''
-    Alternative version of reassign_buckets, where buckets are updated in batches.
-    Note: does not give 100% guarantee that the least occupied bucket is selected for each vector, if multiple vectors
-    in a batch are assigned to the same bucket.
-    '''
-    sample_size, _ = np.shape(dataset.data)
-    model.to(config.device)
-    model.eval()
-    reassign_loader = DataLoader(dataset, batch_size=config.batch_size, shuffle=False, num_workers=8)
+# def reassign_buckets_vectorized(model, dataset, index, bucket_sizes, sample_size, neighbours,device, config: Config):
+#     '''
+#     Alternative version of reassign_buckets, where buckets are updated in batches.
+#     Note: does not give 100% guarantee that the least occupied bucket is selected for each vector, if multiple vectors
+#     in a batch are assigned to the same bucket.
+#     '''
+#     sample_size, _ = np.shape(dataset.data)
+#     model.to(config.device)
+#     model.eval()
+#     reassign_loader = DataLoader(dataset, batch_size=config.batch_size, shuffle=False, num_workers=8)
     
-    # create auxiliary tensor representing bucket_sizes
-    bucket_sizes_t = torch.zeros(config.B, device=device, dtype=torch.int32)
+#     # create auxiliary tensor representing bucket_sizes
+#     bucket_sizes_t = torch.zeros(config.B, device=device, dtype=torch.int32)
     
-    global_item_index = 0 # index from list "index" on cpu
-    start = time.time()
-    with torch.no_grad():
-        for batch_data, _ in reassign_loader:
-            batch_data = batch_data.to(config.device)
-            bucket_probabilities = torch.sigmoid(model(batch_data))
-            _, candidate_indices = torch.topk(bucket_probabilities, config.k, dim=1)
-            # get current sizes for candidate buckets (broadcast bucket_sizes_t)
-            candidate_sizes = bucket_sizes_t[candidate_indices]  # shape: (batch_size, k)
-            #for each vector, choose the candidate with the smallest bucket count
-            chosen_candidate_idx = torch.argmin(candidate_sizes, dim=1)
-            #get the chosen buckets for batch
-            chosen_buckets = candidate_indices[torch.arange(candidate_indices.size(0)), chosen_candidate_idx]
+#     global_item_index = 0 # index from list "index" on cpu
+#     start = time.time()
+#     with torch.no_grad():
+#         for batch_data, _ in reassign_loader:
+#             batch_data = batch_data.to(config.device)
+#             bucket_probabilities = torch.sigmoid(model(batch_data))
+#             _, candidate_indices = torch.topk(bucket_probabilities, config.k, dim=1)
+#             # get current sizes for candidate buckets (broadcast bucket_sizes_t)
+#             candidate_sizes = bucket_sizes_t[candidate_indices]  # shape: (batch_size, k)
+#             #for each vector, choose the candidate with the smallest bucket count
+#             chosen_candidate_idx = torch.argmin(candidate_sizes, dim=1)
+#             #get the chosen buckets for batch
+#             chosen_buckets = candidate_indices[torch.arange(candidate_indices.size(0)), chosen_candidate_idx] #shape(batch_size, 1)
             
-            # batched update bucket sizes
-            ones = torch.ones_like(chosen_buckets, dtype=torch.int32, device=config.device)
-            bucket_sizes_t = bucket_sizes_t.scatter_add(0, chosen_buckets, ones)
+#             # batched update bucket sizes
+#             ones = torch.ones_like(chosen_buckets, dtype=torch.int32, device=config.device)
+#             bucket_sizes_t = bucket_sizes_t.scatter_add(0, chosen_buckets, ones)
             
-            # send chosen buckets to cpu
-            chosen_buckets_cpu = chosen_buckets.cpu().numpy()
-            for bucket in chosen_buckets_cpu:
-                index[global_item_index] = bucket
-                global_item_index += 1
-    end = time.time()
+#             # send chosen buckets to cpu
+#             chosen_buckets_cpu = chosen_buckets.cpu().numpy()
+#             for bucket in chosen_buckets_cpu:
+#                 index[global_item_index] = bucket
+#                 global_item_index += 1
+#     end = time.time()
     
-    #update global bucket_sizes list
-    bucket_sizes[:] = bucket_sizes_t.cpu().numpy()
+#     #update global bucket_sizes list
+#     bucket_sizes[:] = bucket_sizes_t.cpu().numpy()
     
-    process = psutil.Process(os.getpid())
-    mem_usage = process.memory_info().rss
-    print(f"Memory usage: {mem_usage / (1024 ** 2):.2f} MB")
-    print(f"reassigning vect. took: {end - start:.4f} seconds")
+#     process = psutil.Process(os.getpid())
+#     mem_usage = process.memory_info().rss
+#     print(f"Memory usage: {mem_usage / (1024 ** 2):.2f} MB")
+#     print(f"reassigning vect. took: {end - start:.4f} seconds")
     
-    new_labels = ut.make_ground_truth_labels(config.b, neighbours, index, sample_size, config.device)
-    dataset.labels = new_labels
+#     new_labels = ut.make_ground_truth_labels(config.b, neighbours, index, sample_size, config.device)
+#     dataset.labels = new_labels
