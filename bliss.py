@@ -27,7 +27,11 @@ def build_index(dataset: ds.Dataset, config: Config):
     DIM = dataset.d
     # DIM = 64
 
-    sample_size = SIZE if SIZE < 2_000_000 else 1_000_000
+    sample_size = SIZE 
+    if SIZE == 10_000_000:
+        sample_size = 1_000_000
+    if SIZE == 100_000_000:
+        sample_size = 2_000_000
 
     memmap_path, mmp_shape = save_dataset_as_memmap(dataset, config, SIZE, DIM)
     
@@ -43,7 +47,7 @@ def build_index(dataset: ds.Dataset, config: Config):
     final_index = []
     time_per_r = [] 
     process = psutil.Process(os.getpid())
-    memory_usage = process.memory_info().rss / (1024 ** 2)
+    memory_usage = process.memory_full_info().uss / (1024 ** 2)
     bucket_size_stats = []
     tracemalloc.start()
     ut.log_mem(f"before_building_reass={config.reass_mode}_shuffle={config.shuffle}", memory_usage, config.memlog_path)
@@ -268,7 +272,7 @@ def fill_memmap_in_batches(dataset, config: Config, mmp):
     index = 0
     for batch in dataset.get_dataset_iterator(bs=1_000_000):
         process = psutil.Process(os.getpid())
-        memory_usage = process.memory_info().rss / (1024 ** 2)
+        memory_usage = process.memory_full_info().uss / (1024 ** 2)
         ut.log_mem(f"while loading for memmap batch: ", memory_usage, config.memlog_path)
         print(f"mem usage while loading batch: {memory_usage}")
         batch_size = len(batch)

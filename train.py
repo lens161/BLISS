@@ -103,7 +103,7 @@ def reassign_buckets(model, dataset, index, bucket_sizes, sample_size, neighbour
     finish = time.time()
     elapsed = finish - start
     process = psutil.Process(os.getpid())
-    mem_usage = process.memory_info().rss / (1024 ** 2)
+    mem_usage = process.memory_full_info().uss / (1024 ** 2)
     ut.log_mem(f"improved_reassign_buckets_shuffle={config.shuffle}", mem_usage, config.memlog_path)
 
     print(f"Memory usage (improved reassign): {mem_usage:.2f} MB")
@@ -130,7 +130,7 @@ def reassign_base(model, dataset, index, neighbours, bucket_sizes, config: Confi
     # concatenate all predictions along the 0th dimension -> create tensor of predictions per vector of shape(N, B)
     # all_predictions = torch.cat(all_predictions, dim=0) 
     process = psutil.Process(os.getpid())
-    mem_usage = process.memory_info().rss / (1024 ** 2)
+    mem_usage = process.memory_full_info().uss / (1024 ** 2)
     print(f"basline reass memory usage: {mem_usage:.2f} MB")
     ut.log_mem("reassign_base", mem_usage, config.memlog_path)
 
