@@ -105,7 +105,7 @@ def get_training_sample_from_memmap(memmap_path, mmp_shape, sample_size, SIZE, D
         sample[:] = mmp[sample_indexes, :]
     else:
         sample[:] = mmp
-    return sample
+    return torch.from_numpy(sample)
 
 def make_ground_truth_labels(B, neighbours, index, sample_size, device):
     '''

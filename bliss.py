@@ -164,6 +164,7 @@ def build_full_index(bucket_sizes, SIZE, model, config: Config):
 
     elif config.reass_mode == 2:
         # Do all forward passes sequentially and then do reassignments in batches
+        last_bucket_increment = None
         candidate_buckets = np.zeros(shape= (SIZE, config.k), dtype=np.uint32) # all topk buckets per vector shape = (N, k).
         offset = 0
         for batch in full_data.get_dataset_iterator(bs = 1_000_00):
@@ -185,7 +186,9 @@ def build_full_index(bucket_sizes, SIZE, model, config: Config):
             index[i : min(i + chunk_size, SIZE)] = least_occupied
 
             bucket_increments = np.bincount(least_occupied, minlength=len(bucket_sizes))
-            bucket_sizes = np.add(bucket_sizes, bucket_increments)
+            last_bucket_increment = bucket_increments
+            bucket_sizes[:] = np.add(bucket_sizes, bucket_increments)
+        print(last_bucket_increment)
 
     elif config.reass_mode == 3:
         # Alternate fowardpasses wih batched reassignment -> vectorised assignment of a whole batch of buckets at once
