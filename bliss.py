@@ -37,9 +37,13 @@ def build_index(dataset: ds.Dataset, config: Config):
     
     sample = ut.get_training_sample_from_memmap(memmap_path, mmp_shape, sample_size, SIZE, DIM)
     print(f"sample size = {len(sample)}")
+    sample_mem_size = asizeof(sample)
+    ut.log_mem("memory of train sample object", sample_mem_size, config.memlog_path)
 
     print("finding neighbours...", flush=True)
     neighbours = ut.get_train_nearest_neighbours_from_file(sample, config.nr_train_neighbours, sample_size, config.dataset_name, config.datasize)
+    neighbours_mem_size = asizeof(neighbours)
+    ut.log_mem("memory of neighbours object", neighbours_mem_size, config.memlog_path)
 
     # labels = torch.zeros((1, 1))
     dataset = BLISSDataset(sample, config.device)
@@ -67,7 +71,7 @@ def build_index(dataset: ds.Dataset, config: Config):
         print(f"make ground truth labels time {time.time()-s}")
         # dataset.labels = labels
         ds_size = asizeof.asizeof(dataset)
-        ut.log_mem("size of training dataset before training (pq)", ds_size, config.memlog_path)
+        ut.log_mem("size of training dataset before training", ds_size, config.memlog_path)
 
         print(f"setting up model {r+1}")
         ut.set_torch_seed(r, config.device)
@@ -260,9 +264,9 @@ def save_dataset_as_memmap(dataset, config: Config, SIZE, DIM):
             data = dataset.get_dataset()[:]
             if dataset.distance() == "angular":
                 data = ut.normalise_data(data)
-            data = ut.random_projection(data, DIM)
             mmp[:] = data
             mmp.flush()
+    del mmp
     return memmap_path, mmp_shape
 
 def fill_memmap_in_batches(dataset, config: Config, mmp):

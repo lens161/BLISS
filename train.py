@@ -56,6 +56,7 @@ def train_model(model, dataset, index, sample_size, bucket_sizes, neighbours, r,
                 optimizer.step()
                 batch_count += 1
                 epoch_loss_sum += loss.item()
+                del loss, batch_data, batch_labels
             finish = time.time()
             elapsed = finish-start
             print(f"epoch {epoch} took {elapsed}")

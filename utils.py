@@ -48,9 +48,9 @@ def get_train_nearest_neighbours_from_file(dataset, amount, sample_size, dataset
         logging.info("No neighbours file found, calculating ground truths of training sample")
         I = get_nearest_neighbours_within_dataset(dataset, amount)
         print("writing neighbours to nbrs file")
-        I = np.asarray(I)
+        I = np.asarray(I, dtype=np.int32)
         with open(filename, "w") as f: 
-            np.savetxt(f, I, delimiter=",", fmt='%.0f')
+            np.savetxt(f, I, delimiter=",", fmt='%d')
 
     else:
         print(f"found nbrs file for {dataset_name} with amount={amount} and samplesize={sample_size}, reading true nearest neighbours from file")
