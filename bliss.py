@@ -37,12 +37,12 @@ def build_index(dataset: ds.Dataset, config: Config):
     
     sample = ut.get_training_sample_from_memmap(memmap_path, mmp_shape, sample_size, SIZE, DIM)
     print(f"sample size = {len(sample)}")
-    sample_mem_size = asizeof(sample)
+    sample_mem_size = asizeof.asizeof(sample)
     ut.log_mem("memory of train sample object", sample_mem_size, config.memlog_path)
 
     print("finding neighbours...", flush=True)
     neighbours = ut.get_train_nearest_neighbours_from_file(sample, config.nr_train_neighbours, sample_size, config.dataset_name, config.datasize)
-    neighbours_mem_size = asizeof(neighbours)
+    neighbours_mem_size = asizeof.asizeof(neighbours)
     ut.log_mem("memory of neighbours object", neighbours_mem_size, config.memlog_path)
 
     # labels = torch.zeros((1, 1))
