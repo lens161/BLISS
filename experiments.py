@@ -73,7 +73,7 @@ if __name__ == "__main__":
     k_values = [2]
     m_values = [10]
     reass_modes = [0, 1, 2]
-    EXP_NAME = "reass_mode_0-2"
+    EXP_NAME = "test-new-makegroundtruth"
 
     if not os.path.exists("logs"):
         os.mkdir("logs")
@@ -86,9 +86,9 @@ if __name__ == "__main__":
 
     # add all dataset names that the experiments should be run on
     datasets = [
-                "bigann",
+                # "bigann",
                 # "glove-100-angular",
-                # "sift-128-euclidean"
+                "sift-128-euclidean"
                  ]
     
     logging.info("[Experiment] Experiments started")
@@ -96,13 +96,13 @@ if __name__ == "__main__":
     for dataset in datasets:
         # for rm in reass_modes:
         #     if rm != 0:
-        conf_4 = Config(dataset_name=dataset, batch_size=2048, b=4096, reass_mode=2, datasize=10)
+        conf_4 = Config(dataset_name=dataset, batch_size=2048, b=4096)
             # conf_8 = Config(dataset_name=dataset, batch_size=2048, b=8192, datasize=10)
         configs_b.append(conf_4)
         # configs_b.append(conf_8)
         for rm in reass_modes:
             for m in m_values:
-                conf_q4 = Config(dataset_name=dataset, batch_size=2048, m=m, b=4096, reass_mode=rm, datasize=10)
+                conf_q4 = Config(dataset_name=dataset, batch_size=2048, m=m, b=4096)
                     # conf_q8 = Config(dataset_name=dataset, batch_size=2048, m=m, b=8192, datasize=10)
                 configs_q.append(conf_q4)
                     # configs_q.append(conf_q8)

@@ -37,8 +37,8 @@ def build_index(dataset: ds.Dataset, config: Config):
     print("finding neighbours...", flush=True)
     neighbours = ut.get_train_nearest_neighbours_from_file(sample, config.nr_train_neighbours, sample_size, config.dataset_name, config.datasize)
 
-    labels = torch.zeros((1, 1))
-    dataset = BLISSDataset(sample, labels, config.device)
+    # labels = torch.zeros((1, 1))
+    dataset = BLISSDataset(sample, config.device)
 
     final_index = []
     time_per_r = [] 
@@ -59,9 +59,9 @@ def build_index(dataset: ds.Dataset, config: Config):
 
         print("making initial groundtruth labels", flush=True)
         s = time.time()
-        labels = ut.make_ground_truth_labels(config.b, neighbours, sample_buckets, sample_size, config.device)
+        # labels = ut.make_ground_truth_labels(config.b, neighbours, sample_buckets, sample_size)
         print(f"make ground truth labels time {time.time()-s}")
-        dataset.labels = labels
+        # dataset.labels = labels
         ds_size = asizeof.asizeof(dataset)
         ut.log_mem("size of training dataset before training (pq)", ds_size, config.memlog_path)
 

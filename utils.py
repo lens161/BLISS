@@ -107,13 +107,13 @@ def get_training_sample_from_memmap(memmap_path, mmp_shape, sample_size, SIZE, D
         sample[:] = mmp
     return torch.from_numpy(sample)
 
-def make_ground_truth_labels(B, neighbours, index, sample_size, device):
+def make_ground_truth_labels(B, neighbours, index, sample_size):
     '''
     Create ground truth labels for training sample, based on the set of nearest neighbours of each training vector. 
     A label is a B-dimensional vector, where each digit is either 0 (false) if that bucket does not contain any
     nearest neighbours of a vector, and 1 (true) if the bucket contains at least one nearest neighbour of that vector.
     '''
-    start = time.time()
+    # start = time.time()
     labels = np.zeros((sample_size, B), dtype=bool)
     # for each vector i create an array of amount of neighbours
     vectors = np.concatenate([np.full(len(n), i) for i, n in enumerate(neighbours)])
@@ -127,10 +127,30 @@ def make_ground_truth_labels(B, neighbours, index, sample_size, device):
     #     for neighbour in neighbours[i]:
     #         bucket = index[neighbour]
     #         labels2[i, bucket] = True
-    print(f"making ground truch labels {time.time()-start}")
+    # print(f"making ground truch labels {time.time()-start}")
     # if device != torch.device("cpu"):
     #     labels = torch.from_numpy(labels).to(torch.float32)
-    return torch.from_numpy(labels)
+    return torch.from_numpy(labels).float()
+
+# def make_ground_truth_labels(B, neighbours, index, sample_size):
+#     start = time.time()
+
+#     # initialise empty sparse tensor
+#     indices = torch.empty(2, 0, dtype=torch.int32)
+#     values = torch.empty(0, dtype=torch.int32)
+#     labels = torch.sparse_coo_tensor(indices, values, size=(sample_size, B), dtype=bool)
+
+#     # get new values
+#     vectors = np.concatenate([np.full(len(n), i) for i, n in enumerate(neighbours)])
+#     buckets = np.concatenate([index[n] for n in neighbours])
+#     indices = np.array([vectors, buckets])
+#     values = np.ones(len(indices[0]))
+
+#     # update sparse tensor
+#     labels = torch.sparse_coo_tensor(indices, values, (sample_size, B))
+
+#     print(f"making ground truch labels {time.time()-start}")
+#     return labels.to_dense().to(bool)
 
 def reassign_vector_to_bucket(index, bucket_sizes, candidate_buckets, i, item_index):
     '''

@@ -31,6 +31,9 @@ def train_model(model, dataset, index, sample_size, bucket_sizes, neighbours, r,
     train_loader = DataLoader(dataset, batch_size=config.batch_size, shuffle=True, num_workers=8, generator=g)
     all_losses = np.zeros(shape=config.epochs*config.iterations)
     current_epoch = 0
+    indices = torch.empty(2, 0, dtype=torch.int32)
+    values = torch.empty(0, dtype=torch.int32)
+    sparse_labels = torch.sparse_coo_tensor(indices, values, size=(sample_size, config.b), dtype=bool)
     for i in range(config.iterations):
         model.train() 
         for epoch in range(config.epochs):
@@ -39,9 +42,11 @@ def train_model(model, dataset, index, sample_size, bucket_sizes, neighbours, r,
             print(f"training epoch ({i}, {epoch})")
             logging.info(f"Training epoch ({i}, {epoch})")
             start = time.time()
-            for batch_data, batch_labels, _ in train_loader:
+            for batch_data, batch_indices in train_loader:
                 batch_data = batch_data.to(config.device)
-                batch_labels = batch_labels.to(config.device)
+                # batch_labels = batch_labels.to(config.device)
+                batch_labels = ut.make_ground_truth_labels(config.b, neighbours[batch_indices], index, len(batch_data)).to(config.device)
+
                 # if isinstance(batch_labels, torch.Tensor) and batch_labels.is_sparse:
                 #     batch_labels = batch_labels.to_dense()
                 optimizer.zero_grad()
@@ -83,7 +88,7 @@ def reassign_buckets(model, dataset, index, bucket_sizes, sample_size, neighbour
 
     start = time.time()
     with torch.no_grad():
-        for batch_data, _, batch_indices in reassign_loader:
+        for batch_data, batch_indices in reassign_loader:
 
             batch_data = batch_data.to(config.device)
             bucket_probabilities = torch.sigmoid(model(batch_data))
@@ -104,8 +109,8 @@ def reassign_buckets(model, dataset, index, bucket_sizes, sample_size, neighbour
     print(f"Memory usage (improved reassign): {mem_usage:.2f} MB")
     print(f"Reassigning took {elapsed:.2f} seconds", flush=True)
     
-    new_labels = ut.make_ground_truth_labels(config.b, neighbours, index, sample_size, config.device)
-    dataset.labels = new_labels
+    # new_labels = ut.make_ground_truth_labels(config.b, neighbours, index, sample_size)
+    # dataset.labels = new_labels
     model.to(config.device)
 
 def reassign_base(model, dataset, index, neighbours, bucket_sizes, config: Config):
@@ -137,8 +142,8 @@ def reassign_base(model, dataset, index, neighbours, bucket_sizes, config: Confi
     elapsed = finish - start
 
     print(f"reassigning took {elapsed}")
-    new_labels = ut.make_ground_truth_labels(config.b, neighbours, index, N, config.device)
-    dataset.labels = new_labels
+    # new_labels = ut.make_ground_truth_labels(config.b, neighbours, index, N)
+    # dataset.labels = new_labels
     print("New bucket sizes:", bucket_sizes)
 
 
