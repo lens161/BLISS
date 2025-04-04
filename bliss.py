@@ -179,9 +179,9 @@ def build_full_index(bucket_sizes, SIZE, model, config: Config):
             candidate_sizes_per_vector = bucket_sizes[topk_per_vector]
             # get the least ocupied of each candidate set 
             # least_occupied = topk_per_vector[np.argmin(candidate_sizes_per_vector, axis = 1)] # shape = (chunk_size, 1)
-            row_indices = np.arange(topk_per_vector.shape[0])
-            col_indices = np.argmin(candidate_sizes_per_vector, axis=1)
-            least_occupied = topk_per_vector[row_indices, col_indices]
+            vectors = np.arange(topk_per_vector.shape[0])
+            sizes = np.argmin(candidate_sizes_per_vector, axis=1)
+            least_occupied = topk_per_vector[vectors, sizes]
             index[i : min(i + chunk_size, SIZE)] = least_occupied
 
             bucket_increments = np.bincount(least_occupied, minlength=len(bucket_sizes))
