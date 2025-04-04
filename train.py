@@ -51,7 +51,6 @@ def train_model(model, dataset, index, sample_size, bucket_sizes, neighbours, r,
                 optimizer.step()
                 batch_count += 1
                 epoch_loss_sum += loss.item()
-                del loss, batch_data, batch_labels
             finish = time.time()
             elapsed = finish-start
             print(f"epoch {epoch} took {elapsed}")
@@ -105,7 +104,6 @@ def reassign_buckets(model, dataset, index, bucket_sizes, sample_size, neighbour
     print(f"Memory usage (improved reassign): {mem_usage:.2f} MB")
     print(f"Reassigning took {elapsed:.2f} seconds", flush=True)
     
-    dataset.labels = None
     new_labels = ut.make_ground_truth_labels(config.b, neighbours, index, sample_size, config.device)
     dataset.labels = new_labels
     model.to(config.device)
@@ -139,7 +137,6 @@ def reassign_base(model, dataset, index, neighbours, bucket_sizes, config: Confi
     elapsed = finish - start
 
     print(f"reassigning took {elapsed}")
-    dataset.labels = None
     new_labels = ut.make_ground_truth_labels(config.b, neighbours, index, N, config.device)
     dataset.labels = new_labels
     print("New bucket sizes:", bucket_sizes)

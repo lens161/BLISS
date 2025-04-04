@@ -33,13 +33,9 @@ def build_index(dataset: ds.Dataset, config: Config):
     
     sample = ut.get_training_sample_from_memmap(memmap_path, mmp_shape, sample_size, SIZE, DIM)
     print(f"sample size = {len(sample)}")
-    sample_mem_size = asizeof.asizeof(sample)
-    ut.log_mem("size of sample object", sample_mem_size, config.memlog_path)
 
     print("finding neighbours...", flush=True)
     neighbours = ut.get_train_nearest_neighbours_from_file(sample, config.nr_train_neighbours, sample_size, config.dataset_name, config.datasize)
-    neighbours_mem_size = asizeof.asizeof(neighbours)
-    ut.log_mem("size of sample object", neighbours_mem_size, config.memlog_path)
 
     labels = torch.zeros((1, 1))
     dataset = BLISSDataset(sample, labels, config.device)
@@ -64,8 +60,6 @@ def build_index(dataset: ds.Dataset, config: Config):
         print("making initial groundtruth labels", flush=True)
         s = time.time()
         labels = ut.make_ground_truth_labels(config.b, neighbours, sample_buckets, sample_size, config.device)
-        labels_mem_size = asizeof.asizeof(labels)
-        ut.log_mem("size of sample object", labels_mem_size, config.memlog_path)
         print(f"make ground truth labels time {time.time()-s}")
         dataset.labels = labels
         ds_size = asizeof.asizeof(dataset)
@@ -262,7 +256,6 @@ def save_dataset_as_memmap(dataset, config: Config, SIZE, DIM):
             data = ut.random_projection(data, DIM)
             mmp[:] = data
             mmp.flush()
-    del mmp
     return memmap_path, mmp_shape
 
 def fill_memmap_in_batches(dataset, config: Config, mmp):
