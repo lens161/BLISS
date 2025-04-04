@@ -27,7 +27,11 @@ def build_index(dataset: ds.Dataset, config: Config):
     DIM = dataset.d
     # DIM = 64
 
-    sample_size = SIZE if SIZE < 2_000_000 else 1_000_000
+    sample_size = SIZE 
+    if SIZE == 10_000_000:
+        sample_size = 1_000_000
+    if SIZE == 100_000_000:
+        sample_size = 2_000_000
 
     memmap_path, mmp_shape = save_dataset_as_memmap(dataset, config, SIZE, DIM)
     
@@ -37,13 +41,13 @@ def build_index(dataset: ds.Dataset, config: Config):
     print("finding neighbours...", flush=True)
     neighbours = ut.get_train_nearest_neighbours_from_file(sample, config.nr_train_neighbours, sample_size, config.dataset_name, config.datasize)
 
-    labels = torch.zeros((1, 1))
-    dataset = BLISSDataset(sample, labels, config.device)
+    # labels = torch.zeros((1, 1))
+    dataset = BLISSDataset(sample, config.device)
 
     final_index = []
     time_per_r = [] 
     process = psutil.Process(os.getpid())
-    memory_usage = process.memory_info().rss / (1024 ** 2)
+    memory_usage = process.memory_full_info().uss / (1024 ** 2)
     bucket_size_stats = []
     tracemalloc.start()
     ut.log_mem(f"before_building_reass={config.reass_mode}_shuffle={config.shuffle}", memory_usage, config.memlog_path)
@@ -59,9 +63,9 @@ def build_index(dataset: ds.Dataset, config: Config):
 
         print("making initial groundtruth labels", flush=True)
         s = time.time()
-        labels = ut.make_ground_truth_labels(config.b, neighbours, sample_buckets, sample_size, config.device)
+        # labels = ut.make_ground_truth_labels(config.b, neighbours, sample_buckets, sample_size)
         print(f"make ground truth labels time {time.time()-s}")
-        dataset.labels = labels
+        # dataset.labels = labels
         ds_size = asizeof.asizeof(dataset)
         ut.log_mem("size of training dataset before training (pq)", ds_size, config.memlog_path)
 
@@ -164,6 +168,7 @@ def build_full_index(bucket_sizes, SIZE, model, config: Config):
 
     elif config.reass_mode == 2:
         # Do all forward passes sequentially and then do reassignments in batches
+        last_bucket_increment = None
         candidate_buckets = np.zeros(shape= (SIZE, config.k), dtype=np.uint32) # all topk buckets per vector shape = (N, k).
         offset = 0
         for batch in full_data.get_dataset_iterator(bs = 1_000_00):
@@ -179,13 +184,15 @@ def build_full_index(bucket_sizes, SIZE, model, config: Config):
             candidate_sizes_per_vector = bucket_sizes[topk_per_vector]
             # get the least ocupied of each candidate set 
             # least_occupied = topk_per_vector[np.argmin(candidate_sizes_per_vector, axis = 1)] # shape = (chunk_size, 1)
-            row_indices = np.arange(topk_per_vector.shape[0])
-            col_indices = np.argmin(candidate_sizes_per_vector, axis=1)
-            least_occupied = topk_per_vector[row_indices, col_indices]
+            vectors = np.arange(topk_per_vector.shape[0])
+            sizes = np.argmin(candidate_sizes_per_vector, axis=1)
+            least_occupied = topk_per_vector[vectors, sizes]
             index[i : min(i + chunk_size, SIZE)] = least_occupied
 
             bucket_increments = np.bincount(least_occupied, minlength=len(bucket_sizes))
-            bucket_sizes = np.add(bucket_sizes, bucket_increments)
+            last_bucket_increment = bucket_increments
+            bucket_sizes[:] = np.add(bucket_sizes, bucket_increments)
+        print(last_bucket_increment)
 
     elif config.reass_mode == 3:
         # Alternate fowardpasses wih batched reassignment -> vectorised assignment of a whole batch of buckets at once
@@ -265,7 +272,7 @@ def fill_memmap_in_batches(dataset, config: Config, mmp):
     index = 0
     for batch in dataset.get_dataset_iterator(bs=1_000_000):
         process = psutil.Process(os.getpid())
-        memory_usage = process.memory_info().rss / (1024 ** 2)
+        memory_usage = process.memory_full_info().uss / (1024 ** 2)
         ut.log_mem(f"while loading for memmap batch: ", memory_usage, config.memlog_path)
         print(f"mem usage while loading batch: {memory_usage}")
         batch_size = len(batch)

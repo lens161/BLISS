@@ -32,9 +32,9 @@ class BLISSDataset(Dataset):
     '''
     The dataset used for handling and loading training samples
     '''
-    def __init__(self, data, labels, device, mode = 'train'):
+    def __init__(self, data, device, mode = 'train'):
         self.device = device
-        self.labels = labels
+        # self.labels = labels
         self.mode = mode
         self.data = data
 
@@ -43,9 +43,9 @@ class BLISSDataset(Dataset):
 
     def __getitem__(self, idx):
         if self.mode == 'train':
-            vector = torch.from_numpy(self.data[idx]).to(torch.float32)
-            label = self.labels[idx].float()
-            return vector, label, idx
+            vector = self.data[idx]
+            # label = self.labels[idx].float()
+            return vector, idx
         elif self.mode == 'build':
-            return torch.from_numpy(self.data[idx]).float(), idx
+            return self.data[idx], idx
  
