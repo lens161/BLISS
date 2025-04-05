@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH --job-name=reass_mode_0-2     # Job name
+#SBATCH --job-name=bigann_10_reass_modes_0-2     # Job name
 #SBATCH --output=outputs/job.%j.out     # Name of output file (%j expands to jobId)
 #SBATCH --cpus-per-task=64              # Schedule 64 cores
 #SBATCH --time=24:00:00                 # Max run time (hh:mm:ss)
@@ -8,7 +8,6 @@
 #SBATCH --exclude=desktop[1-16]         # Exclude desktops
 #SBATCH --exclude=cn[16-17]             # Exclude 1080's
 #SBATCH --exclude=cn[11]                # Exclude 1080's
-#SBATCH --nodelist=cn[18]               # get cn 18 for consistency fo results
 #SBATCH --partition=scavenge            # Run on the scavenge queue
 #SBATCH --mail-type=BEGIN,FAIL,END      # Send an email when the job finishes
 #SBATCH --exclusive                    # get entire machine for task

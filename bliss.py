@@ -143,7 +143,7 @@ def map_all_to_buckets_base(index, bucket_sizes, full_data, data_batched, data_l
     offset = 0
     print("started map all", flush=True)
     for batch in full_data.get_dataset_iterator(bs = 1_000_00):
-        data_batched.data = batch
+        data_batched.data = torch.from_numpy(batch)
         print("getting batch from full data")
         ut.get_all_topk_buckets(data_loader, k, candidate_buckets, model, offset, device)
         offset += len(batch)
@@ -156,7 +156,7 @@ def build_full_index(bucket_sizes, SIZE, model, config: Config):
     bucket_sizes[:] = 0 
     index = np.zeros(SIZE, dtype=np.uint32)
     full_data = ut.get_dataset_obj(config.dataset_name, config.datasize)
-    data_batched = BLISSDataset(None, None, device = torch.device("cpu"), mode='build')
+    data_batched = BLISSDataset(None, device = torch.device("cpu"), mode='build')
     map_loader = DataLoader(data_batched, batch_size=config.batch_size, shuffle=False, num_workers=8)
     # map all vectors to buckets using the chosen reassignment strategy
     start = time.time()
