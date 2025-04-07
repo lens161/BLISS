@@ -6,7 +6,7 @@ class Config:
     '''
     def __init__(self, dataset_name, r= 4, k= 2, m = 2, freq_threshold = 2, 
                  epochs = 5, iterations = 4, batch_size = 256, nr_train_neighbours = 100, 
-                 nr_ann = 10, b = 0, lr = 0.001, reass_mode = 0, shuffle = False, datasize=1):
+                 nr_ann = 10, b = 0, lr = 0.001, reass_mode = 0, reass_chunk_size = 5000, shuffle = False, datasize=1):
         self.dataset_name = dataset_name
         self.r = r
         self.k = k
@@ -14,6 +14,7 @@ class Config:
         self.b = b
         self.lr = lr
         self.reass_mode = reass_mode
+        self.reass_chunk_size = reass_chunk_size
         self.shuffle = shuffle
         self.freq_threshold = freq_threshold
         self.epochs = epochs

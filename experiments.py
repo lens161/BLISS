@@ -72,8 +72,8 @@ if __name__ == "__main__":
     range_threshold = 2
     k_values = [2]
     m_values = [5, 10, 15]
-    reass_modes = [0, 1, 2]
-    EXP_NAME = "bigann_10_reass_modes_0-2"
+    reass_modes = [2]
+    EXP_NAME = "check_refact_reass_1-2"
 
     if not os.path.exists("logs"):
         os.mkdir("logs")
@@ -95,11 +95,10 @@ if __name__ == "__main__":
         # check that datasize in config is set to correct value. (default = 1)
     for dataset in datasets:
         for rm in reass_modes:
-            if rm != 0:
             # conf_4 = Config(dataset_name=dataset, batch_size=5000, b=4096, epochs=2, iterations=2)
-                conf_8 = Config(dataset_name=dataset, batch_size=5000, reass_mode=rm, b=8192, datasize=10)
+            conf_8 = Config(dataset_name=dataset, batch_size=2048, reass_mode=rm, b=8192, datasize=10, epochs=2, iterations=2)
             # configs_b.append(conf_4)
-                configs_b.append(conf_8)
+            configs_b.append(conf_8)
         for rm in reass_modes:
             for m in m_values:
                     # conf_q4 = Config(dataset_name=dataset, batch_size=5000, reass_mode = rm, m=m, b=4096)

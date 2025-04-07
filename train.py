@@ -42,11 +42,14 @@ def train_model(model, dataset, index, sample_size, bucket_sizes, neighbours, r,
             print(f"training epoch ({i}, {epoch})")
             logging.info(f"Training epoch ({i}, {epoch})")
             start = time.time()
+            label_times = []
             for batch_data, batch_indices in train_loader:
                 batch_data = batch_data.to(config.device)
                 # batch_labels = batch_labels.to(config.device)
+                s = time.time()
                 batch_labels = ut.make_ground_truth_labels(config.b, neighbours[batch_indices], index, len(batch_data)).to(config.device)
-
+                e = time.time()
+                label_times.append(e-s)
                 # if isinstance(batch_labels, torch.Tensor) and batch_labels.is_sparse:
                 #     batch_labels = batch_labels.to_dense()
                 optimizer.zero_grad()
@@ -60,6 +63,7 @@ def train_model(model, dataset, index, sample_size, bucket_sizes, neighbours, r,
             finish = time.time()
             elapsed = finish-start
             print(f"epoch {epoch} took {elapsed}")
+            print(f"label making took (sum): {sum(label_times)}")
             print(f"epoch {epoch} loss = {epoch_loss_sum}", flush=True)
             all_losses[current_epoch]
             current_epoch += 1
