@@ -94,7 +94,7 @@ def build_index(dataset: ds.Dataset, config: Config):
             index = sample_buckets
         del model 
         inverted_index, offsets = invert_index(index, bucket_sizes, SIZE)
-        index_path = ut.save_inverted_index(inverted_index, offsets, config.dataset_name, r+1, config.r, config.k, config.b, config.lr, config.shuffle, config.reass_mode)
+        index_path = ut.save_inverted_index(inverted_index, offsets, config.dataset_name, r+1, config.r, config.k, config.b, config.lr, config.batch_size, config.reass_mode)
         del inverted_index, offsets
         final_index.append((index_path, model_path))
         end = time.time()
