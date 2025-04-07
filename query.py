@@ -19,7 +19,7 @@ def load_data_for_inference(dataset, config: Config, SIZE, DIM):
     '''
     # keep data as a memmap if the dataset is too large, otherwise load into memory fully
     memmap_path = f"memmaps/{config.dataset_name}_{config.datasize}.npy"
-    data = np.memmap(memmap_path, mode='r', shape=(SIZE, DIM), dtype=np.float32) if SIZE >10_000_000 else np.memmap(memmap_path,shape=(SIZE, DIM), mode='r', dtype=np.float32)[:]
+    data = np.memmap(memmap_path, mode='r', shape=(SIZE, DIM), dtype=np.float32) if SIZE >10_000_000 else np.ascontiguousarray(np.memmap(memmap_path,shape=(SIZE, DIM), mode='r', dtype=np.float32))
 
     test = dataset.get_queries()
     neighbours, _ = dataset.get_groundtruth()
@@ -145,7 +145,9 @@ def reorder(data, query_vector, candidates, requested_amount):
     Do true distance calculations on the candidate set of vectors and return the top 'requested_amount' candidates.
     ''' 
     sp_index = []
-    search_space = np.copy(data[candidates])
+    #TODO: check if this is actually useful for fetching candidates, or if it just adds overhead
+    candidates = np.sort(candidates)
+    search_space = np.ascontiguousarray(data[candidates])
     dist_comps = len(search_space)
     for i in range(len(search_space)):
         sp_index.append(candidates[i])
