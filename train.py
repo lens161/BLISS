@@ -33,6 +33,8 @@ def train_model(model, dataset, index, sample_size, bucket_sizes, neighbours, r,
     current_epoch = 0
     indices = torch.empty(2, 0, dtype=torch.int32)
     values = torch.empty(0, dtype=torch.int32)
+    process = psutil.Process(os.getpid())
+    memory_training = 0
     sparse_labels = torch.sparse_coo_tensor(indices, values, size=(sample_size, config.b), dtype=bool)
     for i in range(config.iterations):
         model.train() 
@@ -48,6 +50,8 @@ def train_model(model, dataset, index, sample_size, bucket_sizes, neighbours, r,
                 # batch_labels = batch_labels.to(config.device)
                 s = time.time()
                 batch_labels = ut.make_ground_truth_labels(config.b, neighbours[batch_indices], index, len(batch_data)).to(config.device)
+                memory_current = process.memory_full_info().uss / (1024 ** 2)
+                memory_training = memory_current if memory_current>memory_training else memory_training
                 e = time.time()
                 label_times.append(e-s)
                 # if isinstance(batch_labels, torch.Tensor) and batch_labels.is_sparse:
@@ -76,6 +80,7 @@ def train_model(model, dataset, index, sample_size, bucket_sizes, neighbours, r,
         print(f"index after iteration {i}: \r{index}", flush=True)
 
     ut.make_loss_plot(config.lr, config.iterations, config.epochs, config.k, config.b, config.experiment_name, all_losses, config.shuffle, config.reass_mode)
+    return memory_training
 
 def reassign_buckets(model, dataset, index, bucket_sizes, sample_size, neighbours, config: Config):
     '''

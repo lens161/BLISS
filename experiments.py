@@ -12,17 +12,17 @@ def run_experiment(config: Config, mode = 'query'):
     # - seperate query statistics from building statistics
     avg_recall, stats, total_query_time = run_bliss(config, mode= mode)
     return total_query_time, avg_recall, stats
+
 def build_multiple_indexes_exp(experiment_name, configs):
     mode = 'build'
     stats = []
     for config in configs:
-        r = config.r
-        k = config.k
-        epochs = config.epochs
-        iterations = config.iterations
-        time_per_r, build_time, memory_usage, load_balance = run_bliss(config, mode=mode, experiment_name=experiment_name)
+        r, k, epochs, iterations = config.r, config.k, config.epochs, config.iterations
+        time_per_r, build_time, memory_final_assignment, memory_training, load_balance, index_sizes_total, model_sizes_total = run_bliss(config, mode=mode, experiment_name=experiment_name)
         stats.append({'R':r, 'k':k, 'epochs_per_it':epochs, 'iterations':iterations, 'build_time':build_time, 
-                      'mem':memory_usage, 'load_balance':load_balance, 'shuffle':config.shuffle, 'reass_mode': config.reass_mode})
+                      'mem_final_ass':memory_final_assignment, 'mem_training':memory_training, 'load_balance':load_balance, 
+                      'batch_size':config.batch_size, 'reass_mode': config.reass_mode,
+                      'index_sizes_total': index_sizes_total,'model_sizes_total': model_sizes_total})
         print(time_per_r)
     foldername = f"results/{experiment_name}"
     if not os.path.exists("results"):
@@ -35,9 +35,7 @@ def build_multiple_indexes_exp(experiment_name, configs):
 def run_multiple_query_exp(experiment_name, configs):
     mode = 'query'
     for config in configs:
-        r = config.r
-        k = config.k
-        m =config.m
+        r, k, m = config.r, config.k, config.m
         results = []
         avg_recall, stats, total_query_time = run_bliss(config, mode=mode, experiment_name=experiment_name)
         print(f"avg recall = {avg_recall}")
@@ -72,42 +70,42 @@ if __name__ == "__main__":
     range_threshold = 2
     k_values = [2]
     m_values = [15]
-    reass_modes = [2]
+    reass_modes = [2, 3]
     batch_sizes = [1024, 2048, 5000]
-    EXP_NAME = "batch_size_lr_run1"
+    EXP_NAME = "check_rm2-3_refactor"
 
     if not os.path.exists("logs"):
         os.mkdir("logs")
 
     logging.basicConfig(
-        filename=f'logs/{EXP_NAME}.log',               # Specify the log file name
-        level=logging.INFO,               # Set the logging level to INFO
+        filename=f'logs/{EXP_NAME}.log',                    # Specify the log file name
+        level=logging.INFO,                                 # Set the logging level to INFO
         format='%(asctime)s - %(levelname)s - %(message)s'  # Define the log message format
     )
 
     # add all dataset names that the experiments should be run on
     datasets = [
-                # "bigann",
+                "bigann",
                 # "glove-100-angular",
-                "sift-128-euclidean"
+                # "sift-128-euclidean"
                  ]
     
     logging.info("[Experiment] Experiments started")
         # check that datasize in config is set to correct value. (default = 1)
     for dataset in datasets:
-        for bs in batch_sizes:
-            conf = Config(dataset_name=dataset, m=15, batch_size=bs, b=4096)
+        for rm in reass_modes:
+            conf = Config(dataset_name=dataset, m=15, batch_size=2048, reass_mode=rm, b=8192, datasize=10)
             configs_b.append(conf)
-            if bs == 5000:
-                conf1 = Config(dataset_name=dataset, m=15, batch_size=bs, b=4096, lr=0.01)
-                configs_b.append(conf1)
+            # if bs == 5000:
+            #     conf1 = Config(dataset_name=dataset, m=15, batch_size=bs, b=4096, lr=0.01)
+            #     configs_b.append(conf1)
         # for rm in reass_modes:
             # for m in m_values:
-            conf_q = Config(dataset_name=dataset, m=15, batch_size=bs, b=4096)
+            conf_q = Config(dataset_name=dataset, m=15, batch_size=2048, reass_mode=rm, b=8192, datasize=10)
             configs_q.append(conf_q)
-            if bs == 5000:
-                confq1 = Config(dataset_name=dataset, m=15, batch_size=bs, b=4096, lr=0.01)
-                configs_q.append(confq1)
+            # if bs == 5000:
+            #     confq1 = Config(dataset_name=dataset, m=15, batch_size=bs, b=4096, lr=0.01)
+            #     configs_q.append(confq1)
     
     logging.info(f"[Experiment] Building indexes")
     build_multiple_indexes_exp(EXP_NAME, configs_b)

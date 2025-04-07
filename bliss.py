@@ -50,11 +50,13 @@ def build_index(dataset: ds.Dataset, config: Config):
 
     final_index = []
     time_per_r = [] 
-    process = psutil.Process(os.getpid())
-    memory_usage = process.memory_full_info().uss / (1024 ** 2)
+    memory_training = 0
+    memory_final_assignment = 0
     bucket_size_stats = []
-    tracemalloc.start()
-    ut.log_mem(f"before_building_reass={config.reass_mode}_shuffle={config.shuffle}", memory_usage, config.memlog_path)
+    model_sizes_total = 0
+    index_sizes_total = 0
+    # tracemalloc.start()
+    # ut.log_mem(f"before_building_reass={config.reass_mode}_shuffle={config.shuffle}", memory_usage, config.memlog_path)
     for r in range(config.r):
         logging.info(f"Training model {r+1}")
         start = time.time()
@@ -79,22 +81,25 @@ def build_index(dataset: ds.Dataset, config: Config):
         model_size = asizeof.asizeof(model)
         ut.log_mem("model size before training", model_size, config.memlog_path)
         print(f"training model {r+1}")
-        train_model(model, dataset, sample_buckets, sample_size, bucket_sizes, neighbours, r, SIZE, config)
+        memory_training_current = train_model(model, dataset, sample_buckets, sample_size, bucket_sizes, neighbours, r, SIZE, config)
+        memory_training = memory_training_current if memory_training_current > memory_training else memory_training
         current, _ = tracemalloc.get_traced_memory() 
         ut.log_mem(f"memory during training model {r+1}", current, config.memlog_path)
-        model_path = ut.save_model(model, config.dataset_name, r+1, config.r, config.k, config.b, config.lr, config.batch_size, config.reass_mode)
+        model_path, model_file_size = ut.save_model(model, config.dataset_name, r+1, config.r, config.k, config.b, config.lr, config.batch_size, config.reass_mode)
+        model_sizes_total += model_file_size
         print(f"model {r+1} saved to {model_path}.")
 
         model.eval()
         model.to(config.device)
         index = None
         if sample_size < SIZE:
-            index = build_full_index(bucket_sizes, SIZE, model, config)
+            index, memory_final_assignment = build_full_index(bucket_sizes, SIZE, model, config)
         else:
             index = sample_buckets
         del model 
         inverted_index, offsets = invert_index(index, bucket_sizes, SIZE)
-        index_path = ut.save_inverted_index(inverted_index, offsets, config.dataset_name, r+1, config.r, config.k, config.b, config.lr, config.shuffle, config.reass_mode)
+        index_path, index_files_size = ut.save_inverted_index(inverted_index, offsets, config.dataset_name, r+1, config.r, config.k, config.b, config.lr, config.shuffle, config.reass_mode)
+        index_sizes_total += index_files_size
         del inverted_index, offsets
         final_index.append((index_path, model_path))
         end = time.time()
@@ -103,12 +108,12 @@ def build_index(dataset: ds.Dataset, config: Config):
 
     build_time = time.time() - start
     # process = psutil.Process(os.getpid())
-    # memory_usage = process.memory_info().rss / (1024 ** 2)
-    _, peak_mem = tracemalloc.get_traced_memory()
+    # _, peak_mem = tracemalloc.get_traced_memory()
     load_balance = ut.calc_load_balance(bucket_size_stats)
-    tracemalloc.stop()
-    ut.log_mem(f"after_building_reass={config.reass_mode}_shuffle={config.shuffle}", memory_usage, config.memlog_path)
-    return final_index, time_per_r, build_time, peak_mem, load_balance
+    # tracemalloc.stop()
+    ut.log_mem(f"final_reass={config.reass_mode}_reass_chunk_size={config.reass_chunk_size}", memory_final_assignment, config.memlog_path)
+    ut.log_mem(f"training={config.reass_mode}_batch_size={config.batch_size}", memory_training, config.memlog_path)
+    return final_index, time_per_r, build_time, memory_final_assignment, memory_training, load_balance, index_sizes_total, model_sizes_total
 
 def assign_initial_buckets(train_size, r, B):
     '''
@@ -132,15 +137,21 @@ def map_all_to_buckets_1(map_loader, full_data, data_batched, k, index, bucket_s
     '''
     logging.info(f"Mapping all train vectors to buckets")
     offset = 0
+    process = psutil.Process(os.getpid())
+    memory_usage = 0
     for batch in full_data.get_dataset_iterator(bs=1_000_000):
         data_batched.data = torch.from_numpy(batch).float()
         with torch.no_grad():
             for batch_data, batch_indices in map_loader:
                 candidate_buckets = ut.get_topk_buckets_for_batch(batch_data, k, map_model, device).numpy()
+                mem_current = process.memory_full_info().uss / (1024 ** 2)
+                memory_usage = mem_current if mem_current>memory_usage else memory_usage
                 for i, item_index in enumerate(batch_indices):
                     item_idx = item_index + offset
                     ut.reassign_vector_to_bucket(index, bucket_sizes, candidate_buckets, i, item_idx)
+    
         offset += len(batch)
+    return memory_usage
 
 def map_all_to_buckets_0(index, bucket_sizes, full_data, data_batched, data_loader, N, k, model, device):
     '''
@@ -148,54 +159,73 @@ def map_all_to_buckets_0(index, bucket_sizes, full_data, data_batched, data_load
     Gets all candidate buckets per vector at once and does the reassignment sequentially.
     '''
     print("started map all", flush=True)
+    process = psutil.Process(os.getpid())
     candidate_buckets = get_all_candidate_buckets(len(index), model, k, device, full_data, data_batched, data_loader)
+    memory_usage = process.memory_full_info().uss / (1024 ** 2)
     print("finished getting topk", flush=True)
 
     for i in range(N):
         ut.reassign_vector_to_bucket(index, bucket_sizes, candidate_buckets, i, i)
+    return memory_usage
 
 def build_full_index(bucket_sizes, SIZE, model, config: Config):
     bucket_sizes[:] = 0 
+    memory_usage = 0
+    reass_mode, k, device = config.reass_mode, config.k, config.device
     index = np.zeros(SIZE, dtype=np.uint32)
     full_data = ut.get_dataset_obj(config.dataset_name, config.datasize)
     data_batched = BLISSDataset(None, device = torch.device("cpu"), mode='build')
-    map_loader = DataLoader(data_batched, batch_size=config.batch_size, shuffle=False, num_workers=8)
+    chunk_size = config.reass_chunk_size
+    map_loader = DataLoader(data_batched, batch_size=chunk_size, shuffle=False, num_workers=8)
     # map all vectors to buckets using the chosen reassignment strategy
     start = time.time()
-    if config.reass_mode == 0: # baseline implementation 
-        map_all_to_buckets_0(index, bucket_sizes, full_data, data_batched, map_loader, SIZE, config.k, model, config.device)
+    if reass_mode == 0: # baseline implementation 
+        memory_usage = map_all_to_buckets_0(index, bucket_sizes, full_data, data_batched, map_loader, SIZE, k, model, device)
 
-    elif config.reass_mode == 1: # reassign all vectors in a foward pass batch directly 
-        map_all_to_buckets_1(map_loader, full_data, data_batched, config.k, index, bucket_sizes, model, config.device)
+    elif reass_mode == 1: # reassign all vectors in a foward pass batch directly 
+        memory_usage = map_all_to_buckets_1(map_loader, full_data, data_batched, k, index, bucket_sizes, model, device)
 
-    elif config.reass_mode == 2:
+    elif reass_mode == 2:
         # Do all forward passes sequentially and then do reassignments in batches
-        candidate_buckets = get_all_candidate_buckets(SIZE, model, config.k, config.device, full_data, data_batched, map_loader)
+        candidate_buckets = get_all_candidate_buckets(SIZE, model, k, device, full_data, data_batched, map_loader)
 
-        chunk_size = config.reass_chunk_size
         for i in range(0, SIZE, chunk_size):
             # get the topk buckets per vector
             topk_per_vector = candidate_buckets[i : min(i + chunk_size, SIZE)] # shape = (chunk_size, k)
-            # get sizes of cnadidates per vector
-            candidate_sizes_per_vector = bucket_sizes[topk_per_vector]
-            # get the least ocupied of each candidate set 
-            # least_occupied = topk_per_vector[np.argmin(candidate_sizes_per_vector, axis = 1)] # shape = (chunk_size, 1)
-            vectors = np.arange(topk_per_vector.shape[0])
-            sizes = np.argmin(candidate_sizes_per_vector, axis=1)
-            least_occupied = topk_per_vector[vectors, sizes]
-            index[i : min(i + chunk_size, SIZE)] = least_occupied
+            memory_current = assign_to_buckets_vectorised(bucket_sizes, SIZE, index, chunk_size, i, topk_per_vector)
+            memory_usage = memory_current if memory_current>memory_usage else memory_usage
 
-            bucket_increments = np.bincount(least_occupied, minlength=len(bucket_sizes))
-            bucket_sizes[:] = np.add(bucket_sizes, bucket_increments)
-
-    elif config.reass_mode == 3:
+    elif reass_mode == 3:
         # Alternate fowardpasses wih batched reassignment -> vectorised assignment of a whole batch of buckets at once
-        pass
+        logging.info(f"Mapping all to buckets mode: {reass_mode}")
+        offset = 0
+        for batch in full_data.get_dataset_iterator(bs=1_000_000):
+            data_batched.data = torch.from_numpy(batch).float()
+            with torch.no_grad():
+                for batch_data, _ in map_loader:
+                    topk_per_vector = ut.get_topk_buckets_for_batch(batch_data, k, model, config.device).numpy()
+                    memory_current = assign_to_buckets_vectorised(bucket_sizes, SIZE, index, chunk_size, offset, topk_per_vector)
+                    memory_usage = memory_usage if memory_current > memory_usage else memory_usage
+                    offset += chunk_size
 
     end = time.time()
-    logging.info(f"final assignment mode:{config.reass_mode} took {end-start} seconds")
+    logging.info(f"final assignment mode:{reass_mode} took {end-start} seconds")
 
-    return index 
+    return index, memory_usage
+
+def assign_to_buckets_vectorised(bucket_sizes, SIZE, index, chunk_size, i, topk_per_vector):
+    process = psutil.Process(os.getpid())
+    candidate_sizes_per_vector = bucket_sizes[topk_per_vector]    
+    vectors = np.arange(topk_per_vector.shape[0])
+    sizes = np.argmin(candidate_sizes_per_vector, axis=1)
+    # get the least ocupied of each candidate set 
+    least_occupied = topk_per_vector[vectors, sizes]
+    memory_usage = process.memory_full_info().uss / (1024 ** 2)
+    index[i : min(i + chunk_size, SIZE)] = least_occupied
+
+    bucket_increments = np.bincount(least_occupied, minlength=len(bucket_sizes))
+    bucket_sizes[:] = np.add(bucket_sizes, bucket_increments)
+    return memory_usage
 
 def get_all_candidate_buckets(SIZE, model, k, device, full_data, data_batched, map_loader):
     candidate_buckets = np.zeros(shape= (SIZE, k), dtype=np.uint32) # all topk buckets per vector shape = (N, k).
@@ -304,11 +334,11 @@ def run_bliss(config: Config, mode, experiment_name):
     DIM = dataset.d
     dataset.prepare()
     if mode == 'build':
-        index, time_per_r, build_time, memory_usage, load_balance = build_index(dataset, config)
+        index, time_per_r, build_time, memory_final_assignment, memory_training, load_balance, index_sizes_total, model_sizes_total = build_index(dataset, config)
         usage = resource.getrusage(resource.RUSAGE_SELF)
         peak_mem = usage.ru_maxrss / 1_000_000 if sys.platform == 'darwin' else usage.ru_maxrss / 1000
         ut.log_mem("peak_mem_building", peak_mem, MEMLOG_PATH)
-        return time_per_r, build_time, memory_usage, load_balance
+        return time_per_r, build_time, memory_final_assignment, memory_training, load_balance, index_sizes_total, model_sizes_total
     elif mode == 'query':
         # set b if it wasn't already set in config
         b = config.b if config.b !=0 else 1024
