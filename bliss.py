@@ -172,7 +172,7 @@ def build_full_index(bucket_sizes, SIZE, model, config: Config):
         # Do all forward passes sequentially and then do reassignments in batches
         candidate_buckets = get_all_candidate_buckets(SIZE, model, config.k, config.device, full_data, data_batched, map_loader)
 
-        chunk_size = 5000
+        chunk_size = config.reass_chunk_size
         for i in range(0, SIZE, chunk_size):
             # get the topk buckets per vector
             topk_per_vector = candidate_buckets[i : min(i + chunk_size, SIZE)] # shape = (chunk_size, k)
