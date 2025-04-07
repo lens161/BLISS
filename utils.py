@@ -214,12 +214,12 @@ def get_B(n):
 # Helpers for loading and saving models and indexes.
 ######################################################################
 
-def save_model(model, dataset_name, r, R, K, B, lr, shuffle, reass_mode):
+def save_model(model, dataset_name, r, R, K, B, lr, batch_size, reass_mode):
     '''
     Save a (trained) model in the models folder and return the path.
     '''
     model_name = f"model_{dataset_name}_r{r}_k{K}_b{B}_lr{lr}"
-    directory = f"models/{dataset_name}_r{R}_k{K}_b{B}_lr{lr}_shf={shuffle}_reass={reass_mode}/"
+    directory = f"models/{dataset_name}_r{R}_k{K}_b{B}_lr{lr}_bs={batch_size}_reass={reass_mode}/"
     MODEL_PATH = os.path.join(directory, f"{model_name}.pt")
     
     os.makedirs(directory, exist_ok=True)

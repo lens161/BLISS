@@ -82,7 +82,7 @@ def build_index(dataset: ds.Dataset, config: Config):
         train_model(model, dataset, sample_buckets, sample_size, bucket_sizes, neighbours, r, SIZE, config)
         current, _ = tracemalloc.get_traced_memory() 
         ut.log_mem(f"memory during training model {r+1}", current, config.memlog_path)
-        model_path = ut.save_model(model, config.dataset_name, r+1, config.r, config.k, config.b, config.lr, config.shuffle, config.reass_mode)
+        model_path = ut.save_model(model, config.dataset_name, r+1, config.r, config.k, config.b, config.lr, config.batch_size, config.reass_mode)
         print(f"model {r+1} saved to {model_path}.")
 
         model.eval()
@@ -226,9 +226,9 @@ def load_indexes_and_models(config: Config, SIZE, DIM, b):
     offsets_paths = []
     model_paths = []
     for i in range (config.r):
-        inverted_indexes_paths.append(f"models/{config.dataset_name}_r{config.r}_k{config.k}_b{config.b}_lr{config.lr}_shf={config.shuffle}_reass={config.reass_mode}/index_model{i+1}_{config.dataset_name}_r{i+1}_k{config.k}_b{config.b}_lr{config.lr}.npy")
-        offsets_paths.append(f"models/{config.dataset_name}_r{config.r}_k{config.k}_b{config.b}_lr{config.lr}_shf={config.shuffle}_reass={config.reass_mode}/offsets_model{i+1}_{config.dataset_name}_r{i+1}_k{config.k}_b{config.b}_lr{config.lr}.npy")
-        model_paths.append(f"models/{config.dataset_name}_r{config.r}_k{config.k}_b{config.b}_lr{config.lr}_shf={config.shuffle}_reass={config.reass_mode}/model_{config.dataset_name}_r{i+1}_k{config.k}_b{config.b}_lr{config.lr}.pt")
+        inverted_indexes_paths.append(f"models/{config.dataset_name}_r{config.r}_k{config.k}_b{config.b}_lr{config.lr}_bs={config.batch_size}_reass={config.reass_mode}/index_model{i+1}_{config.dataset_name}_r{i+1}_k{config.k}_b{config.b}_lr{config.lr}.npy")
+        offsets_paths.append(f"models/{config.dataset_name}_r{config.r}_k{config.k}_b{config.b}_lr{config.lr}_bs={config.batch_size}_reass={config.reass_mode}/offsets_model{i+1}_{config.dataset_name}_r{i+1}_k{config.k}_b{config.b}_lr{config.lr}.npy")
+        model_paths.append(f"models/{config.dataset_name}_r{config.r}_k{config.k}_b{config.b}_lr{config.lr}_bs={config.batch_size}_reass={config.reass_mode}/model_{config.dataset_name}_r{i+1}_k{config.k}_b{config.b}_lr{config.lr}.pt")
 
     indexes = np.zeros(shape = (config.r, SIZE), dtype=np.uint32)
     offsets = np.zeros(shape = (config.r, config.b), dtype=np.uint32)
