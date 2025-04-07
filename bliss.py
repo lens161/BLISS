@@ -143,7 +143,7 @@ def map_all_to_buckets_base(index, bucket_sizes, full_data, data_batched, data_l
     offset = 0
     print("started map all", flush=True)
     for batch in full_data.get_dataset_iterator(bs = 1_000_00):
-        data_batched.data = torch.from_numpy(batch)
+        data_batched.data = torch.from_numpy(batch).float()
         print("getting batch from full data")
         ut.get_all_topk_buckets(data_loader, k, candidate_buckets, model, offset, device)
         offset += len(batch)
@@ -166,7 +166,7 @@ def build_full_index(bucket_sizes, SIZE, model, config: Config):
     elif config.reass_mode == 1: # reassign all vectors in a foward pass batch directly 
         global_idx = 0
         for batch in full_data.get_dataset_iterator(bs=1_000_000):
-            data_batched.data = batch
+            data_batched.data = torch.from_numpy(batch).float()
             map_all_to_buckets(map_loader, config.k, index, bucket_sizes, model, global_idx, config.device)
             global_idx += len(batch)
 
@@ -176,7 +176,7 @@ def build_full_index(bucket_sizes, SIZE, model, config: Config):
         candidate_buckets = np.zeros(shape= (SIZE, config.k), dtype=np.uint32) # all topk buckets per vector shape = (N, k).
         offset = 0
         for batch in full_data.get_dataset_iterator(bs = 1_000_00):
-            data_batched.data = batch
+            data_batched.data = torch.from_numpy(batch).float()
             ut.get_all_topk_buckets(map_loader, config.k, candidate_buckets, model, offset, config.device)
             offset += len(batch)
 
