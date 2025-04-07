@@ -4,6 +4,7 @@ import sys
 import time
 import torch
 import tracemalloc
+from collections import Counter
 from functools import partial
 from multiprocessing import Pool
 
@@ -63,17 +64,14 @@ def get_candidates_from_model(model, index, offsets, candidates, query_vector, m
     _, m_buckets = torch.topk(probabilities, m)
     m_buckets = m_buckets.tolist()
 
-    candidate_list = []
+    candidate_counter = Counter()
     for bucket in m_buckets:
         start = offsets[bucket-1] if bucket != 0 else 0
         end = offsets[bucket]
-        candidate_list.append(index[start:end])
+        candidate_counter.update(index[start:end])
     
-    if candidate_list:
-        candidate_list = np.concatenate(candidate_list)
-        unique_candidates, counts = np.unique(candidate_list, return_counts=True)
-        for vec, count in zip(unique_candidates, counts):
-            candidates[vec] = candidates.get(vec, 0) + int(count)
+    for vec, count in candidate_counter.items():
+        candidates[vec] = candidates.get(vec, 0) + count
 
 def process_query_chunk(chunk, data, index, m, threshold, requested_amount):
     '''
@@ -126,7 +124,7 @@ def query_multiple(data, index, vectors, neighbours, m, threshold, requested_amo
     if not parallel:
         print(f"Number of query vectors: {size}")
         print(f"Number of neighbour entries: {len(neighbours)}", flush=True)
-    query_times = []
+    query_times = np.zeros(len(vectors), dtype=np.float32)
     results = [[] for i in range(len(vectors))]
     for i, vector in enumerate(vectors):
         sys.stdout.write(f"\r[PID: {os.getpid()}] querying {i+1} of {size}       ")
@@ -135,7 +133,7 @@ def query_multiple(data, index, vectors, neighbours, m, threshold, requested_amo
         anns, dist_comps, recall = query(data, index, vector, neighbours[i], m, threshold, requested_amount)
         end = time.time()
         elapsed = end - start
-        query_times.append(elapsed)
+        query_times[i] = elapsed
         results[i] = (anns, dist_comps, elapsed, recall)
     print("\r")
     return results
@@ -144,20 +142,16 @@ def reorder(data, query_vector, candidates, requested_amount):
     '''
     Do true distance calculations on the candidate set of vectors and return the top 'requested_amount' candidates.
     ''' 
-    sp_index = []
     #TODO: check if this is actually useful for fetching candidates, or if it just adds overhead
     candidates = np.sort(candidates)
     search_space = np.ascontiguousarray(data[candidates])
     dist_comps = len(search_space)
-    for i in range(len(search_space)):
-        sp_index.append(candidates[i])
-    # print(f"search_space = {search_space}")
     query_vector = query_vector.reshape(1, -1)
     neighbours = ut.get_nearest_neighbours_in_different_dataset(search_space, query_vector, requested_amount)
     neighbours = neighbours[0].tolist()
-    final_neighbours = []
-    for i in neighbours:
-        final_neighbours.append(sp_index[i])
+    final_neighbours = np.zeros(len(neighbours))
+    for i, neighbour in enumerate(neighbours):
+        final_neighbours[i] = candidates[neighbour]
     return final_neighbours, dist_comps
 
 def recall(results, neighbours):
