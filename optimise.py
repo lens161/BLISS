@@ -37,25 +37,24 @@ def create_study(name):
         directions=['maximize', 'minimize'],
         load_if_exists=True
     )
+    return study
 
 def run_optimisation(name):
     study = optuna.load_study(
         storage="sqlite:///opt_bliss.db",
-        study_name = name,
-        load_if_exists=True
+        study_name = name
     )
     study.optimize(objective, n_trials=10)
 
 if __name__ == '__main__':
-
     STUDY_NAME = "find_hyperparams_v1"
 
     create_study(STUDY_NAME)
     
     processes = []
-
+    
     for _ in range(4):
-        p = Process(target=run_optimisation(STUDY_NAME))
+        p = Process(target=run_optimisation, args=(STUDY_NAME,))
         p.start()
         processes.append(p)
 
