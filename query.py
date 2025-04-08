@@ -108,6 +108,11 @@ def query_multiple_parallel(data, index, vectors, neighbours, m, threshold, requ
         pool.terminate()
         pool.join()
         sys.exit(1)
+    except BrokenPipeError as e:
+        print(f"\nAn error occurred during querying: {e}")
+        pool.terminate()
+        pool.join()
+        sys.exit(1)
     except Exception as e:
         print(f"\nAn error occurred during querying: {e}")
         pool.terminate()
