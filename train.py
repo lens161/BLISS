@@ -50,9 +50,9 @@ def train_model(model, dataset, index, sample_size, bucket_sizes, neighbours, r,
                 # batch_labels = batch_labels.to(config.device)
                 s = time.time()
                 batch_labels = ut.make_ground_truth_labels(config.b, neighbours[batch_indices], index, len(batch_data)).to(config.device)
+                e = time.time()
                 memory_current = process.memory_full_info().uss / (1024 ** 2)
                 memory_training = memory_current if memory_current>memory_training else memory_training
-                e = time.time()
                 label_times.append(e-s)
                 # if isinstance(batch_labels, torch.Tensor) and batch_labels.is_sparse:
                 #     batch_labels = batch_labels.to_dense()

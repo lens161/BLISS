@@ -21,6 +21,12 @@ logs/
 *.txt
 hpc_archive/
 
+# experiment files 
+experiments_2.py
+query_only.py
+scripts/withgpu2.job
+scripts/query_only.job
+
 # C extensions
 *.so
 

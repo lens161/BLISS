@@ -69,10 +69,10 @@ if __name__ == "__main__":
     # range_K = 2
     range_threshold = 2
     k_values = [2]
-    m_values = [15]
-    reass_modes = [2, 3]
+    m_values = [5, 10, 15]
+    reass_modes = [0, 1, 2, 3]
     batch_sizes = [1024, 2048, 5000]
-    EXP_NAME = "check_rm2-3_refactor"
+    EXP_NAME = "batchsize_lr_v1"
 
     if not os.path.exists("logs"):
         os.mkdir("logs")
@@ -93,19 +93,19 @@ if __name__ == "__main__":
     logging.info("[Experiment] Experiments started")
         # check that datasize in config is set to correct value. (default = 1)
     for dataset in datasets:
-        for rm in reass_modes:
-            conf = Config(dataset_name=dataset, m=15, batch_size=2048, reass_mode=rm, b=8192, datasize=10)
+        for bs in batch_sizes:
+            conf = Config(dataset_name=dataset, batch_size=bs, b=4096, datasize=10)
             configs_b.append(conf)
-            # if bs == 5000:
-            #     conf1 = Config(dataset_name=dataset, m=15, batch_size=bs, b=4096, lr=0.01)
-            #     configs_b.append(conf1)
+            if bs == 5000:
+                conf1 = Config(dataset_name=dataset, batch_size=bs, b=4096, lr=0.01, datasize=10)
+                configs_b.append(conf1)
         # for rm in reass_modes:
             # for m in m_values:
-            conf_q = Config(dataset_name=dataset, m=15, batch_size=2048, reass_mode=rm, b=8192, datasize=10)
-            configs_q.append(conf_q)
-            # if bs == 5000:
-            #     confq1 = Config(dataset_name=dataset, m=15, batch_size=bs, b=4096, lr=0.01)
-            #     configs_q.append(confq1)
+            # conf_q = Config(dataset_name=dataset, m=15, batch_size=bs, b=4096, datasize=10)
+            # configs_q.append(conf_q)
+            if bs == 5000:
+                confq1 = Config(dataset_name=dataset, m=15, batch_size=bs, b=4096, lr=0.01, datasize=10)
+                configs_q.append(confq1)
     
     logging.info(f"[Experiment] Building indexes")
     build_multiple_indexes_exp(EXP_NAME, configs_b)

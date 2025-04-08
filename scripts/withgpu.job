@@ -1,11 +1,13 @@
 #!/bin/bash
 
-#SBATCH --job-name=batch_size/lr_run1   # Job name
+#SBATCH --job-name=batchsize_lr_v1      # Job name
 #SBATCH --output=outputs/job.%j.out     # Name of output file (%j expands to jobId)
-#SBATCH --cpus-per-task=8               # Schedule 64 cores
+#SBATCH --cpus-per-task=32              # Schedule 64 cores
 #SBATCH --time=24:00:00                 # Max run time (hh:mm:ss)
 #SBATCH --gres=gpu                      # Need GPU
 #SBATCH --exclude=cn[16-17]             # Exclude 1080's
+#SBATCH --exclude=cn[11]                # Exclude 1080's
+#SBACTH --exclude=desktop[1-16]
 #SBATCH --partition=scavenge            # Run on the scavenge queue
 #SBATCH --mail-type=BEGIN,FAIL,END      # Send an email when the job finishes
 #SBATCH --exclusive                     # get entire machine for task

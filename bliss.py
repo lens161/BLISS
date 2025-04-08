@@ -199,12 +199,14 @@ def build_full_index(bucket_sizes, SIZE, model, config: Config):
         # Alternate fowardpasses wih batched reassignment -> vectorised assignment of a whole batch of buckets at once
         logging.info(f"Mapping all to buckets mode: {reass_mode}")
         offset = 0
+        process = psutil.Process(os.getpid())
         for batch in full_data.get_dataset_iterator(bs=1_000_000):
             data_batched.data = torch.from_numpy(batch).float()
             with torch.no_grad():
                 for batch_data, _ in map_loader:
                     topk_per_vector = ut.get_topk_buckets_for_batch(batch_data, k, model, config.device).numpy()
                     memory_current = assign_to_buckets_vectorised(bucket_sizes, SIZE, index, chunk_size, offset, topk_per_vector)
+                    memory_current = process.memory_full_info().uss / (1024 ** 2)
                     memory_usage = memory_usage if memory_current > memory_usage else memory_usage
                     offset += chunk_size
 
