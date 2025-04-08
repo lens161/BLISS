@@ -69,9 +69,7 @@ def build_index(dataset: ds.Dataset, config: Config, trial=None):
         print(bucket_sizes)
 
         print("making initial groundtruth labels", flush=True)
-        s = time.time()
         # labels = ut.make_ground_truth_labels(config.b, neighbours, sample_buckets, sample_size)
-        print(f"make ground truth labels time {time.time()-s}")
         # dataset.labels = labels
         ds_size = asizeof.asizeof(dataset)
         ut.log_mem("size of training dataset before training", ds_size, config.memlog_path)
@@ -84,6 +82,7 @@ def build_index(dataset: ds.Dataset, config: Config, trial=None):
         print(f"training model {r+1}")
         memory_training_current = train_model(model, dataset, sample_buckets, sample_size, bucket_sizes, neighbours, r, SIZE, config)
         memory_training = memory_training_current if memory_training_current > memory_training else memory_training
+
         current, _ = tracemalloc.get_traced_memory() 
         ut.log_mem(f"memory during training model {r+1}", current, config.memlog_path)
         model_path, model_file_size = ut.save_model(model, config.dataset_name, r+1, config.r, config.k, config.b, config.lr, config.batch_size, config.reass_mode)
@@ -98,6 +97,21 @@ def build_index(dataset: ds.Dataset, config: Config, trial=None):
         else:
             index = sample_buckets
         del model 
+
+        # prune optimisation tree if load balance is too low or too high
+        balance = 1/np.std(bucket_sizes)
+        print(f"balance: {balance}")
+        #bad balance (low) = 0.0001
+        #good balance = 0.003
+        #bad balance (high) = 0.01
+        if trial is not None:
+            trial.report(load_balance, step=1)
+            lo_threshold = 0.0001
+            hi_threshold = 0.01
+            if load_balance < lo_threshold or load_balance > hi_threshold:
+                print(f"pruned because load balance: {load_balance}")
+                raise optuna.exceptions.TrialPruned(f"pruned because load balance: {load_balance}")
+            
         inverted_index, offsets = invert_index(index, bucket_sizes, SIZE)
         index_path, index_files_size = ut.save_inverted_index(inverted_index, offsets, config.dataset_name, r+1, config.r, config.k, config.b, config.lr, config.batch_size, config.reass_mode)
         index_sizes_total += index_files_size
@@ -111,13 +125,6 @@ def build_index(dataset: ds.Dataset, config: Config, trial=None):
     # process = psutil.Process(os.getpid())
     # _, peak_mem = tracemalloc.get_traced_memory()
     load_balance = ut.calc_load_balance(bucket_size_stats)
-    # prune optimisation tree if load balance is too low
-    if trial is not None:
-        trial.report(load_balance, step=1)
-        min_threshold = 0.004
-        max_threshold = 0.8
-        if load_balance < min_threshold or load_balance > max_threshold:
-            raise optuna.exceptions.TrialPruned(f"pruned because load balance: {load_balance}")
 
     # tracemalloc.stop()
     ut.log_mem(f"final_reass={config.reass_mode}_reass_chunk_size={config.reass_chunk_size}", memory_final_assignment, config.memlog_path)

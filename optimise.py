@@ -7,19 +7,24 @@ from config import Config
 DATASET = "sift-128-euclidean"
 EXP_NAME = "optimise"
 
-def optimise_bliss(bucket_size, learning_rate, batch_size,  m, trial):
+def optimise_bliss(bucket_size, learning_rate, batch_size, m, trial):
+    conf = Config(dataset_name=DATASET, b=bucket_size, lr=learning_rate,
+                  batch_size=batch_size, m=m)
 
-    conf = Config(dataset_name=DATASET, b=bucket_size, lr=learning_rate, batch_size=batch_size, m=m)
+    try:
+        run_bliss(conf, mode="build", experiment_name=EXP_NAME, trial=trial)
+    except optuna.exceptions.TrialPruned as e:
+        raise e
 
-    run_bliss(conf, mode="build", experiment_name=EXP_NAME)
+    try:
+        recall, results, _ = run_bliss(conf, mode="query", experiment_name=EXP_NAME, trial=trial)
+    except optuna.exceptions.TrialPruned as e:
+        raise e
 
-    recall, results, _ = run_bliss(conf, mode="query", experiment_name=EXP_NAME, trial=trial)
-
-    dist_comps_total = 0
-    for result in results:
-        dist_comps_total+=result[1]
-    dist_comps_avg = dist_comps_total/len(results)
+    dist_comps_total = sum(result[1] for result in results)
+    dist_comps_avg = dist_comps_total / len(results)
     return recall, dist_comps_avg
+
 
 def objective(trial):
     bucket_size = trial.suggest_categorical('B', [1024, 2048, 4096, 8192])

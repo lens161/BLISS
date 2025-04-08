@@ -92,20 +92,21 @@ if __name__ == "__main__":
     
     logging.info("[Experiment] Experiments started")
         # check that datasize in config is set to correct value. (default = 1)
-    for dataset in datasets:
-        for bs in batch_sizes:
-            conf = Config(dataset_name=dataset, batch_size=bs, b=4096, datasize=10)
-            configs_b.append(conf)
-            if bs == 5000:
-                conf1 = Config(dataset_name=dataset, batch_size=bs, b=4096, lr=0.01, datasize=10)
-                configs_b.append(conf1)
-        # for rm in reass_modes:
-            # for m in m_values:
-            # conf_q = Config(dataset_name=dataset, m=15, batch_size=bs, b=4096, datasize=10)
-            # configs_q.append(conf_q)
-            if bs == 5000:
-                confq1 = Config(dataset_name=dataset, m=15, batch_size=bs, b=4096, lr=0.01, datasize=10)
-                configs_q.append(confq1)
+    configs_b.append(Config(dataset_name="bigann", batch_size=2048, b=8192, datasize=10))
+    # for dataset in datasets:
+    #     for bs in batch_sizes:
+    #         conf = Config(dataset_name=dataset, batch_size=bs, b=4096, datasize=10)
+    #         configs_b.append(conf)
+    #         if bs == 5000:
+    #             conf1 = Config(dataset_name=dataset, batch_size=bs, b=4096, lr=0.01, datasize=10)
+    #             configs_b.append(conf1)
+    #     # for rm in reass_modes:
+    #         # for m in m_values:
+    #         # conf_q = Config(dataset_name=dataset, m=15, batch_size=bs, b=4096, datasize=10)
+    #         # configs_q.append(conf_q)
+    #         if bs == 5000:
+    #             confq1 = Config(dataset_name=dataset, m=15, batch_size=bs, b=4096, lr=0.01, datasize=10)
+    #             configs_q.append(confq1)
                 
     print(f"EXPERIMENT: {EXP_NAME}")
     logging.info(f"[Experiment] Building indexes")
