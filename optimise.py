@@ -1,4 +1,6 @@
 import optuna # type: ignore
+from multiprocessing import Process
+
 from bliss import run_bliss
 from config import Config
 
@@ -28,11 +30,34 @@ def objective(trial):
     recall, dist_comps = optimise_bliss(bucket_size, learning_rate, batch_size, m, trial)
     return recall, dist_comps
 
-if __name__ == '__main__':
+def create_study(name):
     study = optuna.create_study(
         storage="sqlite:///opt_bliss.db",
-        study_name="optimise_bliss",
+        study_name = name,
         directions=['maximize', 'minimize'],
         load_if_exists=True
     )
-    study.optimize(objective, n_trials=30)
+
+def run_optimisation(name):
+    study = optuna.load_study(
+        storage="sqlite:///opt_bliss.db",
+        study_name = name,
+        load_if_exists=True
+    )
+    study.optimize(objective, n_trials=10)
+
+if __name__ == '__main__':
+
+    STUDY_NAME = "find_hyperparams_v1"
+
+    create_study(STUDY_NAME)
+    
+    processes = []
+
+    for _ in range(4):
+        p = Process(target=run_optimisation(STUDY_NAME))
+        p.start()
+        processes.append(p)
+
+    for p in processes:
+        p.join()
