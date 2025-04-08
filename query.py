@@ -7,7 +7,10 @@ import tracemalloc
 from collections import Counter
 from functools import partial
 from multiprocessing import Pool
+from pympler import asizeof
+from torch.utils.data import DataLoader
 
+from bliss_model import BLISSDataset
 import utils as ut
 from config import Config
 
@@ -141,6 +144,78 @@ def query_multiple(data, index, vectors, neighbours, m, threshold, requested_amo
         query_times[i] = elapsed
         results[i] = (anns, dist_comps, elapsed, recall)
     print("\r")
+    return results
+
+def query_batched(data, index, query_vector, neighbours, freq_threshold, requested_amount, predicted_buckets):
+    '''
+    Query the index for a single vector. Get the candidate set of vectors predicted by each of the R models.
+    Then, filter the candidate set based on the frequency threshold.
+    If the number of candidates exceeds the requested amount, reorder using true distance computations.
+    Then return the remaining set of candidates.
+    '''
+    ((indexes, offsets), models) = index
+    candidates = {}
+    for i in range(len(models)):
+        idx = indexes[i]
+        off = offsets[i]
+        m_buckets = predicted_buckets[:, i].tolist()
+        candidate_counter = Counter()
+        for bucket in m_buckets:
+            start = off[bucket-1] if bucket != 0 else 0
+            end = off[bucket]
+            candidate_counter.update(idx[start:end])
+        
+        for vec, count in candidate_counter.items():
+            candidates[vec] = candidates.get(vec, 0) + count
+    final_results = [key for key, value in candidates.items() if value >= freq_threshold]
+    # print (f"final results = {len(final_results)}")
+    if len(final_results) <= requested_amount:
+        return final_results, 0, recall_single(final_results, neighbours)
+    else:
+        final_neighbours, dist_comps = reorder(data, query_vector, np.array(final_results, dtype=int), requested_amount)
+        return final_neighbours, dist_comps, recall_single(final_neighbours, neighbours)
+
+def query_multiple_batched(data, index, vectors, neighbours, m, threshold, requested_amount, batch_size, parallel=False):
+    '''
+    Run multiple queries from a set of query vectors i.e. "Test" from the ANN benchmark datsets.
+    '''
+    ((indexes, offsets), models) = index
+    size = len(vectors)
+    if not parallel:
+        print(f"Number of query vectors: {size}")
+        print(f"Number of neighbour entries: {len(neighbours)}", flush=True)
+    query_times = np.zeros(len(vectors), dtype=np.float32)
+    results = [[] for i in range(len(vectors))]
+
+    # do forward passes on all queries in all models and collect the candidate buckets
+    print(f"Predicting buckets for all queries")
+    forward_start = time.time()
+    predicted_buckets_per_query = np.zeros((size, m, len(models)), dtype=np.int32)
+    pred_buckets_mem_size = asizeof.asizeof(predicted_buckets_per_query)
+    print(f"Memory usage of predicted buckets: {pred_buckets_mem_size}")
+
+    queries_batched = BLISSDataset(vectors, device = torch.device("cpu"), mode='train')
+    query_loader = DataLoader(queries_batched, batch_size=batch_size, shuffle=False, num_workers=8)
+    with torch.no_grad():
+        for batch_data, batch_indices in query_loader:
+            for i, model in enumerate(models):
+                bucket_probabilities = torch.sigmoid(model(batch_data))
+                _, candidate_buckets = torch.topk(bucket_probabilities, m, dim=1)
+                predicted_buckets_per_query[batch_indices, :, i] = candidate_buckets
+    forward_end = time.time()
+    forward_per_query = (forward_end - forward_start) / size
+    
+    print(f"Processing all queries")
+    # then process the candidate buckets sequentially
+    for i, vector in enumerate(vectors):
+        sys.stdout.write(f"\r[PID: {os.getpid()}] processing {i+1} of {size}       ")
+        sys.stdout.flush()
+        start = time.time()
+        anns, dist_comps, recall = query_batched(data, index, vector, neighbours[i], threshold, requested_amount, predicted_buckets_per_query[i])
+        end = time.time()
+        elapsed = (end - start) + forward_per_query
+        query_times[i] = elapsed
+        results[i] = (anns, dist_comps, elapsed, recall)
     return results
     
 def reorder(data, query_vector, candidates, requested_amount):
