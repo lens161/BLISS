@@ -1,6 +1,7 @@
 import gc
 import logging
 import numpy as np
+import optuna
 import os
 import psutil  # type: ignore
 import resource
@@ -19,7 +20,7 @@ from config import Config
 from query import query_multiple, query_multiple_parallel, recall, load_data_for_inference
 from train import train_model
     
-def build_index(dataset: ds.Dataset, config: Config):
+def build_index(dataset: ds.Dataset, config: Config, trial=None):
         
     print("bulding index...")
     logging.info(f"Started building index")
@@ -110,6 +111,14 @@ def build_index(dataset: ds.Dataset, config: Config):
     # process = psutil.Process(os.getpid())
     # _, peak_mem = tracemalloc.get_traced_memory()
     load_balance = ut.calc_load_balance(bucket_size_stats)
+    # prune optimisation tree if load balance is too low
+    if trial is not None:
+        trial.report(load_balance, step=1)
+        min_threshold = 0.004
+        max_threshold = 0.8
+        if load_balance < min_threshold or load_balance > max_threshold:
+            raise optuna.exceptions.TrialPruned(f"pruned because load balance: {load_balance}")
+
     # tracemalloc.stop()
     ut.log_mem(f"final_reass={config.reass_mode}_reass_chunk_size={config.reass_chunk_size}", memory_final_assignment, config.memlog_path)
     ut.log_mem(f"training={config.reass_mode}_batch_size={config.batch_size}", memory_training, config.memlog_path)
@@ -317,7 +326,7 @@ def fill_memmap_in_batches(dataset, config: Config, mmp):
         gc.collect()
         index += batch_size
 
-def run_bliss(config: Config, mode, experiment_name):
+def run_bliss(config: Config, mode, experiment_name, trial=None):
     '''
     Run the BLISS algorithm. Mode determines whether an index is built or whether inference is run on an existing index.
     '''
@@ -336,7 +345,7 @@ def run_bliss(config: Config, mode, experiment_name):
     DIM = dataset.d
     dataset.prepare()
     if mode == 'build':
-        index, time_per_r, build_time, memory_final_assignment, memory_training, load_balance, index_sizes_total, model_sizes_total = build_index(dataset, config)
+        index, time_per_r, build_time, memory_final_assignment, memory_training, load_balance, index_sizes_total, model_sizes_total = build_index(dataset, config, trial)
         usage = resource.getrusage(resource.RUSAGE_SELF)
         peak_mem = usage.ru_maxrss / 1_000_000 if sys.platform == 'darwin' else usage.ru_maxrss / 1000
         ut.log_mem("peak_mem_building", peak_mem, MEMLOG_PATH)
@@ -379,14 +388,4 @@ def run_bliss(config: Config, mode, experiment_name):
         peak_mem = usage.ru_maxrss / 1_000_000 if sys.platform == 'darwin' else usage.ru_maxrss / 1000
         ut.log_mem("peak_mem_querying", peak_mem, MEMLOG_PATH)
         return RECALL, results, total_query_time
-    
-def optimise_bliss(bucket_size, learning_rate, batch_size,  m):
-    conf = Config(dataset_name="sift-128-euclidean", b=bucket_size, lr=learning_rate, batch_size=batch_size, m=m)
-    run_bliss(conf, mode="build", experiment_name="optimise")
-    recall, results, _ =run_bliss(conf, mode="query", experiment_name="optimise")
-    dist_comps_total = 0
-    for result in results:
-        dist_comps_total+=result[1]
-    dist_comps_avg = dist_comps_total/len(results)
-    return recall, dist_comps_avg
     
