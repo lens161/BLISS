@@ -379,3 +379,14 @@ def run_bliss(config: Config, mode, experiment_name):
         peak_mem = usage.ru_maxrss / 1_000_000 if sys.platform == 'darwin' else usage.ru_maxrss / 1000
         ut.log_mem("peak_mem_querying", peak_mem, MEMLOG_PATH)
         return RECALL, results, total_query_time
+    
+def optimise_bliss(bucket_size, learning_rate, batch_size,  m):
+    conf = Config(dataset_name="sift-128-euclidean", b=bucket_size, lr=learning_rate, batch_size=batch_size, m=m)
+    run_bliss(conf, mode="build", experiment_name="optimise")
+    recall, results, _ =run_bliss(conf, mode="query", experiment_name="optimise")
+    dist_comps_total = 0
+    for result in results:
+        dist_comps_total+=result[1]
+    dist_comps_avg = dist_comps_total/len(results)
+    return recall, dist_comps_avg
+    

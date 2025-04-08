@@ -106,7 +106,8 @@ if __name__ == "__main__":
             if bs == 5000:
                 confq1 = Config(dataset_name=dataset, m=15, batch_size=bs, b=4096, lr=0.01, datasize=10)
                 configs_q.append(confq1)
-    
+                
+    print(f"EXPERIMENT: {EXP_NAME}")
     logging.info(f"[Experiment] Building indexes")
     build_multiple_indexes_exp(EXP_NAME, configs_b)
     logging.info(f"[Experiment] Starting query experiments")
