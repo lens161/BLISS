@@ -88,9 +88,9 @@ def build_index(dataset: ds.Dataset, config: Config, trial=None):
         model_sizes_total += model_file_size
         print(f"model {r+1} saved to {model_path}.")
         # prune optimisation tree if too many buckets are empty
+        percentage_empty = (bucket_sizes == 0).sum() / len(bucket_sizes) * 100 # percentage of all buckets that have size 0
         if trial is not None:
-            trial.report(load_balance, step=1)
-            percentage_empty = (bucket_sizes == 0).sum() / len(bucket_sizes) * 100 # percentage of all buckets that have size 0
+            trial.report(percentage_empty, step=1)
             threshold = 25
             if percentage_empty < threshold:
                 raise optuna.exceptions.TrialPruned(f"pruned because more than {threshold}% of buckets were empty: {percentage_empty}%")

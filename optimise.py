@@ -33,7 +33,7 @@ def optimise_m(bucket_size, learning_rate, batch_size, m, trial):
 
 
 def objective(trial):
-    bucket_size = trial.suggest_categorical('B', [2048, 4096])
+    bucket_size = trial.suggest_categorical('B', [1024, 2048, 4096])
     learning_rate = trial.suggest_categorical('lr', [0.001, 0.002, 0.005, 0.01])
     batch_size = trial.suggest_categorical('batch_size', [1000, 2000, 3000, 4000, 5000])
 
@@ -47,7 +47,7 @@ def create_study_load_balance(name):
         direction='maximize',
         load_if_exists=True
     )
-    study.optimize(objective, n_trials=25)
+    study.optimize(objective, n_trials=30)
 
 # def run_optimisation(name):
 #     study = optuna.load_study(
