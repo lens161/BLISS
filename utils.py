@@ -302,6 +302,21 @@ def calc_load_balance(bucket_size_stats):
     avg_load_balance = np.mean(load_balance_per_model)
     return avg_load_balance
 
+def recall(results, neighbours):
+    '''
+    Calculate mean recall for a set of queries.
+    '''
+    recalls = []
+    for ann, nn in zip(results, neighbours):
+        recalls.append(recall_single(ann, nn))
+    return np.mean(recalls)
+
+def recall_single(results, neighbours):
+    '''
+    Calculate recall for an individual query.
+    '''
+    return len(set(results) & set(neighbours))/len(neighbours)
+
 
 ######################################################################
 # Other helper functions.
