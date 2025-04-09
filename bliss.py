@@ -16,7 +16,7 @@ import datasets as ds
 import utils as ut
 from bliss_model import BLISS_NN, BLISSDataset
 from config import Config
-from query import query_multiple, query_multiple_parallel, recall, load_data_for_inference
+from query import query_multiple, query_multiple_batched, load_data_for_inference
 from train import train_model
     
 def build_index(dataset: ds.Dataset, config: Config):
@@ -328,11 +328,10 @@ def run_bliss(config: Config, mode, experiment_name):
         test = torch.from_numpy(test).to(torch.float32)
 
         logging.info("Starting inference")
-        num_workers = 8
         start = time.time()
         tracemalloc.start()
-        results = query_multiple(data, index, test, neighbours, config.m, config.freq_threshold, config.nr_ann)
-        # results = query_multiple_parallel(data, index, test, neighbours, config.m, config.freq_threshold, config.nr_ann, num_workers)
+        # results = query_multiple(data, index, test, neighbours, config.m, config.freq_threshold, config.nr_ann)
+        results = query_multiple_batched(data, index, test, neighbours, config)
         current, peak  = tracemalloc.get_traced_memory()
         ut.log_mem("peak memory during querying", peak , config.memlog_path)
         tracemalloc.stop()
@@ -341,7 +340,7 @@ def run_bliss(config: Config, mode, experiment_name):
         total_query_time = end - start
 
         anns = [t[0] for t in results]
-        RECALL = recall(anns, neighbours)
+        RECALL = ut.recall(anns, neighbours)
         print(f"RECALL = {RECALL}", flush=True)
         usage = resource.getrusage(resource.RUSAGE_SELF)
         peak_mem = usage.ru_maxrss / 1_000_000 if sys.platform == 'darwin' else usage.ru_maxrss / 1000
