@@ -89,7 +89,15 @@ if __name__ == "__main__":
                 # "glove-100-angular",
                 # "sift-128-euclidean"
                  ]
+    # sift
+    # empty buckets: 983
+    # precentage of all buckets: 0.239990234375
+    # balance: 0.002716883572686393
+
+    # bigann
     
+
+
     logging.info("[Experiment] Experiments started")
         # check that datasize in config is set to correct value. (default = 1)
     configs_b.append(Config(dataset_name="bigann", batch_size=2048, b=8192, datasize=10))

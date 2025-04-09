@@ -73,7 +73,7 @@ def build_index(dataset: ds.Dataset, config: Config, trial=None):
         # dataset.labels = labels
         ds_size = asizeof.asizeof(dataset)
         ut.log_mem("size of training dataset before training", ds_size, config.memlog_path)
-
+        
         print(f"setting up model {r+1}")
         ut.set_torch_seed(r, config.device)
         model = BLISS_NN(DIM, config.b)
@@ -82,12 +82,18 @@ def build_index(dataset: ds.Dataset, config: Config, trial=None):
         print(f"training model {r+1}")
         memory_training_current = train_model(model, dataset, sample_buckets, sample_size, bucket_sizes, neighbours, r, SIZE, config)
         memory_training = memory_training_current if memory_training_current > memory_training else memory_training
-
         current, _ = tracemalloc.get_traced_memory() 
         ut.log_mem(f"memory during training model {r+1}", current, config.memlog_path)
         model_path, model_file_size = ut.save_model(model, config.dataset_name, r+1, config.r, config.k, config.b, config.lr, config.batch_size, config.reass_mode)
         model_sizes_total += model_file_size
         print(f"model {r+1} saved to {model_path}.")
+        # prune optimisation tree if too many buckets are empty
+        if trial is not None:
+            trial.report(load_balance, step=1)
+            percentage_empty = (bucket_sizes == 0).sum() / len(bucket_sizes) * 100 # percentage of all buckets that have size 0
+            threshold = 25
+            if percentage_empty < threshold:
+                raise optuna.exceptions.TrialPruned(f"pruned because more than {threshold}% of buckets were empty: {percentage_empty}%")
 
         model.eval()
         model.to(config.device)
@@ -98,19 +104,6 @@ def build_index(dataset: ds.Dataset, config: Config, trial=None):
             index = sample_buckets
         del model 
 
-        # prune optimisation tree if load balance is too low or too high
-        balance = 1/np.std(bucket_sizes)
-        print(f"balance: {balance}")
-        #bad balance (low) = 0.0001
-        #good balance = 0.003
-        #bad balance (high) = 0.01
-        if trial is not None:
-            trial.report(load_balance, step=1)
-            lo_threshold = 0.0001
-            hi_threshold = 0.01
-            if load_balance < lo_threshold or load_balance > hi_threshold:
-                print(f"pruned because load balance: {load_balance}")
-                raise optuna.exceptions.TrialPruned(f"pruned because load balance: {load_balance}")
             
         inverted_index, offsets = invert_index(index, bucket_sizes, SIZE)
         index_path, index_files_size = ut.save_inverted_index(inverted_index, offsets, config.dataset_name, r+1, config.r, config.k, config.b, config.lr, config.batch_size, config.reass_mode)
