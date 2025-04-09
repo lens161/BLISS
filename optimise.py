@@ -56,6 +56,13 @@ def create_study_load_balance(name):
 #     )
 #     study.optimize(objective, n_trials=10)
 
+# def run_optimisation(name):
+#     study = optuna.load_study(
+#         storage="sqlite:///opt_bliss.db",
+#         study_name = name
+#     )
+#     study.optimize(objective, n_trials=10)
+
 if __name__ == '__main__':
     STUDY_NAME = "find_b_for_sift"
 

@@ -72,7 +72,7 @@ if __name__ == "__main__":
     m_values = [5, 10, 15]
     reass_modes = [0, 1, 2, 3]
     batch_sizes = [1024, 2048, 5000]
-    EXP_NAME = "batchsize_lr_v1"
+    EXP_NAME = "build_indexes_for_m_opt"
 
     if not os.path.exists("logs"):
         os.mkdir("logs")
