@@ -20,3 +20,4 @@ dependencies:
       - torchvision
       - torchaudio
       - conda-forge::axel
+      - conda-forge::optuna
