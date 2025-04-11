@@ -70,18 +70,18 @@ def query(data, index, query_vector, neighbours, m, freq_threshold, requested_am
     # print (f"final results = {len(final_results)}")
     if len(unique_candidates) <= requested_amount:
         # TODO: remove additional return values when removing timers
-        return unique_candidates, 0, ut.recall_single(unique_candidates, neighbours), forward_pass_time, collecting_candidates_time, 0, 0
+        return unique_candidates, 0, ut.recall_single(unique_candidates, neighbours), forward_pass_time, collecting_candidates_time, 0, 0, 0
     else:
         #
         reorder_s = time.time()
         #
-        final_neighbours, dist_comps, true_nns_time = reorder(data, query_vector, np.array(unique_candidates, dtype=int), requested_amount)
+        final_neighbours, dist_comps, true_nns_time, fetch_data_time = reorder(data, query_vector, np.array(unique_candidates, dtype=int), requested_amount)
         #
         reorder_e = time.time()
         reordering_time = (reorder_e - reorder_s)
         #
         # TODO: remove additional return values when removing timers
-        return final_neighbours, dist_comps, ut.recall_single(final_neighbours, neighbours), forward_pass_time, collecting_candidates_time, reordering_time, true_nns_time
+        return final_neighbours, dist_comps, ut.recall_single(final_neighbours, neighbours), forward_pass_time, collecting_candidates_time, reordering_time, true_nns_time, fetch_data_time
 
 def query_multiple(data, index, vectors, neighbours, m, threshold, requested_amount, parallel=False):
     '''
@@ -97,27 +97,30 @@ def query_multiple(data, index, vectors, neighbours, m, threshold, requested_amo
     collecting_candidates_sum = 0
     reordering_sum = 0
     true_nns_sum = 0
+    fetch_data_sum = 0
     #
     for i, vector in enumerate(vectors):
         sys.stdout.write(f"\r[PID: {os.getpid()}] querying {i+1} of {size}       ")
         sys.stdout.flush()
         start = time.time()
-        anns, dist_comps, recall, forward_pass_time, collecting_candidates_time, reordering_time, true_nns_time = query(data, index, vector, neighbours[i], m, threshold, requested_amount)
+        anns, dist_comps, recall, forward_pass_time, collecting_candidates_time, reordering_time, true_nns_time, fetch_data_time = query(data, index, vector, neighbours[i], m, threshold, requested_amount)
         end = time.time()
         #
         forward_pass_sum += forward_pass_time
         collecting_candidates_sum += collecting_candidates_time
         reordering_sum += reordering_time
         true_nns_sum += true_nns_time
+        fetch_data_sum += fetch_data_time
         #
         elapsed = end - start
-        results[i] = (anns, dist_comps, elapsed, recall)
+        results[i] = (anns, dist_comps, recall, elapsed)
     print("\r")
     #
     print(f"Time spent on forward passes: {forward_pass_sum}")
     print(f"Time spent collecting candidates: {collecting_candidates_sum}")
     print(f"Time spent on true nns: {true_nns_sum}")
-    print(f"Time spent on other reordering crap: {reordering_sum - true_nns_sum}")
+    print(f"Time spent on fetching data: {fetch_data_sum}")
+    print(f"Time spent on other reordering crap: {reordering_sum - true_nns_sum - fetch_data_sum}")
     #
     return results
 
@@ -170,6 +173,7 @@ def process_query_batch(data, neighbours, query_vectors, candidate_buckets, inde
     getting_candidates_time = 0
     reordering_time = 0
     true_nns_sum = 0
+    fetch_data_sum = 0
     for i, query in enumerate(query_vectors):
         query_start = time.time()
         # For query i, extract the predicted buckets per model (shape (r, m))
@@ -189,12 +193,13 @@ def process_query_batch(data, neighbours, query_vectors, candidate_buckets, inde
             batch_results[i] = (unique_candidates, 0, ut.recall_single(unique_candidates, neighbours[i], (query_end-query_start) + base_time_per_query))
         else:
             reordering_start = time.time()
-            final_neighbours, dist_comps, true_nns_time = reorder(data, query, np.array(unique_candidates, dtype=int), requested_amount)
+            final_neighbours, dist_comps, true_nns_time, fetch_data_time = reorder(data, query, np.array(unique_candidates, dtype=int), requested_amount)
             query_end = time.time()
             batch_results[i] = (final_neighbours, dist_comps, ut.recall_single(final_neighbours, neighbours[i]), (query_end-query_start) + base_time_per_query)
-            reordering_time += (query_end - reordering_start - true_nns_time)
+            reordering_time += (query_end - reordering_start)
             true_nns_sum += true_nns_time
-    return batch_results, getting_candidates_time, true_nns_sum, reordering_time
+            fetch_data_sum += fetch_data_time
+    return batch_results, getting_candidates_time, true_nns_sum, reordering_time, fetch_data_sum
 
 def query_multiple_batched(data, index, vectors, neighbours, config: Config, parallel=False):
     '''
@@ -216,6 +221,7 @@ def query_multiple_batched(data, index, vectors, neighbours, config: Config, par
     collecting_candidates_sum = 0
     reordering_sum = 0
     true_nns_sum = 0
+    fetch_data_sum = 0
     #
 
     # do forward passes on all queries in all models and collect the candidate buckets
@@ -236,17 +242,19 @@ def query_multiple_batched(data, index, vectors, neighbours, config: Config, par
                 predicted_buckets_per_query[:, i, :] = candidate_buckets
             forward_pass_end = time.time()
             forward_pass_sum += (forward_pass_end - forward_pass_start)
-            batch_results, collecting_candidates_time, true_nns_time, reordering_time = process_query_batch(data, neighbours[batch_indices], batch_data, predicted_buckets_per_query, indexes, offsets, config.freq_threshold, config.nr_ann, batch_process_start)
+            batch_results, collecting_candidates_time, true_nns_time, reordering_time, fetch_data_time = process_query_batch(data, neighbours[batch_indices], batch_data, predicted_buckets_per_query, indexes, offsets, config.freq_threshold, config.nr_ann, batch_process_start)
             collecting_candidates_sum += collecting_candidates_time
             true_nns_sum += true_nns_time
             reordering_sum += reordering_time
+            fetch_data_sum += fetch_data_time
             results[batch_idx] = batch_results
             batch_idx += 1
     
     print(f"Time spent on forward passes: {forward_pass_sum}")
     print(f"Time spent collecting candidates: {collecting_candidates_sum}")
     print(f"Time spent on true nns: {true_nns_sum}")
-    print(f"Time spent on other reordering crap: {reordering_sum - true_nns_sum}")
+    print(f"Time spent on fetching candidates: {fetch_data_sum}")
+    print(f"Time spent on other reordering crap: {reordering_sum - true_nns_sum - fetch_data_sum}")
     flattened_results = [item for sublist in results for item in sublist]
     return flattened_results
     
@@ -254,20 +262,19 @@ def reorder(data, query_vector, candidates, requested_amount):
     '''
     Do true distance calculations on the candidate set of vectors and return the top 'requested_amount' candidates.
     ''' 
-    #TODO: check if this is actually useful for fetching candidates from disk, or if it just adds overhead
-    candidates = np.sort(candidates)
-    #TODO: add timer for fetching items from disk
+    #TODO: check if it makes sense to sort candidates before fetching from memmap to improve access pattern
+    # candidates = np.sort(candidates)
+    fetch_data_s = time.time()
     search_space = np.ascontiguousarray(data[candidates])
+    fetch_data_e = time.time()
     dist_comps = len(search_space)
     query_vector = query_vector.reshape(1, -1)
     true_nns_s = time.time()
     neighbours = ut.get_nearest_neighbours_in_different_dataset(search_space, query_vector, requested_amount)
     true_nns_e = time.time()
-    neighbours = neighbours[0].tolist()
-    final_neighbours = np.zeros(len(neighbours))
-    for i, neighbour in enumerate(neighbours):
-        final_neighbours[i] = candidates[neighbour]
-    return final_neighbours, dist_comps, (true_nns_e-true_nns_s)
+    neighbours = neighbours[0]
+    final_neighbours = candidates[neighbours]
+    return final_neighbours, dist_comps, (true_nns_e-true_nns_s), (fetch_data_e-fetch_data_s)
 
 
 
