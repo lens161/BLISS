@@ -82,7 +82,7 @@ def query(data, index, query_vector, neighbours, m, freq_threshold, requested_am
         reordering_time = (reorder_e - reorder_s)
         #
         # TODO: remove additional return values when removing timers
-        return final_neighbours, dist_comps, ut.recall_single(final_neighbours, neighbours), forward_pass_time, collecting_candidates_time, reordering_time, true_nns_time, fetch_data_time
+        return final_neighbours, dist_comps, ut.recall_single(final_neighbours, neighbours), forward_pass_time, collecting_candidates_time, reordering_time, true_nns_time
 
 def query_multiple(data, index, vectors, neighbours, m, threshold, requested_amount, parallel=False):
     '''
@@ -114,7 +114,7 @@ def query_multiple(data, index, vectors, neighbours, m, threshold, requested_amo
         fetch_data_sum += fetch_data_time
         #
         elapsed = end - start
-        results[i] = (anns, dist_comps, elapsed, recall)
+        results[i] = (anns, dist_comps, recall, elapsed)
     print("\r")
     #
     print(f"Time spent on forward passes: {forward_pass_sum}")
@@ -196,7 +196,7 @@ def process_query_batch(data, neighbours, query_vectors, candidate_buckets, inde
             reordering_start = time.time()
             final_neighbours, dist_comps, true_nns_time, fetch_data_time = reorder(data, query, np.array(unique_candidates, dtype=int), requested_amount)
             query_end = time.time()
-            batch_results[i] = (final_neighbours, dist_comps, (query_end-query_start) + base_time_per_query, ut.recall_single(final_neighbours, neighbours[i]))
+            batch_results[i] = (final_neighbours, dist_comps, ut.recall_single(final_neighbours, neighbours[i]), (query_end-query_start) + base_time_per_query)
             reordering_time += (query_end - reordering_start)
             true_nns_sum += true_nns_time
             fetch_data_sum += fetch_data_time
@@ -277,11 +277,9 @@ def reorder(data, query_vector, candidates, requested_amount):
     true_nns_s = time.time()
     neighbours = ut.get_nearest_neighbours_in_different_dataset(search_space, query_vector, requested_amount)
     true_nns_e = time.time()
-    neighbours = neighbours[0].tolist()
-    final_neighbours = np.zeros(len(neighbours))
-    for i, neighbour in enumerate(neighbours):
-        final_neighbours[i] = candidates[neighbour]
-    return final_neighbours, dist_comps, (true_nns_e-true_nns_s)
+    neighbours = neighbours[0]
+    final_neighbours = candidates[neighbours]
+    return final_neighbours, dist_comps, (true_nns_e-true_nns_s), (fetch_data_e-fetch_data_s)
 
 
 
