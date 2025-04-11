@@ -114,7 +114,7 @@ def query_multiple(data, index, vectors, neighbours, m, threshold, requested_amo
         fetch_data_sum += fetch_data_time
         #
         elapsed = end - start
-        results[i] = (anns, dist_comps, recall, elapsed)
+        results[i] = (anns, dist_comps, elapsed, recall)
     print("\r")
     #
     print(f"Time spent on forward passes: {forward_pass_sum}")
@@ -196,7 +196,7 @@ def process_query_batch(data, neighbours, query_vectors, candidate_buckets, inde
             reordering_start = time.time()
             final_neighbours, dist_comps, true_nns_time, fetch_data_time = reorder(data, query, np.array(unique_candidates, dtype=int), requested_amount)
             query_end = time.time()
-            batch_results[i] = (final_neighbours, dist_comps, ut.recall_single(final_neighbours, neighbours[i]), (query_end-query_start) + base_time_per_query)
+            batch_results[i] = (final_neighbours, dist_comps, (query_end-query_start) + base_time_per_query, ut.recall_single(final_neighbours, neighbours[i]))
             reordering_time += (query_end - reordering_start)
             true_nns_sum += true_nns_time
             fetch_data_sum += fetch_data_time
