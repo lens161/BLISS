@@ -368,11 +368,23 @@ def run_bliss(config: Config, mode, experiment_name, trial=None):
         print(f"creating tensor array from Test")
         test = torch.from_numpy(test).to(torch.float32)
 
+        if config.pq:
+            start = time.time()
+            sample, _ = ut.get_training_sample(dataset, 1_000_000, SIZE, DIM)
+            # train two pq indexes on sample and test to make them the same for reconstruction
+            # query_pq,_ = ut.train_pq(np.concatenate((sample, test)).astype(np.uint32))
+            data_pq, _ = ut.train_pq(np.concatenate((sample, test)).astype(np.uint32), 32, 8)
+            data_pq.add(data)
+            data = data_pq
+            print(f"preprocessing for pq took {time.time()-start}")
+        # data_size = asizeof.asizeof(data)
+        # ut.log_mem(f"size of data loaded for querying", data_size, MEMLOG_PATH)s
+
         logging.info("Starting inference")
         start = time.time()
         tracemalloc.start()
         # results = query_multiple(data, index, test, neighbours, config.m, config.freq_threshold, config.nr_ann)
-        results = query_multiple_batched(data, index, test, neighbours, config)
+        results = query_multiple_batched(data, index, test, neighbours, config, config.pq)
         current, peak  = tracemalloc.get_traced_memory()
         ut.log_mem("peak memory during querying", peak , config.memlog_path)
         tracemalloc.stop()

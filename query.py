@@ -6,6 +6,7 @@ import time
 import torch
 import tracemalloc
 from collections import Counter
+from faiss import IndexPQ
 from functools import partial
 from multiprocessing import Pool
 from pympler import asizeof
@@ -209,7 +210,7 @@ def query_multiple_batched(data, index, vectors, neighbours, config: Config, par
     if not parallel:
         print(f"Number of query vectors: {size}")
         print(f"Number of neighbour entries: {len(neighbours)}", flush=True)
-    nr_batches = math.ceil(len(vectors) / config.batch_size)
+    nr_batches = math.ceil(size / config.batch_size)
     results = [[] for i in range(nr_batches)]
     #
     forward_pass_sum = 0
@@ -257,7 +258,11 @@ def reorder(data, query_vector, candidates, requested_amount):
     #TODO: check if this is actually useful for fetching candidates from disk, or if it just adds overhead
     candidates = np.sort(candidates)
     #TODO: add timer for fetching items from disk
-    search_space = np.ascontiguousarray(data[candidates])
+    if not isinstance(data, IndexPQ):
+        search_space = np.ascontiguousarray(data[candidates])
+    else:
+        candidates = np.asarray(candidates, dtype=np.int32)
+        search_space = np.vstack([data.reconstruct(int(i)) for i in candidates])
     dist_comps = len(search_space)
     query_vector = query_vector.reshape(1, -1)
     true_nns_s = time.time()
@@ -268,7 +273,6 @@ def reorder(data, query_vector, candidates, requested_amount):
     for i, neighbour in enumerate(neighbours):
         final_neighbours[i] = candidates[neighbour]
     return final_neighbours, dist_comps, (true_nns_e-true_nns_s)
-
 
 
 # def get_candidates_from_model(model, index, offsets, candidates, query_vector, m):
