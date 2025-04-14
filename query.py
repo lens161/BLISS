@@ -169,7 +169,7 @@ def process_query_batch(data, neighbours, query_vectors, candidate_buckets, inde
     ## output: the ANNs for the batch of queries, dist_comps per query, recall per query
     batch_results = [[] for i in range(len(query_vectors))]
     batch_process_end = time.time()
-    base_time_per_query = batch_process_end - batch_process_start
+    base_time_per_query = (batch_process_end - batch_process_start) / len(query_vectors)
     getting_candidates_time = 0
     reordering_time = 0
     true_nns_sum = 0

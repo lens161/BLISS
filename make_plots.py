@@ -11,11 +11,12 @@ def find_files(experiment_name):
     '''
     parameters_per_file = []
     filepaths = glob.glob(f"results/{experiment_name}/*.csv")
-    filepaths = [f for f in filepaths if not f.endswith('build.csv')]
+    filepaths = [f for f in filepaths if not f.endswith('build.csv') and not f.endswith('memory_log.csv')]
     for filepath in filepaths:
-        filename = filepath.split("/")[-1]
+        filename = filepath.split("/")[-1][:-4]
         filename_components = filename.split("_")
-        parameters = {'r': filename_components[0], 'k': filename_components[1], 'm': filename_components[2]}
+        print(filename_components)
+        parameters = {'r': filename_components[0], 'k': filename_components[1], 'm': filename_components[2], 'qps': filename_components[3], 'rec': filename_components[5], 'bs': filename_components[6], 'reass_mode': filename_components[7], 'nr_ann': "nr_"+filename_components[9], 'lr': filename_components[10]}
         parameters_per_file.append(parameters)
     return filepaths, parameters_per_file
 
@@ -43,6 +44,13 @@ def make_recall_vs_distance_comps_plots(results, parameters_per_file, experiment
         r = parameters_per_file[i]['r']
         k = parameters_per_file[i]['k']
         m = parameters_per_file[i]['m']
+        qps = parameters_per_file[i]['qps']
+        # rec = parameters_per_file[i]['rec']
+        bs = parameters_per_file[i]['bs']
+        reass_mode = parameters_per_file[i]['reass_mode']
+        nr_ann = parameters_per_file[i]['nr_ann']
+        lr = parameters_per_file[i]['lr']
+
         plt.figure(figsize=(8, 5))
         plt.scatter(result['distance_computations'], result['recall'], color='blue', s=20)
         plt.xlabel("Distance Computations")
@@ -54,9 +62,11 @@ def make_recall_vs_distance_comps_plots(results, parameters_per_file, experiment
             os.mkdir("results")
         if not os.path.exists(f"results/{experiment_name}"):
             os.mkdir(foldername)
-        qps = len(result) / result['elapsed'].sum()
+        
         avg_recall = result['recall'].mean()
-        plt.savefig(f"results/{experiment_name}/{r}_{k}_{m}_qps{qps:.2f}_avg_rec{avg_recall:.3f}.png", dpi=300)
+        plt.savefig(f"results/{experiment_name}/{r}_{k}_{m}_{qps}_avg_rec{avg_recall:.3f}_{bs}_{reass_mode}_{nr_ann}_{lr}.png", dpi=300)
+        # new_qps = len(result) / result['elapsed'].sum()
+        # plt.savefig(f"results/{experiment_name}/{r}_{k}_{m}_qps{new_qps:.2f}_avg_rec{avg_recall:.3f}_{bs}_{reass_mode}_{nr_ann}_{lr}.png", dpi=300)
 
 def make_plots(results, parameters_per_file, experiment_name):
     '''
@@ -65,7 +75,7 @@ def make_plots(results, parameters_per_file, experiment_name):
     make_recall_vs_distance_comps_plots(results, parameters_per_file, experiment_name)
 
 if __name__ == "__main__":
-    experiment_name = "plot_test"
+    experiment_name = "check_qps_plots"
     files, parameters_per_file = find_files(experiment_name)
     results = compile_results(files)
     make_plots(results, parameters_per_file, experiment_name)
