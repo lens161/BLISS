@@ -77,7 +77,7 @@ def get_training_sample(dataset: ds.Dataset, sample_size, SIZE, DIM):
     sample = np.zeros((sample_size, DIM))
     sample_indexes = np.zeros(sample_size)
     chunk_size = 1_000_000
-    chunk_sample_size = sample_size / chunk_size
+    chunk_sample_size = sample_size // chunk_size
     index = 0
     for i, batch in enumerate(dataset.get_dataset_iterator(bs=chunk_size)):
         random_order = np.arange(len(batch))
@@ -355,3 +355,13 @@ def random_projection(X, target_dim):
     original_dim = X.shape[1]
     R = np.random.randn(original_dim, target_dim) / np.sqrt(target_dim)
     return np.dot(X, R)
+
+def norm_ent(bucket_sizes):
+    '''get normalised entropy to check balancedness of buckets'''
+    B = len(bucket_sizes)
+    total = sum(bucket_sizes)
+    probs = np.zeros(B, dtype=np.float32)
+    probs = bucket_sizes/total
+    shann_entropy = - sum(probs[probs>0]*np.log(probs[probs>0]))
+    norm_entropy = shann_entropy/math.log(B)
+    return norm_entropy

@@ -1,3 +1,4 @@
+import faiss
 import gc
 import logging
 import numpy as np
@@ -89,6 +90,8 @@ def build_index(dataset: ds.Dataset, config: Config, trial=None):
         print(f"model {r+1} saved to {model_path}.")
         # prune optimisation tree if too many buckets are empty
         percentage_empty = (bucket_sizes == 0).sum() / len(bucket_sizes) * 100 # percentage of all buckets that have size 0
+        ne = ut.norm_ent(bucket_sizes)
+        print(f"normalised entropy: {ne}")
         if trial is not None:
             trial.report(percentage_empty, step=1)
             threshold = 25
@@ -358,33 +361,38 @@ def run_bliss(config: Config, mode, experiment_name, trial=None):
         logging.info("Loading models for inference")
         index = load_indexes_and_models(config, SIZE, DIM, b)
         logging.info("Reading query vectors and ground truths")
-        tracemalloc.start()
+        process = psutil.Process(os.getpid())
         data, test, neighbours = load_data_for_inference(dataset, config, SIZE, DIM)
-        current, peak = tracemalloc.get_traced_memory()
-        ut.log_mem(f"memory afer loading memmap for inference", current, config.memlog_path)
-        ut.log_mem(f"memory peak after loading memmap for inference", peak, config.memlog_path)
-        tracemalloc.stop()
-
+ 
         print(f"creating tensor array from Test")
         test = torch.from_numpy(test).to(torch.float32)
-
+        data_pq = None
         if config.pq:
             start = time.time()
             sample, _ = ut.get_training_sample(dataset, 1_000_000, SIZE, DIM)
-            # train two pq indexes on sample and test to make them the same for reconstruction
-            # query_pq,_ = ut.train_pq(np.concatenate((sample, test)).astype(np.uint32))
             data_pq, _ = ut.train_pq(np.concatenate((sample, test)).astype(np.uint32), 32, 8)
             data_pq.add(data)
-            data = data_pq
+            del data
+            faiss.write_index(data_pq, 'datapq.index')
+            pq_index_size = os.path.getsize('datapq.index')
+            print(f"pq index size: {pq_index_size}")
+            ut.log_mem(f"size of pq index", pq_index_size, MEMLOG_PATH)
             print(f"preprocessing for pq took {time.time()-start}")
-        # data_size = asizeof.asizeof(data)
-        # ut.log_mem(f"size of data loaded for querying", data_size, MEMLOG_PATH)s
+        
 
         logging.info("Starting inference")
         start = time.time()
         tracemalloc.start()
         # results = query_multiple(data, index, test, neighbours, config.m, config.freq_threshold, config.nr_ann)
-        results = query_multiple_batched(data, index, test, neighbours, config, config.pq)
+        current_mem = process.memory_full_info().uss / (1024 ** 2)
+        ut.log_mem(f"memory before querying (size of data) pq:{config.pq}", current_mem, MEMLOG_PATH)
+        if config.pq:
+            results = query_multiple_batched(data_pq, index, test, neighbours, config, config.pq)
+        else:
+            size_of_data = asizeof.asizeof(data)
+            ut.log_mem(f"size of data no pq: {size_of_data}")
+            results = query_multiple_batched(data, index, test, neighbours, config, config.pq)
+        # mem_after_queries = process.memory_full_info().uss / (1024 ** 2)
         current, peak  = tracemalloc.get_traced_memory()
         ut.log_mem("peak memory during querying", peak , config.memlog_path)
         tracemalloc.stop()

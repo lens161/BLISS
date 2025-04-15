@@ -25,7 +25,7 @@ def load_data_for_inference(dataset, config: Config, SIZE, DIM):
     '''
     # keep data as a memmap if the dataset is too large, otherwise load into memory fully
     memmap_path = f"memmaps/{config.dataset_name}_{config.datasize}.npy"
-    data = np.memmap(memmap_path, mode='r', shape=(SIZE, DIM), dtype=np.float32) if SIZE >10_000_000 else np.ascontiguousarray(np.memmap(memmap_path,shape=(SIZE, DIM), mode='r', dtype=np.float32))
+    data = np.memmap(memmap_path, mode='r', shape=(SIZE, DIM), dtype=np.float32) if SIZE > 10_000_000 else np.ascontiguousarray(np.memmap(memmap_path,shape=(SIZE, DIM), mode='r', dtype=np.float32))
 
     test = dataset.get_queries()
     neighbours, _ = dataset.get_groundtruth()
