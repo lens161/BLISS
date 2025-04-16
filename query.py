@@ -195,6 +195,7 @@ def process_query_batch(data, neighbours, query_vectors, candidate_buckets, inde
         else:
             reordering_start = time.time()
             final_neighbours, dist_comps, true_nns_time, fetch_data_time = reorder(data, query, np.array(unique_candidates, dtype=int), requested_amount)
+            del unique_candidates
             query_end = time.time()
             batch_results[i] = (final_neighbours, dist_comps, (query_end-query_start) + base_time_per_query, ut.recall_single(final_neighbours, neighbours[i]))
             reordering_time += (query_end - reordering_start)
@@ -202,7 +203,7 @@ def process_query_batch(data, neighbours, query_vectors, candidate_buckets, inde
             fetch_data_sum += fetch_data_time
     return batch_results, getting_candidates_time, true_nns_sum, reordering_time, fetch_data_sum
 
-def query_multiple_batched(data, index, vectors, neighbours, config: Config, parallel=False):
+def query_multiple_batched(data, index, vectors, neighbours, config: Config):
     '''
     Run multiple queries from a set of query vectors i.e. "Test" from the ANN benchmark datsets.
     '''
@@ -212,7 +213,7 @@ def query_multiple_batched(data, index, vectors, neighbours, config: Config, par
         all_bucket_sizes[r] = np.diff(offset, prepend=0)
 
     size = len(vectors)
-    if not parallel:
+    if not config.query_parallel:
         print(f"Number of query vectors: {size}")
         print(f"Number of neighbour entries: {len(neighbours)}", flush=True)
     nr_batches = math.ceil(size / config.batch_size)
@@ -270,12 +271,14 @@ def reorder(data, query_vector, candidates, requested_amount):
         search_space = np.ascontiguousarray(data[candidates])
     else:
         candidates = np.asarray(candidates, dtype=np.int32)
-        search_space = np.vstack([data.reconstruct(int(i)) for i in candidates])
+        # search_space = np.vstack([data.reconstruct_batch(int(i)) for i in candidates])
+        search_space = np.vstack(data.reconstruct_batch(candidates))
     fetch_data_e = time.time()
     dist_comps = len(search_space)
     query_vector = query_vector.reshape(1, -1)
     true_nns_s = time.time()
     neighbours = ut.get_nearest_neighbours_in_different_dataset(search_space, query_vector, requested_amount)
+    del search_space
     true_nns_e = time.time()
     neighbours = neighbours[0]
     final_neighbours = candidates[neighbours]

@@ -370,7 +370,8 @@ def run_bliss(config: Config, mode, experiment_name, trial=None):
         if config.pq:
             start = time.time()
             sample, _ = ut.get_training_sample(dataset, 1_000_000, SIZE, DIM)
-            data_pq, _ = ut.train_pq(np.concatenate((sample, test)).astype(np.uint32), 32, 8)
+            data_pq, _ = ut.train_pq(sample.astype(np.float32), 32, 8)
+            del sample
             data_pq.add(data)
             del data
             faiss.write_index(data_pq, 'datapq.index')
@@ -379,20 +380,21 @@ def run_bliss(config: Config, mode, experiment_name, trial=None):
             ut.log_mem(f"size of pq index", pq_index_size, MEMLOG_PATH)
             print(f"preprocessing for pq took {time.time()-start}")
         
-
         logging.info("Starting inference")
         start = time.time()
         tracemalloc.start()
         # results = query_multiple(data, index, test, neighbours, config.m, config.freq_threshold, config.nr_ann)
         current_mem = process.memory_full_info().uss / (1024 ** 2)
         ut.log_mem(f"memory before querying (size of data) pq:{config.pq}", current_mem, MEMLOG_PATH)
+        qstart = time.time()
         if config.pq:
-            results = query_multiple_batched(data_pq, index, test, neighbours, config, config.pq)
+            results = query_multiple_batched(data_pq, index, test, neighbours, config)
         else:
-            size_of_data = asizeof.asizeof(data)
-            ut.log_mem(f"size of data no pq: {size_of_data}")
-            results = query_multiple_batched(data, index, test, neighbours, config, config.pq)
+            # size_of_data = asizeof.asizeof(data)
+            # ut.log_mem(f"size of data no pq: {size_of_data}")
+            results = query_multiple_batched(data, index, test, neighbours, config)
         # mem_after_queries = process.memory_full_info().uss / (1024 ** 2)
+        print(f"querying pq={config.pq} took {time.time()-qstart}")
         current, peak  = tracemalloc.get_traced_memory()
         ut.log_mem("peak memory during querying", peak , config.memlog_path)
         tracemalloc.stop()
