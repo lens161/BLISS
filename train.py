@@ -79,7 +79,7 @@ def train_model(model, dataset, index, sample_size, bucket_sizes, neighbours, r,
         np.set_printoptions(threshold=6, suppress=True)
         print(f"index after iteration {i}: \r{index}", flush=True)
 
-    ut.make_loss_plot(config.lr, config.iterations, config.epochs, config.k, config.b, config.experiment_name, all_losses, config.shuffle, config.reass_mode)
+    # ut.make_loss_plot(config.lr, config.iterations, config.epochs, config.k, config.b, config.experiment_name, all_losses, config.shuffle, config.reass_mode)
     return memory_training
 
 def reassign_buckets(model, dataset, index, bucket_sizes, sample_size, neighbours, config: Config):
@@ -92,7 +92,7 @@ def reassign_buckets(model, dataset, index, bucket_sizes, sample_size, neighbour
     sample_size, _ = np.shape(dataset.data)
     model.to(config.device)
     model.eval()
-    reassign_loader = DataLoader(dataset, batch_size=config.batch_size, shuffle=config.shuffle, num_workers=8)
+    reassign_loader = DataLoader(dataset, batch_size=config.batch_size, shuffle=False, num_workers=8)
     
     bucket_sizes[:] = 0  
 
@@ -114,7 +114,7 @@ def reassign_buckets(model, dataset, index, bucket_sizes, sample_size, neighbour
     elapsed = finish - start
     process = psutil.Process(os.getpid())
     mem_usage = process.memory_full_info().uss / (1024 ** 2)
-    ut.log_mem(f"improved_reassign_buckets_shuffle={config.shuffle}", mem_usage, config.memlog_path)
+    ut.log_mem(f"improved_reassign_buckets", mem_usage, config.memlog_path)
 
     print(f"Memory usage (improved reassign): {mem_usage:.2f} MB")
     print(f"Reassigning took {elapsed:.2f} seconds", flush=True)

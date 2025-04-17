@@ -20,6 +20,7 @@ logs/
 *.png
 *.txt
 hpc_archive/
+datapq.index
 
 # experiment files 
 experiments_2.py

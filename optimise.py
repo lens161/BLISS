@@ -12,11 +12,11 @@ def optimise_load_balance(bucket_size, learning_rate, batch_size, trial):
                   batch_size=batch_size)
     
     try:
-        _, _, _, _, _, load_balance, _, _ = run_bliss(conf, mode="build", experiment_name=EXP_NAME, trial=trial)
+        _, _, _, _, _, norm_entropy, _, _ = run_bliss(conf, mode="build", experiment_name=EXP_NAME, trial=trial)
     except optuna.exceptions.TrialPruned as e:
         raise e
 
-    return load_balance
+    return norm_entropy
 
 def optimise_m(bucket_size, learning_rate, batch_size, m, trial):
     conf = Config(dataset_name=DATASET, b=bucket_size, lr=learning_rate,

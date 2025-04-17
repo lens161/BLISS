@@ -72,7 +72,7 @@ if __name__ == "__main__":
     m_values = [5, 10, 15]
     reass_modes = [0, 1, 2, 3]
     batch_sizes = [1024, 2048, 5000]
-    EXP_NAME = "build_indexes_for_m_opt"
+    EXP_NAME = "memory_pq_vs_nopq"
 
     if not os.path.exists("logs"):
         os.mkdir("logs")
@@ -97,10 +97,12 @@ if __name__ == "__main__":
     # bigann
     
 
-
     logging.info("[Experiment] Experiments started")
-        # check that datasize in config is set to correct value. (default = 1)
-    configs_b.append(Config(dataset_name="bigann", batch_size=2048, b=8192, datasize=10))
+    # check that datasize in config is set to correct value. (default = 1)
+    configs_q.append(Config(dataset_name="sift-128-euclidean", batch_size=2048, b=4096, m=10))
+    configs_q.append(Config(dataset_name="sift-128-euclidean", batch_size=2048, b=4096, m=10, pq=True))
+    # configs_q.append(Config(dataset_name="bigann", batch_size=2048, b=4096, m=10, datasize=10))
+    # configs_q.append(Config(dataset_name="bigann", batch_size=2048, b=4096, m=10, datasize=10,pq=True))
     # for dataset in datasets:
     #     for bs in batch_sizes:
     #         conf = Config(dataset_name=dataset, batch_size=bs, b=4096, datasize=10)
@@ -118,6 +120,6 @@ if __name__ == "__main__":
                 
     print(f"EXPERIMENT: {EXP_NAME}")
     logging.info(f"[Experiment] Building indexes")
-    build_multiple_indexes_exp(EXP_NAME, configs_b)
+    # build_multiple_indexes_exp(EXP_NAME, configs_b)
     logging.info(f"[Experiment] Starting query experiments")
     run_multiple_query_exp(EXP_NAME, configs_q)
