@@ -1,10 +1,10 @@
 import math
 import numpy as np
 import os
+import psutil # type: ignore
 import sys
 import time
 import torch
-import tracemalloc
 from collections import Counter
 from faiss import IndexPQ
 from functools import partial
@@ -175,6 +175,7 @@ def process_query_batch(data, neighbours, query_vectors, candidate_buckets, inde
     reordering_time = 0
     true_nns_sum = 0
     fetch_data_sum = 0
+    memory = 0
     for i, query in enumerate(query_vectors):
         query_start = time.time()
         # For query i, extract the predicted buckets per model (shape (r, m))
@@ -194,14 +195,15 @@ def process_query_batch(data, neighbours, query_vectors, candidate_buckets, inde
             batch_results[i] = (unique_candidates, 0, (query_end-query_start) + base_time_per_query), ut.recall_single(unique_candidates, neighbours[i])
         else:
             reordering_start = time.time()
-            final_neighbours, dist_comps, true_nns_time, fetch_data_time = reorder(data, query, np.array(unique_candidates, dtype=int), requested_amount)
+            final_neighbours, dist_comps, true_nns_time, fetch_data_time, current_mem = reorder(data, query, np.array(unique_candidates, dtype=int), requested_amount)
+            memory = current_mem if current_mem > memory else memory
             del unique_candidates
             query_end = time.time()
             batch_results[i] = (final_neighbours, dist_comps, (query_end-query_start) + base_time_per_query, ut.recall_single(final_neighbours, neighbours[i]))
             reordering_time += (query_end - reordering_start)
             true_nns_sum += true_nns_time
             fetch_data_sum += fetch_data_time
-    return batch_results, getting_candidates_time, true_nns_sum, reordering_time, fetch_data_sum
+    return batch_results, getting_candidates_time, true_nns_sum, reordering_time, fetch_data_sum, memory
 
 def query_multiple_batched(data, index, vectors, neighbours, config: Config):
     '''
@@ -232,6 +234,7 @@ def query_multiple_batched(data, index, vectors, neighbours, config: Config):
     queries_batched = BLISSDataset(vectors, device = torch.device("cpu"), mode='train')
     query_loader = DataLoader(queries_batched, batch_size=config.batch_size, shuffle=False, num_workers=8)
     batch_idx = 0
+    memory = 0
     with torch.no_grad():
         batch_process_start = time.time()
         for batch_data, batch_indices in query_loader:
@@ -244,14 +247,16 @@ def query_multiple_batched(data, index, vectors, neighbours, config: Config):
                 predicted_buckets_per_query[:, i, :] = candidate_buckets
             forward_pass_end = time.time()
             forward_pass_sum += (forward_pass_end - forward_pass_start)
-            batch_results, collecting_candidates_time, true_nns_time, reordering_time, fetch_data_time = process_query_batch(data, neighbours[batch_indices], batch_data, predicted_buckets_per_query, indexes, offsets, config.freq_threshold, config.nr_ann, batch_process_start)
+            batch_results, collecting_candidates_time, true_nns_time, reordering_time, fetch_data_time, current_mem = process_query_batch(data, neighbours[batch_indices], batch_data, predicted_buckets_per_query, indexes, offsets, config.freq_threshold, config.nr_ann, batch_process_start)
+            memory = current_mem if current_mem > memory else memory
             collecting_candidates_sum += collecting_candidates_time
             true_nns_sum += true_nns_time
             reordering_sum += reordering_time
             fetch_data_sum += fetch_data_time
             results[batch_idx] = batch_results
             batch_idx += 1
-    
+
+    ut.log_mem("peak memory during querying (obtained during reordering)", memory, config.memlog_path)
     print(f"Time spent on forward passes: {forward_pass_sum}")
     print(f"Time spent collecting candidates: {collecting_candidates_sum}")
     print(f"Time spent on true nns: {true_nns_sum}")
@@ -266,6 +271,9 @@ def reorder(data, query_vector, candidates, requested_amount):
     ''' 
     #TODO: check if it makes sense to sort candidates before fetching from memmap to improve access pattern
     # candidates = np.sort(candidates)
+
+    process = psutil.Process(os.getpid())
+    mem = process.memory_full_info().uss / (1024 ** 2)
     fetch_data_s = time.time()
     if not isinstance(data, IndexPQ):
         search_space = np.ascontiguousarray(data[candidates])
@@ -282,7 +290,7 @@ def reorder(data, query_vector, candidates, requested_amount):
     true_nns_e = time.time()
     neighbours = neighbours[0]
     final_neighbours = candidates[neighbours]
-    return final_neighbours, dist_comps, (true_nns_e-true_nns_s), (fetch_data_e-fetch_data_s)
+    return final_neighbours, dist_comps, (true_nns_e-true_nns_s), (fetch_data_e-fetch_data_s), mem
 
 
 

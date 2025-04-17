@@ -57,8 +57,6 @@ def build_index(dataset: ds.Dataset, config: Config, trial=None):
     bucket_size_stats = []
     model_sizes_total = 0
     index_sizes_total = 0
-    # tracemalloc.start()
-    # ut.log_mem(f"before_building_reass={config.reass_mode}_shuffle={config.shuffle}", memory_usage, config.memlog_path)
     for r in range(config.r):
         logging.info(f"Training model {r+1}")
         start = time.time()
@@ -82,22 +80,20 @@ def build_index(dataset: ds.Dataset, config: Config, trial=None):
         ut.log_mem("model size before training", model_size, config.memlog_path)
         print(f"training model {r+1}")
         memory_training_current = train_model(model, dataset, sample_buckets, sample_size, bucket_sizes, neighbours, r, SIZE, config)
+        ut.log_mem(f"memory during training model {r+1}", memory_training_current, config.memlog_path)
         memory_training = memory_training_current if memory_training_current > memory_training else memory_training
-        current, _ = tracemalloc.get_traced_memory() 
-        ut.log_mem(f"memory during training model {r+1}", current, config.memlog_path)
         model_path, model_file_size = ut.save_model(model, config.dataset_name, r+1, config.r, config.k, config.b, config.lr, config.batch_size, config.reass_mode)
         model_sizes_total += model_file_size
         print(f"model {r+1} saved to {model_path}.")
-        # prune optimisation tree if too many buckets are empty
-        percentage_empty = (bucket_sizes == 0).sum() / len(bucket_sizes) * 100 # percentage of all buckets that have size 0
-        ne = ut.norm_ent(bucket_sizes)
-        print(f"normalised entropy: {ne}")
-        if trial is not None:
-            trial.report(percentage_empty, step=1)
-            threshold = 25
-            if percentage_empty < threshold:
-                raise optuna.exceptions.TrialPruned(f"pruned because more than {threshold}% of buckets were empty: {percentage_empty}%")
 
+        #prune trial when buckets are too unbalanced ie. normalised entropy of bucketsizes is too low
+        if trial is not None:
+            ne = ut.norm_ent(bucket_sizes) # get normalised entropy for current bucketsizes
+            trial.report(ne, step=1)
+            threshold = 0.7
+            if ne < threshold:
+                raise optuna.exceptions.TrialPruned(f"buckets too unbalanced normalised entropy = {ne}, min is {threshold}")
+        
         model.eval()
         model.to(config.device)
         index = None
@@ -106,7 +102,6 @@ def build_index(dataset: ds.Dataset, config: Config, trial=None):
         else:
             index = sample_buckets
         del model 
-
             
         inverted_index, offsets = invert_index(index, bucket_sizes, SIZE)
         index_path, index_files_size = ut.save_inverted_index(inverted_index, offsets, config.dataset_name, r+1, config.r, config.k, config.b, config.lr, config.batch_size, config.reass_mode)
@@ -118,11 +113,8 @@ def build_index(dataset: ds.Dataset, config: Config, trial=None):
         bucket_size_stats.append(bucket_sizes)
 
     build_time = time.time() - start
-    # process = psutil.Process(os.getpid())
-    # _, peak_mem = tracemalloc.get_traced_memory()
     load_balance = ut.calc_load_balance(bucket_size_stats)
 
-    # tracemalloc.stop()
     ut.log_mem(f"final_reass={config.reass_mode}_reass_chunk_size={config.reass_chunk_size}", memory_final_assignment, config.memlog_path)
     ut.log_mem(f"training={config.reass_mode}_batch_size={config.batch_size}", memory_training, config.memlog_path)
     return final_index, time_per_r, build_time, memory_final_assignment, memory_training, load_balance, index_sizes_total, model_sizes_total
@@ -363,6 +355,8 @@ def run_bliss(config: Config, mode, experiment_name, trial=None):
         logging.info("Reading query vectors and ground truths")
         process = psutil.Process(os.getpid())
         data, test, neighbours = load_data_for_inference(dataset, config, SIZE, DIM)
+        mem_load = process.memory_full_info().uss / (1024**2)
+        ut.log_mem("memory after loading data", mem_load, MEMLOG_PATH)
  
         print(f"creating tensor array from Test")
         test = torch.from_numpy(test).to(torch.float32)
@@ -376,28 +370,25 @@ def run_bliss(config: Config, mode, experiment_name, trial=None):
             del data
             faiss.write_index(data_pq, 'datapq.index')
             pq_index_size = os.path.getsize('datapq.index')
-            print(f"pq index size: {pq_index_size}")
-            ut.log_mem(f"size of pq index", pq_index_size, MEMLOG_PATH)
+            ut.log_mem(f"size of data (pq index)", pq_index_size, MEMLOG_PATH)
             print(f"preprocessing for pq took {time.time()-start}")
+        else:
+            index_size = data.nbytes
+            ut.log_mem("size of data", index_size, MEMLOG_PATH)
         
         logging.info("Starting inference")
         start = time.time()
-        tracemalloc.start()
         # results = query_multiple(data, index, test, neighbours, config.m, config.freq_threshold, config.nr_ann)
-        current_mem = process.memory_full_info().uss / (1024 ** 2)
-        ut.log_mem(f"memory before querying (size of data) pq:{config.pq}", current_mem, MEMLOG_PATH)
+        mem_pre_query = process.memory_full_info().uss / (1024 ** 2)
+        ut.log_mem(f"memory before querying pq:{config.pq}", mem_pre_query, MEMLOG_PATH)
         qstart = time.time()
         if config.pq:
             results = query_multiple_batched(data_pq, index, test, neighbours, config)
         else:
-            # size_of_data = asizeof.asizeof(data)
-            # ut.log_mem(f"size of data no pq: {size_of_data}")
             results = query_multiple_batched(data, index, test, neighbours, config)
-        # mem_after_queries = process.memory_full_info().uss / (1024 ** 2)
+        mem_post_query = process.memory_full_info().uss / (1024 ** 2)
+        ut.log_mem("peak memory during querying", mem_post_query , config.memlog_path)
         print(f"querying pq={config.pq} took {time.time()-qstart}")
-        current, peak  = tracemalloc.get_traced_memory()
-        ut.log_mem("peak memory during querying", peak , config.memlog_path)
-        tracemalloc.stop()
         end = time.time()
 
         total_query_time = end - start
@@ -405,8 +396,5 @@ def run_bliss(config: Config, mode, experiment_name, trial=None):
         anns = [t[0] for t in results]
         RECALL = ut.recall(anns, neighbours)
         print(f"RECALL = {RECALL}", flush=True)
-        usage = resource.getrusage(resource.RUSAGE_SELF)
-        peak_mem = usage.ru_maxrss / 1_000_000 if sys.platform == 'darwin' else usage.ru_maxrss / 1000
-        ut.log_mem("peak_mem_querying", peak_mem, MEMLOG_PATH)
         return RECALL, results, total_query_time
     
