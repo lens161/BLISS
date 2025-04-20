@@ -1,10 +1,12 @@
 import logging
 import matplotlib.pyplot as plt # type: ignore
+import numpy as np
 import os
 import pandas as pd
 
 from bliss import run_bliss
 from config import Config
+from make_plots import make_plots
 
 
 def run_experiment(config: Config, mode = 'query'):
@@ -35,32 +37,29 @@ def build_multiple_indexes_exp(experiment_name, configs):
 def run_multiple_query_exp(experiment_name, configs):
     mode = 'query'
     for config in configs:
-        r, k, m = config.r, config.k, config.m
-        results = []
+        individual_results = []
         avg_recall, stats, total_query_time = run_bliss(config, mode=mode, experiment_name=experiment_name)
         print(f"avg recall = {avg_recall}")
-        for (anns, dist_comps, elapsed, recall) in stats:
-            results.append({'ANNs': anns, 
+        for (anns, true_nns, dist_comps, elapsed, recall) in stats:
+            individual_results.append({'ANNs': ','.join(map(str, anns)) if isinstance(anns, (list, np.ndarray)) else str(anns), 
+                            'true_nns': ','.join(map(str, true_nns)) if isinstance(true_nns, (list, np.ndarray)) else str(true_nns),
                             'distance_computations': dist_comps, 
                             'elapsed': elapsed,
                             'recall': recall})
         qps = len(stats)/total_query_time
-        df = pd.DataFrame(results)
-        plt.figure(figsize=(8, 5))
-        plt.scatter(df['distance_computations'], df['recall'], color='blue', s=20)
-        plt.xlabel("Distance Computations")
-        plt.ylabel(f"Recall ({config.nr_ann}@{config.nr_ann})")
-        plt.title(f"Distance Computations vs Recall R={r} k={k} m={m}")
-        plt.grid(True)
+        individual_results_df = pd.DataFrame(individual_results)
+        avg_results_and_params = pd.DataFrame([{'r': config.r, 'k': config.k, 'm': config.m, 'bs': config.batch_size, 'reass_mode': config.reass_mode, 
+                                               'nr_ann': config.nr_ann, 'lr': config.lr, 'avg_recall': avg_recall, 'qps': qps}])
         foldername = f"results/{experiment_name}"
         if not os.path.exists("results"):
             os.mkdir("results")
         if not os.path.exists(f"results/{experiment_name}"):
             os.mkdir(foldername)
-        df.to_csv(f"{foldername}/r{r}_k{k}_m{m}_qps{qps:.2f}_avg_rec{avg_recall:.3f}_bs={config.batch_size}_reass={config.reass_mode}_nr_ann={config.nr_ann}_lr={config.lr}.csv", index=False)
-        plt.savefig(f"{foldername}/r{r}_k{k}_m{m}_qps{qps:.2f}_avg_rec{avg_recall:.3f}_bs={config.batch_size}_reass={config.reass_mode}_nr_ann={config.nr_ann}_lr={config.lr}.png", dpi=300)
+        with pd.HDFStore(f"{foldername}/r{config.r}_k{config.k}_m{config.m}_qps{qps:.2f}_avg_rec{avg_recall:.3f}_bs={config.batch_size}_reass={config.reass_mode}_nr_ann={config.nr_ann}_lr={config.lr}.h5", mode='w') as store:
+            store.put('individual_results', individual_results_df, format='table')
+            store.put('averages', avg_results_and_params, format='table')
 
-    return experiment_name, avg_recall, total_query_time, results
+    return experiment_name, avg_recall, total_query_time, individual_results, avg_results_and_params
 
 if __name__ == "__main__":
     configs_q = [] # configs for building the index
@@ -123,3 +122,5 @@ if __name__ == "__main__":
     # build_multiple_indexes_exp(EXP_NAME, configs_b)
     logging.info(f"[Experiment] Starting query experiments")
     run_multiple_query_exp(EXP_NAME, configs_q)
+
+    make_plots(EXP_NAME)

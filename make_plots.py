@@ -4,52 +4,55 @@ import os
 import pandas as pd
 
 
-def find_files(experiment_name):
+def find_build_file(experiment_name):
+    filepath = glob.glob(f"results/{experiment_name}/*build.csv")[0] # list of only 1 file
+    return filepath
+
+def find_memory_file(experiment_name):
+    filepath = glob.glob(f"results/{experiment_name}/*memory_log.csv")[0] # list of only 1 file
+    return filepath    
+
+def find_query_files(experiment_name):
     '''
     Find all the .csv files in an experiment folder to collect the results for different inference parameter combinations within an experiment.
-    Currently, build file is excluded as it is describing results of index building.
+    Build and memory log files are excluded.
     '''
-    parameters_per_file = []
-    filepaths = glob.glob(f"results/{experiment_name}/*.csv")
-    filepaths = [f for f in filepaths if not f.endswith('build.csv') and not f.endswith('memory_log.csv')]
-    for filepath in filepaths:
-        filename = filepath.split("/")[-1][:-4]
-        filename_components = filename.split("_")
-        print(filename_components)
-        parameters = {'r': filename_components[0], 'k': filename_components[1], 'm': filename_components[2], 'qps': filename_components[3], 'rec': filename_components[5], 'bs': filename_components[6], 'reass_mode': filename_components[7], 'nr_ann': "nr_"+filename_components[9], 'lr': filename_components[10]}
-        parameters_per_file.append(parameters)
-    return filepaths, parameters_per_file
+    filepaths = glob.glob(f"results/{experiment_name}/*.h5") # find all .h5 files in folder
+    # filepaths = [f for f in filepaths if not f.endswith('build.csv') and not f.endswith('memory_log.csv')] # filter out non-query files: temporarily disabled
+    return filepaths
 
-def compile_results(files):
+def compile_query_results(files):
     '''
     Collect results from a set of csv files in one dataframe.
     '''
-    results = []
-    dtype_dict = {
-        'elapsed': float,
-        'recall': float,
-        'distance_computations': float,
-        'ANNs': str
-    }
+    all_results = []
+    all_averages = []
     for file in files:
-        df = pd.read_csv(file, dtype=dtype_dict, sep=r'\s*,\s*', engine='python')
-        results.append(df)
-    return results
+        with pd.HDFStore(file, mode='r') as store:
+            averages = store['averages']
+            individual_results = store['individual_results']
+            all_averages.append(averages)
+            all_results.append(individual_results)
+    return all_results, all_averages
 
-def make_recall_vs_distance_comps_plots(results, parameters_per_file, experiment_name):
+def get_parameters_and_stats(averages, i):
+    r = int(averages[i]['r'].iloc[0])
+    k = int(averages[i]['k'].iloc[0])
+    m = int(averages[i]['m'].iloc[0])
+    qps = float(averages[i]['qps'].iloc[0])
+    avg_recall = float(averages[i]['avg_recall'].iloc[0])
+    bs = int(averages[i]['bs'].iloc[0])
+    reass_mode = int(averages[i]['reass_mode'].iloc[0])
+    nr_ann = int(averages[i]['nr_ann'].iloc[0])
+    lr = float(averages[i]['lr'].iloc[0])
+    return r, k, m, qps, avg_recall, bs, reass_mode, nr_ann, lr
+
+def plot_individual_recall_vs_dist_comps(results, averages, experiment_name):
     '''
     Make a plot where recall is compared to nr of distance computations (nr of candidates when candidate set was too large and required true distance computations for reordering).
     '''
     for i, result in enumerate(results):
-        r = parameters_per_file[i]['r']
-        k = parameters_per_file[i]['k']
-        m = parameters_per_file[i]['m']
-        qps = parameters_per_file[i]['qps']
-        # rec = parameters_per_file[i]['rec']
-        bs = parameters_per_file[i]['bs']
-        reass_mode = parameters_per_file[i]['reass_mode']
-        nr_ann = parameters_per_file[i]['nr_ann']
-        lr = parameters_per_file[i]['lr']
+        r, k, m, qps, avg_recall, bs, reass_mode, nr_ann, lr = get_parameters_and_stats(averages, i)
 
         plt.figure(figsize=(8, 5))
         plt.scatter(result['distance_computations'], result['recall'], color='blue', s=20)
@@ -63,19 +66,47 @@ def make_recall_vs_distance_comps_plots(results, parameters_per_file, experiment
         if not os.path.exists(f"results/{experiment_name}"):
             os.mkdir(foldername)
         
-        avg_recall = result['recall'].mean()
-        plt.savefig(f"results/{experiment_name}/{r}_{k}_{m}_{qps}_avg_rec{avg_recall:.3f}_{bs}_{reass_mode}_{nr_ann}_{lr}.png", dpi=300)
+        # reuse qps from filename and make plot
+        plt.savefig(f"results/{experiment_name}/r{r}_k{k}_m{m}_qps{qps:.2f}_avg_rec{avg_recall:.3f}_bs={bs}_reass={reass_mode}_nr_ann={nr_ann}_lr={lr}.png", dpi=300)
+        
+        # alternatively, calculate recall and qps from individual queries, but qps measurement is slightly off
+        # new_recall = result['recall'].mean()
         # new_qps = len(result) / result['elapsed'].sum()
-        # plt.savefig(f"results/{experiment_name}/{r}_{k}_{m}_qps{new_qps:.2f}_avg_rec{avg_recall:.3f}_{bs}_{reass_mode}_{nr_ann}_{lr}.png", dpi=300)
+        # plt.savefig(f"results/{experiment_name}/r{r}_k{k}_m{m}_qps{new_qps:.2f}_avg_rec{avg_recall:.3f}_bs={bs}_reass={reass_mode}_nr_ann={nr_ann}_lr={lr}.png", dpi=300)
 
-def make_plots(results, parameters_per_file, experiment_name):
+def plot_recall_vs_dist_comps_per_m(results, averages, experiment_name):
+    stats = []
+    for i, result in enumerate(results):
+        avg_recall = averages[i]['avg_recall']
+        avg_dist_comps = result['distance_computations'].mean()
+        m = int(averages[i]['m'].iloc[0])
+        stats.append({'m': m, 'avg_recall': avg_recall, 'avg_dist_comps': avg_dist_comps})
+    
+    stats.sort(key=lambda x: x['avg_dist_comps'])
+    x = [result['avg_dist_comps'] for result in stats]
+    y = [result['avg_recall'] for result in stats]
+    plt.figure(figsize=(8, 5))
+    plt.plot(x, y, marker='x', linestyle='-', color='b', label='Recall vs Distance Computations')
+
+    # Labels and title
+    plt.xlabel('Number of Distance Computations')
+    plt.ylabel('Recall')
+    plt.title('Recall vs. Distance Computations')
+    plt.grid(True)
+    plt.tight_layout()
+    plt.savefig(f"results/{experiment_name}/recall_vs_dist_comps_per_m.png", dpi=300)
+
+
+def make_plots(experiment_name):
     '''
     Include all plot functions that should be run here.
     '''
-    make_recall_vs_distance_comps_plots(results, parameters_per_file, experiment_name)
+    # get results from query files
+    query_files = find_query_files(experiment_name)
+    query_results, query_averages = compile_query_results(query_files)
 
-if __name__ == "__main__":
-    experiment_name = "check_qps_plots"
-    files, parameters_per_file = find_files(experiment_name)
-    results = compile_results(files)
-    make_plots(results, parameters_per_file, experiment_name)
+    # TODO: get results from build and memory files
+
+    # make plots for whole experiment, add more plot functions as needed
+    plot_individual_recall_vs_dist_comps(query_results, query_averages, experiment_name)
+    plot_recall_vs_dist_comps_per_m(query_results, query_averages, experiment_name)

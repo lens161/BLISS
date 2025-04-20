@@ -71,27 +71,27 @@ def query(data, index, query_vector, neighbours, m, freq_threshold, requested_am
     # print (f"final results = {len(final_results)}")
     if len(unique_candidates) <= requested_amount:
         # TODO: remove additional return values when removing timers
-        return unique_candidates, 0, ut.recall_single(unique_candidates, neighbours), forward_pass_time, collecting_candidates_time, 0, 0, 0
+        return unique_candidates, neighbours, 0, ut.recall_single(unique_candidates, neighbours), forward_pass_time, collecting_candidates_time, 0, 0, 0
     else:
         #
         reorder_s = time.time()
         #
-        final_neighbours, dist_comps, true_nns_time, fetch_data_time = reorder(data, query_vector, np.array(unique_candidates, dtype=int), requested_amount)
+        # TODO: also implement memory measurement here if we keep it
+        final_neighbours, dist_comps, true_nns_time, fetch_data_time, mem = reorder(data, query_vector, np.array(unique_candidates, dtype=int), requested_amount)
         #
         reorder_e = time.time()
         reordering_time = (reorder_e - reorder_s)
         #
         # TODO: remove additional return values when removing timers
-        return final_neighbours, dist_comps, ut.recall_single(final_neighbours, neighbours), forward_pass_time, collecting_candidates_time, reordering_time, true_nns_time, fetch_data_time
+        return final_neighbours, neighbours, dist_comps, ut.recall_single(final_neighbours, neighbours), forward_pass_time, collecting_candidates_time, reordering_time, true_nns_time, fetch_data_time
 
-def query_multiple(data, index, vectors, neighbours, m, threshold, requested_amount, parallel=False):
+def query_multiple(data, index, vectors, neighbours, config: Config):
     '''
     Run multiple queries from a set of query vectors i.e. "Test" from the ANN benchmark datsets.
     '''
     size = len(vectors)
-    if not parallel:
-        print(f"Number of query vectors: {size}")
-        print(f"Number of neighbour entries: {len(neighbours)}", flush=True)
+    print(f"Number of query vectors: {size}")
+    print(f"Number of neighbour entries: {len(neighbours)}", flush=True)
     results = [[] for i in range(len(vectors))]
     #
     forward_pass_sum = 0
@@ -104,7 +104,7 @@ def query_multiple(data, index, vectors, neighbours, m, threshold, requested_amo
         sys.stdout.write(f"\r[PID: {os.getpid()}] querying {i+1} of {size}       ")
         sys.stdout.flush()
         start = time.time()
-        anns, dist_comps, recall, forward_pass_time, collecting_candidates_time, reordering_time, true_nns_time, fetch_data_time = query(data, index, vector, neighbours[i], m, threshold, requested_amount)
+        anns, true_nns, dist_comps, recall, forward_pass_time, collecting_candidates_time, reordering_time, true_nns_time, fetch_data_time = query(data, index, vector, neighbours[i], config.m, config.freq_threshold, config.nr_ann)
         end = time.time()
         #
         forward_pass_sum += forward_pass_time
@@ -114,7 +114,7 @@ def query_multiple(data, index, vectors, neighbours, m, threshold, requested_amo
         fetch_data_sum += fetch_data_time
         #
         elapsed = end - start
-        results[i] = (anns, dist_comps, elapsed, recall)
+        results[i] = (anns, true_nns, dist_comps, elapsed, recall)
     print("\r")
     #
     print(f"Time spent on forward passes: {forward_pass_sum}")
@@ -192,14 +192,14 @@ def process_query_batch(data, neighbours, query_vectors, candidate_buckets, inde
         unique_candidates = np.where(counts >= freq_threshold)[0]
         if len(unique_candidates) <= requested_amount:
             query_end = time.time()
-            batch_results[i] = (unique_candidates, 0, (query_end-query_start) + base_time_per_query), ut.recall_single(unique_candidates, neighbours[i])
+            batch_results[i] = (unique_candidates, neighbours[i], 0, (query_end-query_start) + base_time_per_query), ut.recall_single(unique_candidates, neighbours[i])
         else:
             reordering_start = time.time()
             final_neighbours, dist_comps, true_nns_time, fetch_data_time, current_mem = reorder(data, query, np.array(unique_candidates, dtype=int), requested_amount)
             memory = current_mem if current_mem > memory else memory
             del unique_candidates
             query_end = time.time()
-            batch_results[i] = (final_neighbours, dist_comps, (query_end-query_start) + base_time_per_query, ut.recall_single(final_neighbours, neighbours[i]))
+            batch_results[i] = (final_neighbours, neighbours[i], dist_comps, (query_end-query_start) + base_time_per_query, ut.recall_single(final_neighbours, neighbours[i]))
             reordering_time += (query_end - reordering_start)
             true_nns_sum += true_nns_time
             fetch_data_sum += fetch_data_time
@@ -215,9 +215,8 @@ def query_multiple_batched(data, index, vectors, neighbours, config: Config):
         all_bucket_sizes[r] = np.diff(offset, prepend=0)
 
     size = len(vectors)
-    if not config.query_parallel:
-        print(f"Number of query vectors: {size}")
-        print(f"Number of neighbour entries: {len(neighbours)}", flush=True)
+    print(f"Number of query vectors: {size}")
+    print(f"Number of neighbour entries: {len(neighbours)}", flush=True)
     nr_batches = math.ceil(size / config.batch_size)
     results = [[] for i in range(nr_batches)]
     #
@@ -228,8 +227,8 @@ def query_multiple_batched(data, index, vectors, neighbours, config: Config):
     fetch_data_sum = 0
     #
 
-    # do forward passes on all queries in all models and collect the candidate buckets
-    print(f"Predicting buckets for all queries")
+    # do forward passes on a batch of queries in all models and then process
+    print(f"Processing queries in batches")
     
     queries_batched = BLISSDataset(vectors, device = torch.device("cpu"), mode='train')
     query_loader = DataLoader(queries_batched, batch_size=config.batch_size, shuffle=False, num_workers=8)
@@ -272,8 +271,10 @@ def reorder(data, query_vector, candidates, requested_amount):
     #TODO: check if it makes sense to sort candidates before fetching from memmap to improve access pattern
     # candidates = np.sort(candidates)
 
-    process = psutil.Process(os.getpid())
-    mem = process.memory_full_info().uss / (1024 ** 2)
+    #TODO: figure out new way to take these measurements as they cause slowdown
+    # process = psutil.Process(os.getpid())
+    # mem = process.memory_full_info().uss / (1024 ** 2)
+    mem = 0
     fetch_data_s = time.time()
     if not isinstance(data, IndexPQ):
         search_space = np.ascontiguousarray(data[candidates])
@@ -291,8 +292,6 @@ def reorder(data, query_vector, candidates, requested_amount):
     neighbours = neighbours[0]
     final_neighbours = candidates[neighbours]
     return final_neighbours, dist_comps, (true_nns_e-true_nns_s), (fetch_data_e-fetch_data_s), mem
-
-
 
 # def get_candidates_from_model(model, index, offsets, candidates, query_vector, m):
 #     '''
