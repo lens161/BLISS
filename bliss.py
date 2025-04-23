@@ -19,6 +19,7 @@ import utils as ut
 from bliss_model import BLISS_NN, BLISSDataset
 from config import Config
 from query import query_multiple, query_multiple_batched, load_data_for_inference
+# from query_twostep import query_multiple, query_multiple_batched, load_data_for_inference
 from train import train_model
     
 def build_index(dataset: ds.Dataset, config: Config, trial=None):
@@ -355,6 +356,7 @@ def run_bliss(config: Config, mode, experiment_name, trial=None):
         logging.info("Reading query vectors and ground truths")
         process = psutil.Process(os.getpid())
         data, test, neighbours = load_data_for_inference(dataset, config, SIZE, DIM)
+        # data, test, neighbours, data_rp = load_data_for_inference(dataset, config, SIZE, DIM)
         mem_load = process.memory_full_info().uss / (1024**2)
         ut.log_mem("memory after loading data", mem_load, MEMLOG_PATH)
  
@@ -390,6 +392,7 @@ def run_bliss(config: Config, mode, experiment_name, trial=None):
         else:
             if config.query_batched:
                 results = query_multiple_batched(data, index, test, neighbours, config)
+                # results = query_multiple_batched(data, index, test, neighbours, config, data_rp)
             else:
                 results = query_multiple(data, index, test, neighbours, config)
         mem_post_query = process.memory_full_info().uss / (1024 ** 2)

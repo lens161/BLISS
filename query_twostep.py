@@ -26,7 +26,9 @@ def load_data_for_inference(dataset, config: Config, SIZE, DIM):
     '''
     # keep data as a memmap if the dataset is too large, otherwise load into memory fully
     memmap_path = f"memmaps/{config.dataset_name}_{config.datasize}.npy"
+    memmap_rp_path = f"memmaps/{config.dataset_name}_{config.datasize}_rp8.npy"
     data = np.memmap(memmap_path, mode='r', shape=(SIZE, DIM), dtype=np.float32) if SIZE > 10_000_000 else np.ascontiguousarray(np.memmap(memmap_path,shape=(SIZE, DIM), mode='r', dtype=np.float32))
+    data_rp = np.memmap(memmap_rp_path, mode='r', shape=(SIZE, 8), dtype=np.float32) if SIZE > 10_000_000 else np.ascontiguousarray(np.memmap(memmap_rp_path,shape=(SIZE, 8), mode='r', dtype=np.float32))
 
     test = dataset.get_queries()
     neighbours, _ = dataset.get_groundtruth()
@@ -35,7 +37,7 @@ def load_data_for_inference(dataset, config: Config, SIZE, DIM):
     if dataset.distance() == "angular":
         test = ut.normalise_data(test)
     
-    return data, test, neighbours
+    return data, test, neighbours, data_rp
 
 def query(data, index, query_vector, neighbours, m, freq_threshold, requested_amount):
     '''
@@ -166,7 +168,7 @@ def get_candidates_for_query_vectorised(predicted_buckets, model_indexes, model_
         candidates = np.empty(0, dtype=np.int32)
     return candidates
 
-def process_query_batch(data, neighbours, query_vectors, candidate_buckets, indexes, offsets, freq_threshold, requested_amount, m, expected_bucket_size, batch_process_start):
+def process_query_batch(data, neighbours, query_vectors, candidate_buckets, indexes, offsets, freq_threshold, requested_amount, m, expected_bucket_size, batch_process_start, data_rp, transformer):
     ## input: candidate_buckets np array for a batch of queries
     ## output: the ANNs for the batch of queries, dist_comps per query, recall per query
     batch_results = [[] for i in range(len(query_vectors))]
@@ -195,10 +197,11 @@ def process_query_batch(data, neighbours, query_vectors, candidate_buckets, inde
             query_end = time.time()
             batch_results[i] = (unique_candidates, neighbours[i], 0, (query_end-query_start) + base_time_per_query), ut.recall_single(unique_candidates, neighbours[i])
         else:
-            reduced_candidates, reduced_query = convert_to_random_projection(data, unique_candidates, query)
-            filtered_candidates = filter_candidates(unique_candidates, reduced_candidates, reduced_query, m, expected_bucket_size)
+            if len(unique_candidates) > m*expected_bucket_size*2:
+                reduced_query = apply_random_projection(query, transformer)
+                unique_candidates = filter_candidates(unique_candidates, reduced_query, m, expected_bucket_size, data_rp)
             reordering_start = time.time()
-            final_neighbours, dist_comps, true_nns_time, fetch_data_time, current_mem = reorder(data, query, filtered_candidates, requested_amount)
+            final_neighbours, dist_comps, true_nns_time, fetch_data_time, current_mem = reorder(data, query, unique_candidates, requested_amount)
             memory = current_mem if current_mem > memory else memory
             del unique_candidates
             query_end = time.time()
@@ -208,7 +211,7 @@ def process_query_batch(data, neighbours, query_vectors, candidate_buckets, inde
             fetch_data_sum += fetch_data_time
     return batch_results, getting_candidates_time, true_nns_sum, reordering_time, fetch_data_sum, memory
 
-def query_multiple_batched(data, index, vectors, neighbours, config: Config):
+def query_multiple_batched(data, index, vectors, neighbours, config: Config, data_rp):
     '''
     Run multiple queries from a set of query vectors i.e. "Test" from the ANN benchmark datsets.
     '''
@@ -218,7 +221,7 @@ def query_multiple_batched(data, index, vectors, neighbours, config: Config):
         all_bucket_sizes[r] = np.diff(offset, prepend=0)
 
     size = len(vectors)
-    expected_bucket_size = len(data) / config.b
+    expected_bucket_size = len(data) // config.b
     print(f"Number of query vectors: {size}")
     print(f"Number of neighbour entries: {len(neighbours)}", flush=True)
     nr_batches = math.ceil(size / config.batch_size)
@@ -236,6 +239,8 @@ def query_multiple_batched(data, index, vectors, neighbours, config: Config):
     
     queries_batched = BLISSDataset(vectors, device = torch.device("cpu"), mode='train')
     query_loader = DataLoader(queries_batched, batch_size=config.batch_size, shuffle=False, num_workers=8)
+    transformer = SparseRandomProjection(n_components=data_rp.shape[1])
+
     batch_idx = 0
     memory = 0
     with torch.no_grad():
@@ -250,7 +255,7 @@ def query_multiple_batched(data, index, vectors, neighbours, config: Config):
                 predicted_buckets_per_query[:, i, :] = candidate_buckets
             forward_pass_end = time.time()
             forward_pass_sum += (forward_pass_end - forward_pass_start)
-            batch_results, collecting_candidates_time, true_nns_time, reordering_time, fetch_data_time, current_mem = process_query_batch(data, neighbours[batch_indices], batch_data, predicted_buckets_per_query, indexes, offsets, config.freq_threshold, config.nr_ann, config.m, expected_bucket_size, batch_process_start)
+            batch_results, collecting_candidates_time, true_nns_time, reordering_time, fetch_data_time, current_mem = process_query_batch(data, neighbours[batch_indices], batch_data, predicted_buckets_per_query, indexes, offsets, config.freq_threshold, config.nr_ann, config.m, expected_bucket_size, batch_process_start, data_rp, transformer)
             memory = current_mem if current_mem > memory else memory
             collecting_candidates_sum += collecting_candidates_time
             true_nns_sum += true_nns_time
@@ -292,22 +297,16 @@ def reorder(data, query_vector, filtered_candidates, requested_amount):
     del search_space
     return final_neighbours, dist_comps, (true_nns_e-true_nns_s), (fetch_data_e-fetch_data_s), mem
 
-def convert_to_random_projection(data, candidates, query):
-    relevant_data = np.ascontiguousarray(data[candidates], dtype=np.int32)
-    transformer = SparseRandomProjection(n_components=8)
-    reduced_vectors = transformer.fit_transform(relevant_data)
-    # reduced_vectors = relevant_data
+def apply_random_projection(query, transformer):
     query = query.reshape(1, -1)
     reduced_query = transformer.fit_transform(query)
-    # reduced_query = query
-    return reduced_vectors, reduced_query
+    return reduced_query
 
-def filter_candidates(candidates, reduced_candidates, reduced_query, m, expected_bucket_size):
-    neighbours = ut.get_nearest_neighbours_in_different_dataset(reduced_candidates, reduced_query, m*expected_bucket_size*4)
+def filter_candidates(candidates, reduced_query, m, expected_bucket_size, data_rp):
+    reduced_candidate_data = np.ascontiguousarray(data_rp[candidates], dtype=np.float32)
+    neighbours = ut.get_nearest_neighbours_in_different_dataset(reduced_candidate_data, reduced_query, m*expected_bucket_size*2)
     neighbours = neighbours[0]
-    valid_mask = neighbours != -1
-    valid_indices = neighbours[valid_mask]
-    filtered_candidates = candidates[valid_indices]
+    filtered_candidates = candidates[neighbours]
     return filtered_candidates
 
 
