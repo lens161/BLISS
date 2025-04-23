@@ -57,7 +57,7 @@ def create_study_m(name):
         directions = ['maximize', 'minimize'],
         load_if_exists=True
     )
-    study.optimize(objective, n_trials=25)
+    study.optimize(objective, n_trials=20)
 
 # def run_optimisation(name):
 #     study = optuna.load_study(
