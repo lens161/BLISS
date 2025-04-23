@@ -33,10 +33,9 @@ def optimise_m(bucket_size, learning_rate, batch_size, m, trial):
 
 
 def objective(trial):
-    bucket_size = trial.suggest_categorical('B', [4096])
-    bucket_size = trial.suggest_categorical('B', [4096])
-    learning_rate = trial.suggest_categorical('lr', [0.001])
-    batch_size = trial.suggest_categorical('batch_size', [1000])
+    bucket_size = 4096
+    learning_rate = 0.001
+    batch_size = 1000
     m = trial.suggest_categorical('m', [5, 25])
 
     load_balance = optimise_m(bucket_size, learning_rate, batch_size, m, trial)
