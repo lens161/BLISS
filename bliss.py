@@ -383,9 +383,15 @@ def run_bliss(config: Config, mode, experiment_name, trial=None):
         ut.log_mem(f"memory before querying pq:{config.pq}", mem_pre_query, MEMLOG_PATH)
         qstart = time.time()
         if config.pq:
-            results = query_multiple_batched(data_pq, index, test, neighbours, config)
+            if config.query_batched:
+                results = query_multiple_batched(data_pq, index, test, neighbours, config)
+            else:
+                results = query_multiple(data_pq, index, test, neighbours, config)
         else:
-            results = query_multiple_batched(data, index, test, neighbours, config)
+            if config.query_batched:
+                results = query_multiple_batched(data, index, test, neighbours, config)
+            else:
+                results = query_multiple(data, index, test, neighbours, config)
         mem_post_query = process.memory_full_info().uss / (1024 ** 2)
         ut.log_mem("peak memory during querying", mem_post_query , config.memlog_path)
         print(f"querying pq={config.pq} took {time.time()-qstart}")

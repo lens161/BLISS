@@ -10,6 +10,7 @@ from faiss import IndexPQ
 from functools import partial
 from multiprocessing import Pool
 from pympler import asizeof
+from sklearn.random_projection import SparseRandomProjection
 from torch.utils.data import DataLoader
 
 from bliss_model import BLISSDataset
@@ -165,7 +166,7 @@ def get_candidates_for_query_vectorised(predicted_buckets, model_indexes, model_
         candidates = np.empty(0, dtype=np.int32)
     return candidates
 
-def process_query_batch(data, neighbours, query_vectors, candidate_buckets, indexes, offsets, freq_threshold, requested_amount, batch_process_start):
+def process_query_batch(data, neighbours, query_vectors, candidate_buckets, indexes, offsets, freq_threshold, requested_amount, m, expected_bucket_size, batch_process_start):
     ## input: candidate_buckets np array for a batch of queries
     ## output: the ANNs for the batch of queries, dist_comps per query, recall per query
     batch_results = [[] for i in range(len(query_vectors))]
@@ -194,8 +195,10 @@ def process_query_batch(data, neighbours, query_vectors, candidate_buckets, inde
             query_end = time.time()
             batch_results[i] = (unique_candidates, neighbours[i], 0, (query_end-query_start) + base_time_per_query), ut.recall_single(unique_candidates, neighbours[i])
         else:
+            reduced_candidates, reduced_query = convert_to_random_projection(data, unique_candidates, query)
+            filtered_candidates = filter_candidates(unique_candidates, reduced_candidates, reduced_query, m, expected_bucket_size)
             reordering_start = time.time()
-            final_neighbours, dist_comps, true_nns_time, fetch_data_time, current_mem = reorder(data, query, np.array(unique_candidates, dtype=int), requested_amount)
+            final_neighbours, dist_comps, true_nns_time, fetch_data_time, current_mem = reorder(data, query, filtered_candidates, requested_amount)
             memory = current_mem if current_mem > memory else memory
             del unique_candidates
             query_end = time.time()
@@ -215,6 +218,7 @@ def query_multiple_batched(data, index, vectors, neighbours, config: Config):
         all_bucket_sizes[r] = np.diff(offset, prepend=0)
 
     size = len(vectors)
+    expected_bucket_size = len(data) / config.b
     print(f"Number of query vectors: {size}")
     print(f"Number of neighbour entries: {len(neighbours)}", flush=True)
     nr_batches = math.ceil(size / config.batch_size)
@@ -246,7 +250,7 @@ def query_multiple_batched(data, index, vectors, neighbours, config: Config):
                 predicted_buckets_per_query[:, i, :] = candidate_buckets
             forward_pass_end = time.time()
             forward_pass_sum += (forward_pass_end - forward_pass_start)
-            batch_results, collecting_candidates_time, true_nns_time, reordering_time, fetch_data_time, current_mem = process_query_batch(data, neighbours[batch_indices], batch_data, predicted_buckets_per_query, indexes, offsets, config.freq_threshold, config.nr_ann, batch_process_start)
+            batch_results, collecting_candidates_time, true_nns_time, reordering_time, fetch_data_time, current_mem = process_query_batch(data, neighbours[batch_indices], batch_data, predicted_buckets_per_query, indexes, offsets, config.freq_threshold, config.nr_ann, config.m, expected_bucket_size, batch_process_start)
             memory = current_mem if current_mem > memory else memory
             collecting_candidates_sum += collecting_candidates_time
             true_nns_sum += true_nns_time
@@ -264,7 +268,7 @@ def query_multiple_batched(data, index, vectors, neighbours, config: Config):
     flattened_results = [item for sublist in results for item in sublist]
     return flattened_results
     
-def reorder(data, query_vector, candidates, requested_amount):
+def reorder(data, query_vector, filtered_candidates, requested_amount):
     '''
     Do true distance calculations on the candidate set of vectors and return the top 'requested_amount' candidates.
     ''' 
@@ -276,22 +280,36 @@ def reorder(data, query_vector, candidates, requested_amount):
     # mem = process.memory_full_info().uss / (1024 ** 2)
     mem = 0
     fetch_data_s = time.time()
-    if not isinstance(data, IndexPQ):
-        search_space = np.ascontiguousarray(data[candidates])
-    else:
-        candidates = np.asarray(candidates, dtype=np.int32)
-        # search_space = np.vstack([data.reconstruct_batch(int(i)) for i in candidates])
-        search_space = np.vstack(data.reconstruct_batch(candidates))
+    search_space = np.ascontiguousarray(data[filtered_candidates])
     fetch_data_e = time.time()
     dist_comps = len(search_space)
     query_vector = query_vector.reshape(1, -1)
     true_nns_s = time.time()
     neighbours = ut.get_nearest_neighbours_in_different_dataset(search_space, query_vector, requested_amount)
-    del search_space
     true_nns_e = time.time()
     neighbours = neighbours[0]
-    final_neighbours = candidates[neighbours]
+    final_neighbours = filtered_candidates[neighbours]
+    del search_space
     return final_neighbours, dist_comps, (true_nns_e-true_nns_s), (fetch_data_e-fetch_data_s), mem
+
+def convert_to_random_projection(data, candidates, query):
+    relevant_data = np.ascontiguousarray(data[candidates], dtype=np.int32)
+    transformer = SparseRandomProjection(n_components=8)
+    reduced_vectors = transformer.fit_transform(relevant_data)
+    # reduced_vectors = relevant_data
+    query = query.reshape(1, -1)
+    reduced_query = transformer.fit_transform(query)
+    # reduced_query = query
+    return reduced_vectors, reduced_query
+
+def filter_candidates(candidates, reduced_candidates, reduced_query, m, expected_bucket_size):
+    neighbours = ut.get_nearest_neighbours_in_different_dataset(reduced_candidates, reduced_query, m*expected_bucket_size*4)
+    neighbours = neighbours[0]
+    valid_mask = neighbours != -1
+    valid_indices = neighbours[valid_mask]
+    filtered_candidates = candidates[valid_indices]
+    return filtered_candidates
+
 
 # def get_candidates_from_model(model, index, offsets, candidates, query_vector, m):
 #     '''
