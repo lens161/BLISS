@@ -19,20 +19,27 @@ def build_multiple_indexes_exp(experiment_name, configs):
     mode = 'build'
     stats = []
     for config in configs:
-        r, k, epochs, iterations = config.r, config.k, config.epochs, config.iterations
-        time_per_r, build_time, memory_final_assignment, memory_training, load_balance, index_sizes_total, model_sizes_total = run_bliss(config, mode=mode, experiment_name=experiment_name)
-        stats.append({'R':r, 'k':k, 'epochs_per_it':epochs, 'iterations':iterations, 'build_time':build_time, 
-                      'mem_final_ass':memory_final_assignment, 'mem_training':memory_training, 'load_balance':load_balance, 
-                      'batch_size':config.batch_size, 'reass_mode': config.reass_mode,
+        r, k, epochs, iterations, b, lr, reass_chunk_size, batch_size, reass_mode, freq_threshold = config.r, config.k, config.epochs, config.iterations, config.b, config.lr, config.reass_chunk_size, config.batch_size, config.reass_mode, config.freq_threshold
+
+        train_time, final_assign_time, build_time, memory_final_assignment, memory_training, normalised_entropy, index_sizes_total, model_sizes_total = run_bliss(config, mode=mode, experiment_name=experiment_name)
+
+                        # Hyperparameters:
+        stats.append({'R':r, 'k':k, 'epochs_per_it':epochs, 'iterations':iterations, 
+                      'b':b, 'lr':lr,'batch_size':batch_size, 'freq_threshold':freq_threshold,
+                      'reass_mode': reass_mode, 'reass_chunk_size':reass_chunk_size,
+                        # Measurements/Results:
+                      'build_time':build_time, 'train_time_per_r':train_time, 'final_assign_time_per_r':final_assign_time,
+                      'mem_training':memory_training, 'mem_final_ass':memory_final_assignment, 'load_balance':normalised_entropy, 
                       'index_sizes_total': index_sizes_total,'model_sizes_total': model_sizes_total})
-        print(time_per_r)
-    foldername = f"results/{experiment_name}"
-    if not os.path.exists("results"):
-        os.mkdir("results")
-    if not os.path.exists(f"results/{experiment_name}"):
-        os.mkdir(foldername)
     df = pd.DataFrame(stats)
-    df.to_csv(f"{foldername}/{experiment_name}_build.csv", index=False)
+        
+    foldername = f"results/{experiment_name}"
+    os.makedirs(foldername, exist_ok=True)
+    csv_path = os.path.join(foldername, f"{experiment_name}_build.csv")
+    if os.path.isfile(csv_path):
+        df.to_csv(csv_path, mode='a', header=False, index=False)
+    else:
+        df.to_csv(csv_path, mode='w', header=True, index=False)
 
 def run_multiple_query_exp(experiment_name, configs):
     mode = 'query'
@@ -71,7 +78,7 @@ if __name__ == "__main__":
     m_values = [5, 10, 15]
     reass_modes = [0, 1, 2, 3]
     batch_sizes = [1024, 2048, 5000]
-    EXP_NAME = "memory_pq_vs_nopq"
+    EXP_NAME = "check_new_model_names"
 
     if not os.path.exists("logs"):
         os.mkdir("logs")
@@ -88,18 +95,13 @@ if __name__ == "__main__":
                 # "glove-100-angular",
                 # "sift-128-euclidean"
                  ]
-    # sift
-    # empty buckets: 983
-    # precentage of all buckets: 0.239990234375
-    # balance: 0.002716883572686393
-
-    # bigann
     
-
     logging.info("[Experiment] Experiments started")
     # check that datasize in config is set to correct value. (default = 1)
-    # configs_q.append(Config(dataset_name="bigann", batch_size=2048, b=4096, m=10, datasize=10))
-    configs_q.append(Config(dataset_name="bigann", batch_size=2048, b=4096, m=10, pq=True, datasize=10))
+    configs_b.append(Config(dataset_name="sift-128-euclidean", batch_size=2048, b=4096, r=2, epochs=2, iterations=2))
+    configs_q.append(Config(dataset_name="sift-128-euclidean", batch_size=2048, b=4096, r=2, epochs=2, iterations=2))
+    # configs_b.append(Config(dataset_name="sift-128-euclidean", batch_size=2048, b=4096, m=10, datasize=10))
+    # configs_q.append(Config(dataset_name="bigann", batch_size=2048, b=4096, m=10, pq=True, datasize=10))
     # configs_q.append(Config(dataset_name="bigann", batch_size=2048, b=4096, m=10, datasize=10))
     # configs_q.append(Config(dataset_name="bigann", batch_size=2048, b=4096, m=10, datasize=10,pq=True))
     # for dataset in datasets:

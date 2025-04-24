@@ -192,7 +192,7 @@ def process_query_batch(data, neighbours, query_vectors, candidate_buckets, inde
         unique_candidates = np.where(counts >= freq_threshold)[0]
         if len(unique_candidates) <= requested_amount:
             query_end = time.time()
-            batch_results[i] = (unique_candidates, neighbours[i], 0, (query_end-query_start) + base_time_per_query), ut.recall_single(unique_candidates, neighbours[i])
+            batch_results[i] = (unique_candidates, neighbours[i], 0, (query_end-query_start) + base_time_per_query, ut.recall_single(unique_candidates, neighbours[i]))
         else:
             reordering_start = time.time()
             final_neighbours, dist_comps, true_nns_time, fetch_data_time, current_mem = reorder(data, query, np.array(unique_candidates, dtype=int), requested_amount)
@@ -254,8 +254,7 @@ def query_multiple_batched(data, index, vectors, neighbours, config: Config):
             fetch_data_sum += fetch_data_time
             results[batch_idx] = batch_results
             batch_idx += 1
-
-    ut.log_mem("peak memory during querying (obtained during reordering)", memory, config.memlog_path)
+            
     print(f"Time spent on forward passes: {forward_pass_sum}")
     print(f"Time spent collecting candidates: {collecting_candidates_sum}")
     print(f"Time spent on true nns: {true_nns_sum}")

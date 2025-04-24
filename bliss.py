@@ -1,4 +1,3 @@
-import faiss
 import gc
 import logging
 import numpy as np
@@ -9,7 +8,6 @@ import resource
 import sys
 import time
 import torch
-import tracemalloc
 from pympler import asizeof
 from torch.utils.data import DataLoader
 from sklearn.utils import murmurhash3_32 as mmh3
@@ -39,27 +37,25 @@ def build_index(dataset: ds.Dataset, config: Config, trial=None):
     
     sample = ut.get_training_sample_from_memmap(memmap_path, mmp_shape, sample_size, SIZE, DIM)
     print(f"sample size = {len(sample)}")
-    sample_mem_size = asizeof.asizeof(sample)
-    ut.log_mem("memory of train sample object", sample_mem_size, config.memlog_path)
 
     print("finding neighbours...", flush=True)
     neighbours = ut.get_train_nearest_neighbours_from_file(sample, config.nr_train_neighbours, sample_size, config.dataset_name, config.datasize)
-    neighbours_mem_size = asizeof.asizeof(neighbours)
-    ut.log_mem("memory of neighbours object", neighbours_mem_size, config.memlog_path)
 
     # labels = torch.zeros((1, 1))
     dataset = BLISSDataset(sample, config.device)
 
     final_index = []
-    time_per_r = [] 
+    train_time_per_r = [] 
+    final_assign_time_per_r = []
     memory_training = 0
     memory_final_assignment = 0
     bucket_size_stats = []
     model_sizes_total = 0
     index_sizes_total = 0
+    start = time.time()
     for r in range(config.r):
         logging.info(f"Training model {r+1}")
-        start = time.time()
+        start_training = time.time()
 
         sample_buckets, bucket_sizes = assign_initial_buckets(sample_size, r, config.b)
         logging.info(f"Random starting buckets initialized")
@@ -68,21 +64,15 @@ def build_index(dataset: ds.Dataset, config: Config, trial=None):
         print(bucket_sizes)
 
         print("making initial groundtruth labels", flush=True)
-        # labels = ut.make_ground_truth_labels(config.b, neighbours, sample_buckets, sample_size)
-        # dataset.labels = labels
-        ds_size = asizeof.asizeof(dataset)
-        ut.log_mem("size of training dataset before training", ds_size, config.memlog_path)
         
         print(f"setting up model {r+1}")
         ut.set_torch_seed(r, config.device)
         model = BLISS_NN(DIM, config.b)
-        model_size = asizeof.asizeof(model)
-        ut.log_mem("model size before training", model_size, config.memlog_path)
         print(f"training model {r+1}")
         memory_training_current = train_model(model, dataset, sample_buckets, sample_size, bucket_sizes, neighbours, r, SIZE, config)
-        ut.log_mem(f"memory during training model {r+1}", memory_training_current, config.memlog_path)
         memory_training = memory_training_current if memory_training_current > memory_training else memory_training
-        model_path, model_file_size = ut.save_model(model, config.dataset_name, r+1, config.r, config.k, config.b, config.lr, config.batch_size, config.reass_mode)
+        model_path, model_file_size = ut.save_model(model, config.dataset_name, r+1, config.r, config.k, config.b, config.lr, config.batch_size, config.reass_mode, config.reass_chunk_size)
+        train_time_per_r.append(time.time() - start_training)
         model_sizes_total += model_file_size
         print(f"model {r+1} saved to {model_path}.")
 
@@ -98,26 +88,25 @@ def build_index(dataset: ds.Dataset, config: Config, trial=None):
         model.to(config.device)
         index = None
         if sample_size < SIZE:
+            final_assign_start = time.time()
             index, memory_final_assignment = build_full_index(bucket_sizes, SIZE, model, config)
+            final_assign_time_per_r.append(time.time()-final_assign_start)
         else:
             index = sample_buckets
+            final_assign_time_per_r.append(0)
         del model 
             
         inverted_index, offsets = invert_index(index, bucket_sizes, SIZE)
-        index_path, index_files_size = ut.save_inverted_index(inverted_index, offsets, config.dataset_name, r+1, config.r, config.k, config.b, config.lr, config.batch_size, config.reass_mode)
+        index_path, index_files_size = ut.save_inverted_index(inverted_index, offsets, config.dataset_name, r+1, config.r, config.k, config.b, config.lr, config.batch_size, config.reass_mode, config.reass_chunk_size)
         index_sizes_total += index_files_size
         del inverted_index, offsets
         final_index.append((index_path, model_path))
-        end = time.time()
-        time_per_r.append(end - start)
         bucket_size_stats.append(bucket_sizes)
 
     build_time = time.time() - start
-    load_balance = ut.calc_load_balance(bucket_size_stats)
+    normalised_entropy = ut.norm_ent(bucket_sizes)
 
-    ut.log_mem(f"final_reass={config.reass_mode}_reass_chunk_size={config.reass_chunk_size}", memory_final_assignment, config.memlog_path)
-    ut.log_mem(f"training={config.reass_mode}_batch_size={config.batch_size}", memory_training, config.memlog_path)
-    return final_index, time_per_r, build_time, memory_final_assignment, memory_training, load_balance, index_sizes_total, model_sizes_total
+    return final_index, sum(train_time_per_r), sum(final_assign_time_per_r), build_time, memory_final_assignment, memory_training, normalised_entropy, index_sizes_total, model_sizes_total
 
 def assign_initial_buckets(train_size, r, B):
     '''
@@ -262,9 +251,9 @@ def load_indexes_and_models(config: Config, SIZE, DIM, b):
     offsets_paths = []
     model_paths = []
     for i in range (config.r):
-        inverted_indexes_paths.append(f"models/{config.dataset_name}_r{config.r}_k{config.k}_b{config.b}_lr{config.lr}_bs={config.batch_size}_reass={config.reass_mode}/index_model{i+1}_{config.dataset_name}_r{i+1}_k{config.k}_b{config.b}_lr{config.lr}.npy")
-        offsets_paths.append(f"models/{config.dataset_name}_r{config.r}_k{config.k}_b{config.b}_lr{config.lr}_bs={config.batch_size}_reass={config.reass_mode}/offsets_model{i+1}_{config.dataset_name}_r{i+1}_k{config.k}_b{config.b}_lr{config.lr}.npy")
-        model_paths.append(f"models/{config.dataset_name}_r{config.r}_k{config.k}_b{config.b}_lr{config.lr}_bs={config.batch_size}_reass={config.reass_mode}/model_{config.dataset_name}_r{i+1}_k{config.k}_b{config.b}_lr{config.lr}.pt")
+        inverted_indexes_paths.append(f"models/{config.dataset_name}_r{config.r}_k{config.k}_b{config.b}_lr{config.lr}_bs={config.batch_size}_reass={config.reass_mode}_chunk_size={config.reass_chunk_size}/index_model{i+1}_{config.dataset_name}_r{i+1}_k{config.k}_b{config.b}_lr{config.lr}.npy")
+        offsets_paths.append(f"models/{config.dataset_name}_r{config.r}_k{config.k}_b{config.b}_lr{config.lr}_bs={config.batch_size}_reass={config.reass_mode}_chunk_size={config.reass_chunk_size}/offsets_model{i+1}_{config.dataset_name}_r{i+1}_k{config.k}_b{config.b}_lr{config.lr}.npy")
+        model_paths.append(f"models/{config.dataset_name}_r{config.r}_k{config.k}_b{config.b}_lr{config.lr}_bs={config.batch_size}_reass={config.reass_mode}_chunk_size={config.reass_chunk_size}/model_{config.dataset_name}_r{i+1}_k{config.k}_b{config.b}_lr{config.lr}.pt")
 
     indexes = np.zeros(shape = (config.r, SIZE), dtype=np.uint32)
     offsets = np.zeros(shape = (config.r, config.b), dtype=np.uint32)
@@ -310,10 +299,6 @@ def fill_memmap_in_batches(dataset, config: Config, mmp):
     '''
     index = 0
     for batch in dataset.get_dataset_iterator(bs=1_000_000):
-        process = psutil.Process(os.getpid())
-        memory_usage = process.memory_full_info().uss / (1024 ** 2)
-        ut.log_mem(f"while loading for memmap batch: ", memory_usage, config.memlog_path)
-        print(f"mem usage while loading batch: {memory_usage}")
         batch_size = len(batch)
         mmp[index: index + batch_size] = batch
         mmp.flush()
@@ -328,23 +313,14 @@ def run_bliss(config: Config, mode, experiment_name, trial=None):
 
     config.experiment_name = experiment_name
     print(f"Using device: {config.device}")
-    print(config.dataset_name)
-
-    if not os.path.exists(f"results/{experiment_name}/"):
-        os.mkdir(f"results/{experiment_name}/")
-    MEMLOG_PATH = f"results/{experiment_name}/{experiment_name}_memory_log.csv"
-    config.memlog_path = MEMLOG_PATH
 
     dataset = ut.get_dataset_obj(config.dataset_name, config.datasize)
     SIZE = dataset.nb
     DIM = dataset.d
     dataset.prepare()
     if mode == 'build':
-        index, time_per_r, build_time, memory_final_assignment, memory_training, load_balance, index_sizes_total, model_sizes_total = build_index(dataset, config, trial)
-        usage = resource.getrusage(resource.RUSAGE_SELF)
-        peak_mem = usage.ru_maxrss / 1_000_000 if sys.platform == 'darwin' else usage.ru_maxrss / 1000
-        ut.log_mem("peak_mem_building", peak_mem, MEMLOG_PATH)
-        return time_per_r, build_time, memory_final_assignment, memory_training, load_balance, index_sizes_total, model_sizes_total
+        index, train_time, final_assign_time, build_time, memory_final_assignment, memory_training, load_balance, index_sizes_total, model_sizes_total = build_index(dataset, config, trial)
+        return train_time, final_assign_time, build_time, memory_final_assignment, memory_training, load_balance, index_sizes_total, model_sizes_total
     elif mode == 'query':
         # set b if it wasn't already set in config
         b = config.b if config.b !=0 else 1024
@@ -355,45 +331,17 @@ def run_bliss(config: Config, mode, experiment_name, trial=None):
         logging.info("Reading query vectors and ground truths")
         process = psutil.Process(os.getpid())
         data, test, neighbours = load_data_for_inference(dataset, config, SIZE, DIM)
-        mem_load = process.memory_full_info().uss / (1024**2)
-        ut.log_mem("memory after loading data", mem_load, MEMLOG_PATH)
  
         print(f"creating tensor array from Test")
         test = torch.from_numpy(test).to(torch.float32)
-        data_pq = None
-        if config.pq:
-            start = time.time()
-            sample, _ = ut.get_training_sample(dataset, 1_000_000, SIZE, DIM)
-            data_pq, _ = ut.train_pq(sample.astype(np.float32), 32, 8)
-            del sample
-            data_pq.add(data)
-            del data
-            faiss.write_index(data_pq, 'datapq.index')
-            pq_index_size = os.path.getsize('datapq.index')
-            ut.log_mem(f"size of data (pq index)", pq_index_size, MEMLOG_PATH)
-            print(f"preprocessing for pq took {time.time()-start}")
-        else:
-            index_size = data.nbytes
-            ut.log_mem("size of data", index_size, MEMLOG_PATH)
         
         logging.info("Starting inference")
         start = time.time()
-        # results = query_multiple(data, index, test, neighbours, config.m, config.freq_threshold, config.nr_ann)
-        mem_pre_query = process.memory_full_info().uss / (1024 ** 2)
-        ut.log_mem(f"memory before querying pq:{config.pq}", mem_pre_query, MEMLOG_PATH)
         qstart = time.time()
-        if config.pq:
-            if config.query_batched:
-                results = query_multiple_batched(data_pq, index, test, neighbours, config)
-            else:
-                results = query_multiple(data_pq, index, test, neighbours, config)
+        if config.query_batched:
+            results = query_multiple_batched(data, index, test, neighbours, config)
         else:
-            if config.query_batched:
-                results = query_multiple_batched(data, index, test, neighbours, config)
-            else:
-                results = query_multiple(data, index, test, neighbours, config)
-        mem_post_query = process.memory_full_info().uss / (1024 ** 2)
-        ut.log_mem("peak memory during querying", mem_post_query , config.memlog_path)
+            results = query_multiple(data, index, test, neighbours, config)
         print(f"querying pq={config.pq} took {time.time()-qstart}")
         end = time.time()
 
