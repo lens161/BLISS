@@ -6,7 +6,7 @@ import numpy as np
 import os
 import time
 import torch
-from faiss import IndexFlatL2, IndexPQ, vector_to_array
+from faiss import IndexFlatL2, IndexPQ, IndexIVFPQ ,vector_to_array
 from pandas import read_csv
 
 import datasets as ds
@@ -345,11 +345,16 @@ def set_torch_seed(seed, device):
     elif device == torch.device("mps"):
         torch.mps.manual_seed(seed)
 
-def train_pq(training_data, m = 8, nbits = 8):
+def train_ivfpq(training_data: np.ndarray, data = None, m = 8, nbits = 8, nlist=256):
     d = training_data.shape[1]
-    pq_index = IndexPQ(d, m , nbits)
-    pq_index.train(training_data)
-    return (pq_index, m)
+    quantiser = IndexFlatL2(d)
+    ivf_pq = IndexIVFPQ(quantiser, d, nlist, m, nbits)
+    ivf_pq.train(training_data)
+    if data is not None:
+        ivf_pq.add(data)
+    else:
+        ivf_pq.add(training_data)
+    return (ivf_pq, m)
 
 def random_projection(X, target_dim):
     original_dim = X.shape[1]

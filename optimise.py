@@ -27,7 +27,7 @@ def optimise_m(bucket_size, learning_rate, batch_size, m, trial):
     except optuna.exceptions.TrialPruned as e:
         raise e
 
-    dist_comps_total = sum(result[1] for result in results)
+    dist_comps_total = sum(result[2] for result in results)
     dist_comps_avg = dist_comps_total / len(results)
     return recall, dist_comps_avg
 
