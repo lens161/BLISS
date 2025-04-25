@@ -36,13 +36,13 @@ def download(src, dst=None, max_size=None):
     while True:
         block = inf.read(bs)
         elapsed = time.time() - t0
-        print(
-            "  [%.2f s] downloaded %.2f MiB / %.2f MiB at %.2f MiB/s   " % (
-                elapsed,
-                totsz / 2**20, content_size / 2**20,
-                totsz / 2**20 / elapsed),
-            flush=True, end="\r"
-        )
+        # print(
+        #     "  [%.2f s] downloaded %.2f MiB / %.2f MiB at %.2f MiB/s   " % (
+        #         elapsed,
+        #         totsz / 2**20, content_size / 2**20,
+        #         totsz / 2**20 / elapsed),
+        #     flush=True, end="\r"
+        # )
         if not block:
             break
         if max_size is not None and totsz + len(block) >= max_size:

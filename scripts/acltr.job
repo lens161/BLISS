@@ -2,7 +2,7 @@
 
 #SBATCH --job-name=simple-gpu           # Job name
 #SBATCH --output=outputs/job.%j.out     # Name of output file (%j expands to jobId)
-#SBATCH --cpus-per-task=32               # Schedule 32 cores (includes hyperthreading)
+#SBATCH --cpus-per-task=8               # Schedule 32 cores (includes hyperthreading)
 #SBATCH --time=48:00:00                 # Run time (hh:mm:ss) - run for 48 hours
 #SBATCH --gres=gpu                      # Schedule a GPU, or more with gpu:2 etc
 #SBATCH --partition=acltr               # Run on GPU queue

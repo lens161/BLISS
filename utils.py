@@ -6,7 +6,7 @@ import numpy as np
 import os
 import time
 import torch
-from faiss import IndexFlatL2, IndexPQ, vector_to_array
+from faiss import IndexFlatL2, IndexPQ, IndexIVFPQ ,vector_to_array
 from pandas import read_csv
 
 import datasets as ds
@@ -121,36 +121,7 @@ def make_ground_truth_labels(B, neighbours, index, sample_size):
     buckets = np.concatenate([index[n] for n in neighbours])
     # Use advanced indexing to set the corresponding entries to True.
     labels[vectors, buckets] = True
-    # for i in range(sample_size):
-    #     # buckets = index[neighbours[i]]
-    #     # labels1[i, buckets] = 1
-    #     for neighbour in neighbours[i]:
-    #         bucket = index[neighbour]
-    #         labels2[i, bucket] = True
-    # print(f"making ground truch labels {time.time()-start}")
-    # if device != torch.device("cpu"):
-    #     labels = torch.from_numpy(labels).to(torch.float32)
     return torch.from_numpy(labels).float()
-
-# def make_ground_truth_labels(B, neighbours, index, sample_size):
-#     start = time.time()
-
-#     # initialise empty sparse tensor
-#     indices = torch.empty(2, 0, dtype=torch.int32)
-#     values = torch.empty(0, dtype=torch.int32)
-#     labels = torch.sparse_coo_tensor(indices, values, size=(sample_size, B), dtype=bool)
-
-#     # get new values
-#     vectors = np.concatenate([np.full(len(n), i) for i, n in enumerate(neighbours)])
-#     buckets = np.concatenate([index[n] for n in neighbours])
-#     indices = np.array([vectors, buckets])
-#     values = np.ones(len(indices[0]))
-
-#     # update sparse tensor
-#     labels = torch.sparse_coo_tensor(indices, values, (sample_size, B))
-
-#     print(f"making ground truch labels {time.time()-start}")
-#     return labels.to_dense().to(bool)
 
 def reassign_vector_to_bucket(index, bucket_sizes, candidate_buckets, i, item_index):
     '''
@@ -214,12 +185,12 @@ def get_B(n):
 # Helpers for loading and saving models and indexes.
 ######################################################################
 
-def save_model(model, dataset_name, r, R, K, B, lr, batch_size, reass_mode):
+def save_model(model, dataset_name, r, R, K, B, lr, batch_size, reass_mode, chunk_size):
     '''
     Save a (trained) model in the models folder and return the path.
     '''
     model_name = f"model_{dataset_name}_r{r}_k{K}_b{B}_lr{lr}"
-    directory = f"models/{dataset_name}_r{R}_k{K}_b{B}_lr{lr}_bs={batch_size}_reass={reass_mode}/"
+    directory = f"models/{dataset_name}_r{R}_k{K}_b{B}_lr{lr}_bs={batch_size}_reass={reass_mode}_chunk_size={chunk_size}/"
     MODEL_PATH = os.path.join(directory, f"{model_name}.pt")
     os.makedirs(directory, exist_ok=True)
     torch.save(model.state_dict(), MODEL_PATH)
@@ -236,13 +207,13 @@ def load_model(model_path, dim, b):
     model.eval()
     return model
 
-def save_inverted_index(inverted_index, offsets, dataset_name, model_num, R, K, B, lr, batch_size, reass_mode):
+def save_inverted_index(inverted_index, offsets, dataset_name, model_num, R, K, B, lr, batch_size, reass_mode, chunk_size):
     '''
     Save an inverted index (for a specific dataset and parameter setting combination) in the models folder and return the path.
     '''
     index_name = f"index_model{model_num}_{dataset_name}_r{model_num}_k{K}_b{B}_lr{lr}"
     offsets_name = f"offsets_model{model_num}_{dataset_name}_r{model_num}_k{K}_b{B}_lr{lr}"
-    directory = f"models/{dataset_name}_r{R}_k{K}_b{B}_lr{lr}_bs={batch_size}_reass={reass_mode}/"
+    directory = f"models/{dataset_name}_r{R}_k{K}_b{B}_lr{lr}_bs={batch_size}_reass={reass_mode}_chunk_size={chunk_size}/"
     if not os.path.exists(directory):
         os.makedirs(directory, exist_ok=True)
     index_path = os.path.join(directory, f"{index_name}.npy")
@@ -273,21 +244,6 @@ def make_loss_plot(learning_rate, iterations, epochs_per_iteration, k, B, experi
     plt.grid(True)
     plt.savefig(f"{foldername}/training_loss_lr={learning_rate}_I={iterations}_E={epochs_per_iteration}_k{k}_B{B}_shf={shuffle}_reass={reass_mode}.png")
 
-def log_mem(function_name, mem_usage, filepath):
-    '''
-    Log memory usage to a file.
-    '''
-    file_exists = os.path.isfile(filepath)
-    with open(filepath, mode='a', newline='') as csv_file:
-        fieldnames = ['function', 'memory_usage_mb']
-        writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
-        if not file_exists:
-            writer.writeheader()
-        writer.writerow({
-            'function': function_name,
-            'memory_usage_mb': mem_usage
-        })
-
 def calc_load_balance(bucket_size_stats):
     '''
     Calculate the mean load balance of the bucket assignments of all r indexes for a particular dataset.
@@ -306,9 +262,9 @@ def recall(results, neighbours):
     '''
     Calculate mean recall for a set of queries.
     '''
-    recalls = []
-    for ann, nn in zip(results, neighbours):
-        recalls.append(recall_single(ann, nn))
+    recalls = np.zeros(len(results), dtype=np.float32)
+    for i, (ann, nn) in enumerate(zip(results, neighbours)):
+        recalls[i] = recall_single(ann, nn)
     return np.mean(recalls)
 
 def recall_single(results, neighbours):
@@ -345,11 +301,16 @@ def set_torch_seed(seed, device):
     elif device == torch.device("mps"):
         torch.mps.manual_seed(seed)
 
-def train_pq(training_data, m = 8, nbits = 8):
+def train_ivfpq(training_data: np.ndarray, data = None, m = 8, nbits = 8, nlist=256):
     d = training_data.shape[1]
-    pq_index = IndexPQ(d, m , nbits)
-    pq_index.train(training_data)
-    return (pq_index, m)
+    quantiser = IndexFlatL2(d)
+    ivf_pq = IndexIVFPQ(quantiser, d, nlist, m, nbits)
+    ivf_pq.train(training_data)
+    if data is not None:
+        ivf_pq.add(data)
+    else:
+        ivf_pq.add(training_data)
+    return (ivf_pq, m)
 
 def random_projection(X, target_dim):
     original_dim = X.shape[1]

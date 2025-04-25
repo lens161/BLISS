@@ -7,12 +7,7 @@
 import gzip
 import shutil
 import math
-import numpy
 import os
-import random
-import sys
-import struct
-import time
 from urllib.request import Request, urlopen
 import traceback
 import h5py
