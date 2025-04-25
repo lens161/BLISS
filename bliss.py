@@ -25,13 +25,12 @@ def build_index(dataset: ds.Dataset, config: Config, trial=None):
     logging.info(f"Started building index")
     SIZE = dataset.nb
     DIM = dataset.d
-    # DIM = 64
 
     sample_size = SIZE 
-    if SIZE == 10_000_000:
+    if SIZE == 10_000_000 or SIZE == 100_000_000:
         sample_size = 1_000_000
-    if SIZE == 100_000_000:
-        sample_size = 2_000_000
+    elif SIZE == 1_000_000_000:
+        sample_size = 10_000_000
 
     memmap_path, mmp_shape = save_dataset_as_memmap(dataset, config, SIZE, DIM)
     
@@ -41,7 +40,6 @@ def build_index(dataset: ds.Dataset, config: Config, trial=None):
     print("finding neighbours...", flush=True)
     neighbours = ut.get_train_nearest_neighbours_from_file(sample, config.nr_train_neighbours, sample_size, config.dataset_name, config.datasize)
 
-    # labels = torch.zeros((1, 1))
     dataset = BLISSDataset(sample, config.device)
 
     final_index = []
@@ -278,6 +276,8 @@ def save_dataset_as_memmap(dataset, config: Config, SIZE, DIM):
     Small datasets can be loaded into memory and written to a memmap in one go, larger datasets are processed in chunks.
     '''
     logging.info("Creating dataset memmap")
+    if not os.path.exists("memmaps/"):
+        os.mkdir("memmaps/")
     memmap_path = f"memmaps/{config.dataset_name}_{config.datasize}.npy"
     mmp_shape = (SIZE, DIM)
     print(f"mmp shape = {mmp_shape}")
