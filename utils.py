@@ -159,7 +159,7 @@ def get_dataset_obj(dataset_name, size):
     '''
     if dataset_name == "bigann":
         return ds.BigANNDataset(size)
-    elif dataset_name == "deep1b":
+    elif dataset_name == "Deep1B":
         return ds.Deep1BDataset(size)
     elif dataset_name == "Yandex":
         return ds.Text2Image1B(size)
