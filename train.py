@@ -35,6 +35,7 @@ def train_model(model, dataset, index, sample_size, bucket_sizes, neighbours, r,
     values = torch.empty(0, dtype=torch.int32)
     process = psutil.Process(os.getpid())
     memory_training = 0
+    load_balances = []
     sparse_labels = torch.sparse_coo_tensor(indices, values, size=(sample_size, config.b), dtype=bool)
     for i in range(config.iterations):
         model.train() 
@@ -75,12 +76,13 @@ def train_model(model, dataset, index, sample_size, bucket_sizes, neighbours, r,
             # reassign_base(model, dataset, index, neighbours, bucket_sizes, config)
         if ((epoch+1) * (i+1) < config.epochs*config.iterations and sample_size != train_size) or sample_size == train_size:
             reassign_buckets(model, dataset, index, bucket_sizes, sample_size, neighbours, config)
+        load_balances.append(1 / np.std(bucket_sizes))
         torch.cuda.empty_cache()
         np.set_printoptions(threshold=6, suppress=True)
         print(f"index after iteration {i}: \r{index}", flush=True)
 
     # ut.make_loss_plot(config.lr, config.iterations, config.epochs, config.k, config.b, config.experiment_name, all_losses, config.shuffle, config.reass_mode)
-    return memory_training
+    return memory_training, load_balances
 
 def reassign_buckets(model, dataset, index, bucket_sizes, sample_size, neighbours, config: Config):
     '''
@@ -112,11 +114,6 @@ def reassign_buckets(model, dataset, index, bucket_sizes, sample_size, neighbour
 
     finish = time.time()
     elapsed = finish - start
-    process = psutil.Process(os.getpid())
-    mem_usage = process.memory_full_info().uss / (1024 ** 2)
-    ut.log_mem(f"improved_reassign_buckets", mem_usage, config.memlog_path)
-
-    print(f"Memory usage (improved reassign): {mem_usage:.2f} MB")
     print(f"Reassigning took {elapsed:.2f} seconds", flush=True)
     
     # new_labels = ut.make_ground_truth_labels(config.b, neighbours, index, sample_size)
@@ -139,10 +136,6 @@ def reassign_base(model, dataset, index, neighbours, bucket_sizes, config: Confi
     ut.get_all_topk_buckets(data_loader, config.k, candidate_buckets, model, 0, config.device)
     # concatenate all predictions along the 0th dimension -> create tensor of predictions per vector of shape(N, B)
     # all_predictions = torch.cat(all_predictions, dim=0) 
-    process = psutil.Process(os.getpid())
-    mem_usage = process.memory_full_info().uss / (1024 ** 2)
-    print(f"basline reass memory usage: {mem_usage:.2f} MB")
-    ut.log_mem("reassign_base", mem_usage, config.memlog_path)
 
     bucket_sizes[:] = 0
     for i in range(N):

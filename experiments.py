@@ -21,7 +21,7 @@ def build_multiple_indexes_exp(experiment_name, configs):
     for config in configs:
         r, k, epochs, iterations, b, lr, reass_chunk_size, batch_size, reass_mode, freq_threshold = config.r, config.k, config.epochs, config.iterations, config.b, config.lr, config.reass_chunk_size, config.batch_size, config.reass_mode, config.freq_threshold
 
-        train_time, final_assign_time, build_time, memory_final_assignment, memory_training, normalised_entropy, index_sizes_total, model_sizes_total = run_bliss(config, mode=mode, experiment_name=experiment_name)
+        train_time, final_assign_time, build_time, memory_final_assignment, memory_training, normalised_entropy, index_sizes_total, model_sizes_total, load_balances = run_bliss(config, mode=mode, experiment_name=experiment_name)
 
                         # Hyperparameters:
         stats.append({'R':r, 'k':k, 'epochs_per_it':epochs, 'iterations':iterations, 
@@ -30,7 +30,7 @@ def build_multiple_indexes_exp(experiment_name, configs):
                         # Measurements/Results:
                       'build_time':build_time, 'train_time_per_r':train_time, 'final_assign_time_per_r':final_assign_time,
                       'mem_training':memory_training, 'mem_final_ass':memory_final_assignment, 'load_balance':normalised_entropy, 
-                      'index_sizes_total': index_sizes_total,'model_sizes_total': model_sizes_total})
+                      'index_sizes_total': index_sizes_total,'model_sizes_total': model_sizes_total, 'load_balances': load_balances})
     df = pd.DataFrame(stats)
         
     foldername = f"results/{experiment_name}"
@@ -51,18 +51,18 @@ def run_multiple_query_exp(experiment_name, configs):
             individual_results.append({'ANNs': ','.join(map(str, anns)) if isinstance(anns, (list, np.ndarray)) else str(anns), 
                             'true_nns': ','.join(map(str, true_nns)) if isinstance(true_nns, (list, np.ndarray)) else str(true_nns),
                             'distance_computations': dist_comps, 
-                            'elapsed': elapsed,
-                            'recall': recall})
+                            'elapsed': elapsed, 'recall': recall})
+            
         qps = len(stats)/total_query_time
         individual_results_df = pd.DataFrame(individual_results)
-        avg_results_and_params = pd.DataFrame([{'r': config.r, 'k': config.k, 'm': config.m, 'bs': config.batch_size, 'reass_mode': config.reass_mode, 
+        avg_results_and_params = pd.DataFrame([{'dataset_name':config.dataset_name, 'datasize':config.datasize, 'r': config.r, 'k': config.k, 'm': config.m, 'bs': config.batch_size, 'reass_mode': config.reass_mode, 
                                                'nr_ann': config.nr_ann, 'lr': config.lr, 'avg_recall': avg_recall, 'qps': qps}])
         foldername = f"results/{experiment_name}"
         if not os.path.exists("results"):
             os.mkdir("results")
         if not os.path.exists(f"results/{experiment_name}"):
             os.mkdir(foldername)
-        with pd.HDFStore(f"{foldername}/r{config.r}_k{config.k}_m{config.m}_qps{qps:.2f}_avg_rec{avg_recall:.3f}_bs={config.batch_size}_reass={config.reass_mode}_nr_ann={config.nr_ann}_lr={config.lr}.h5", mode='w') as store:
+        with pd.HDFStore(f"{foldername}/{config.dataset_name}_{config.datasize}_r{config.r}_k{config.k}_m{config.m}_qps{qps:.2f}_avg_rec{avg_recall:.3f}_bs={config.batch_size}_reass={config.reass_mode}_nr_ann={config.nr_ann}_lr={config.lr}.h5", mode='w') as store:
             store.put('individual_results', individual_results_df, format='table')
             store.put('averages', avg_results_and_params, format='table')
 
@@ -78,7 +78,7 @@ if __name__ == "__main__":
     m_values = [5, 10, 15]
     reass_modes = [0, 1, 2, 3]
     batch_sizes = [1024, 2048, 5000]
-    EXP_NAME = "check_new_model_names"
+    EXP_NAME = "check_new_df"
 
     if not os.path.exists("logs"):
         os.mkdir("logs")
@@ -98,8 +98,9 @@ if __name__ == "__main__":
     
     logging.info("[Experiment] Experiments started")
     # check that datasize in config is set to correct value. (default = 1)
-    # configs_b.append(Config(dataset_name="sift-128-euclidean", batch_size=2048, b=4096, r=2, epochs=2, iterations=2))
-    configs_q.append(Config(dataset_name="sift-128-euclidean", batch_size=2048, b=4096, r=2, epochs=2, iterations=2,  mem_tracking=True))
+    configs_b.append(Config(dataset_name="sift-128-euclidean", batch_size=2048, b=4096, r = 2, iterations=2, epochs=2))
+    configs_q.append(Config(dataset_name="sift-128-euclidean", batch_size=2048, b=4096, r = 2, iterations=2, epochs=2))
+    # configs_q.append(Config(dataset_name="sift-128-euclidean", batch_size=2048, b=4096))
     # configs_b.append(Config(dataset_name="sift-128-euclidean", batch_size=2048, b=4096, m=10, datasize=10))
     # configs_q.append(Config(dataset_name="bigann", batch_size=2048, b=4096, m=10, pq=True, datasize=10))
     # configs_q.append(Config(dataset_name="bigann", batch_size=2048, b=4096, m=10, datasize=10))
@@ -121,7 +122,7 @@ if __name__ == "__main__":
                 
     print(f"EXPERIMENT: {EXP_NAME}")
     logging.info(f"[Experiment] Building indexes")
-    # build_multiple_indexes_exp(EXP_NAME, configs_b)
+    build_multiple_indexes_exp(EXP_NAME, configs_b)
     logging.info(f"[Experiment] Starting query experiments")
     run_multiple_query_exp(EXP_NAME, configs_q)
 

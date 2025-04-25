@@ -202,7 +202,6 @@ def process_query_batch(data, neighbours, query_vectors, candidate_buckets, inde
             batch_results[i] = (unique_candidates, neighbours[i], 0, (query_end-query_start) + base_time_per_query, ut.recall_single(unique_candidates, neighbours[i]))
         else:
             reordering_start = time.time()
-            print(f"reorder with mem_tracking = {track_mem}")
             final_neighbours, dist_comps, true_nns_time, fetch_data_time, current_mem = reorder(data, query, np.array(unique_candidates, dtype=int), requested_amount, process, track_mem)
             memory = current_mem if current_mem > memory else memory
             del unique_candidates
@@ -239,7 +238,7 @@ def query_multiple_batched(data, index, vectors, neighbours, config: Config):
     print(f"Processing queries in batches")
     
     queries_batched = BLISSDataset(vectors, device = torch.device("cpu"), mode='train')
-    query_loader = DataLoader(queries_batched, batch_size=config.batch_size, shuffle=False, num_workers=8)
+    query_loader = DataLoader(queries_batched, batch_size=config.query_batch_size, shuffle=False, num_workers=8)
     batch_idx = 0
     memory = 0
     process = psutil.Process(os.getpid())
