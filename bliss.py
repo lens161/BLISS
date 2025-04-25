@@ -47,6 +47,7 @@ def build_index(dataset: ds.Dataset, config: Config, trial=None):
     final_index = []
     train_time_per_r = [] 
     final_assign_time_per_r = []
+    load_balances_all = []
     memory_training = 0
     memory_final_assignment = 0
     bucket_size_stats = []
@@ -69,7 +70,7 @@ def build_index(dataset: ds.Dataset, config: Config, trial=None):
         ut.set_torch_seed(r, config.device)
         model = BLISS_NN(DIM, config.b)
         print(f"training model {r+1}")
-        memory_training_current = train_model(model, dataset, sample_buckets, sample_size, bucket_sizes, neighbours, r, SIZE, config)
+        memory_training_current, load_balances = train_model(model, dataset, sample_buckets, sample_size, bucket_sizes, neighbours, r, SIZE, config)
         memory_training = memory_training_current if memory_training_current > memory_training else memory_training
         model_path, model_file_size = ut.save_model(model, config.dataset_name, r+1, config.r, config.k, config.b, config.lr, config.batch_size, config.reass_mode, config.reass_chunk_size)
         train_time_per_r.append(time.time() - start_training)
@@ -102,11 +103,12 @@ def build_index(dataset: ds.Dataset, config: Config, trial=None):
         del inverted_index, offsets
         final_index.append((index_path, model_path))
         bucket_size_stats.append(bucket_sizes)
+        load_balances_all.append(load_balances)
 
     build_time = time.time() - start
     normalised_entropy = ut.norm_ent(bucket_sizes)
 
-    return final_index, sum(train_time_per_r), sum(final_assign_time_per_r), build_time, memory_final_assignment, memory_training, normalised_entropy, index_sizes_total, model_sizes_total
+    return final_index, sum(train_time_per_r), sum(final_assign_time_per_r), build_time, memory_final_assignment, memory_training, normalised_entropy, index_sizes_total, model_sizes_total, load_balances_all
 
 def assign_initial_buckets(train_size, r, B):
     '''
@@ -319,8 +321,8 @@ def run_bliss(config: Config, mode, experiment_name, trial=None):
     DIM = dataset.d
     dataset.prepare()
     if mode == 'build':
-        index, train_time, final_assign_time, build_time, memory_final_assignment, memory_training, load_balance, index_sizes_total, model_sizes_total = build_index(dataset, config, trial)
-        return train_time, final_assign_time, build_time, memory_final_assignment, memory_training, load_balance, index_sizes_total, model_sizes_total
+        index, train_time, final_assign_time, build_time, memory_final_assignment, memory_training, load_balance, index_sizes_total, model_sizes_total, load_balances = build_index(dataset, config, trial)
+        return train_time, final_assign_time, build_time, memory_final_assignment, memory_training, load_balance, index_sizes_total, model_sizes_total, load_balances
     elif mode == 'query':
         # set b if it wasn't already set in config
         b = config.b if config.b !=0 else 1024
