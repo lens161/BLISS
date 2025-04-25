@@ -67,6 +67,8 @@ def create_study_load_balance(name):
 if __name__ == '__main__':
     STUDY_NAME = "find_b_bs_lr_for_sift"
 
+    optuna.study.delete_study(STUDY_NAME, "sqlite:///opt_bliss.db")
+
     create_study_load_balance(STUDY_NAME)
     
     # processes = []
