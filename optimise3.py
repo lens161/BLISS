@@ -4,8 +4,8 @@ from multiprocessing import Process
 from bliss import run_bliss
 from config import Config
 
-DATASET = "bigann"
-DATASIZE = 10
+DATASET = "sift-128-euclidean"
+DATASIZE = 1
 EXP_NAME = "optimise"
 
 def optimise_load_balance(bucket_size, learning_rate, batch_size, trial):
@@ -34,7 +34,7 @@ def optimise_m(bucket_size, learning_rate, batch_size, m, trial):
 
 def objective(trial):
     bucket_size = trial.suggest_categorical('B', [4096])
-    learning_rate = trial.suggest_categorical('lr', [0.001, 0.002, 0.003, 0.004, 0.005, 0.007, 0.01])
+    learning_rate = trial.suggest_categorical('lr', [0.0005, 0.004, 0.005, 0.007, 0.01])
     batch_size = trial.suggest_categorical('batch_size', [1000, 2000, 3000, 4000, 5000])
     # m = trial.suggest_categorical('m', [5, 25])
 

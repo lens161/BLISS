@@ -80,7 +80,7 @@ def build_index(dataset: ds.Dataset, config: Config, trial=None):
         if trial is not None:
             ne = ut.norm_ent(bucket_sizes) # get normalised entropy for current bucketsizes
             trial.report(ne, step=1)
-            threshold = 0.7
+            threshold = 0.8
             if ne < threshold:
                 raise optuna.exceptions.TrialPruned(f"buckets too unbalanced normalised entropy = {ne}, min is {threshold}")
         
