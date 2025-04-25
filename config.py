@@ -7,7 +7,7 @@ class Config:
     def __init__(self, dataset_name, r= 4, k= 2, m = 2, freq_threshold = 2, 
                  epochs = 5, iterations = 4, batch_size = 256, nr_train_neighbours = 100, 
                  nr_ann = 10, b = 0, lr = 0.001, reass_mode = 0, reass_chunk_size = 5000, 
-                 pq = False, query_batched=True, datasize=1):
+                 pq = False, query_batched=True, datasize=1, mem_tracking = False):
         self.dataset_name = dataset_name
         self.r = r
         self.k = k
@@ -27,6 +27,7 @@ class Config:
         self.datasize = datasize
         self.device = get_best_device()
         self.experiment_name = None
+        self.mem_tracking = mem_tracking
     
     def __str__(self):
         return (f"Config [dataset_name: {self.dataset_name}, r: {self.r}, k: {self.k}, m: {self.m}, b: {self.b}, lr: {self.lr}, reass: {self.reass_mode}, freq_threshold: {self.freq_threshold}, "

@@ -165,7 +165,7 @@ def get_candidates_for_query_vectorised(predicted_buckets, model_indexes, model_
         candidates = np.empty(0, dtype=np.int32)
     return candidates
 
-def process_query_batch(data, neighbours, query_vectors, candidate_buckets, indexes, offsets, freq_threshold, requested_amount, batch_process_start):
+def process_query_batch(data, neighbours, query_vectors, candidate_buckets, indexes, offsets, freq_threshold, requested_amount, batch_process_start, process, max_cand_size, mem_tracking):
     ## input: candidate_buckets np array for a batch of queries
     ## output: the ANNs for the batch of queries, dist_comps per query, recall per query
     batch_results = [[] for i in range(len(query_vectors))]
@@ -190,12 +190,20 @@ def process_query_batch(data, neighbours, query_vectors, candidate_buckets, inde
         counts = np.bincount(candidates)
         # Get valid elements (those whose counts are greater than or equal to threshold)
         unique_candidates = np.where(counts >= freq_threshold)[0]
-        if len(unique_candidates) <= requested_amount:
+        cand_size = len(unique_candidates)
+        # set memory tracking and update current largest encountered candidate set site if necessary
+        track_mem = False
+        if mem_tracking: 
+            track_mem = False if cand_size <= max_cand_size else True
+            max_cand_size = max_cand_size if cand_size <= max_cand_size else cand_size
+        
+        if cand_size <= requested_amount:
             query_end = time.time()
             batch_results[i] = (unique_candidates, neighbours[i], 0, (query_end-query_start) + base_time_per_query, ut.recall_single(unique_candidates, neighbours[i]))
         else:
             reordering_start = time.time()
-            final_neighbours, dist_comps, true_nns_time, fetch_data_time, current_mem = reorder(data, query, np.array(unique_candidates, dtype=int), requested_amount)
+            print(f"reorder with mem_tracking = {track_mem}")
+            final_neighbours, dist_comps, true_nns_time, fetch_data_time, current_mem = reorder(data, query, np.array(unique_candidates, dtype=int), requested_amount, process, track_mem)
             memory = current_mem if current_mem > memory else memory
             del unique_candidates
             query_end = time.time()
@@ -234,6 +242,8 @@ def query_multiple_batched(data, index, vectors, neighbours, config: Config):
     query_loader = DataLoader(queries_batched, batch_size=config.batch_size, shuffle=False, num_workers=8)
     batch_idx = 0
     memory = 0
+    process = psutil.Process(os.getpid())
+    max_cand_size = 0
     with torch.no_grad():
         batch_process_start = time.time()
         for batch_data, batch_indices in query_loader:
@@ -246,7 +256,7 @@ def query_multiple_batched(data, index, vectors, neighbours, config: Config):
                 predicted_buckets_per_query[:, i, :] = candidate_buckets
             forward_pass_end = time.time()
             forward_pass_sum += (forward_pass_end - forward_pass_start)
-            batch_results, collecting_candidates_time, true_nns_time, reordering_time, fetch_data_time, current_mem = process_query_batch(data, neighbours[batch_indices], batch_data, predicted_buckets_per_query, indexes, offsets, config.freq_threshold, config.nr_ann, batch_process_start)
+            batch_results, collecting_candidates_time, true_nns_time, reordering_time, fetch_data_time, current_mem = process_query_batch(data, neighbours[batch_indices], batch_data, predicted_buckets_per_query, indexes, offsets, config.freq_threshold, config.nr_ann, batch_process_start, process, max_cand_size, config.mem_tracking)
             memory = current_mem if current_mem > memory else memory
             collecting_candidates_sum += collecting_candidates_time
             true_nns_sum += true_nns_time
@@ -263,7 +273,7 @@ def query_multiple_batched(data, index, vectors, neighbours, config: Config):
     flattened_results = [item for sublist in results for item in sublist]
     return flattened_results
     
-def reorder(data, query_vector, candidates, requested_amount):
+def reorder(data, query_vector, candidates, requested_amount, process, track_mem = False):
     '''
     Do true distance calculations on the candidate set of vectors and return the top 'requested_amount' candidates.
     ''' 
@@ -272,8 +282,8 @@ def reorder(data, query_vector, candidates, requested_amount):
 
     #TODO: figure out new way to take these measurements as they cause slowdown
     # process = psutil.Process(os.getpid())
-    # mem = process.memory_full_info().uss / (1024 ** 2)
-    mem = 0
+
+    mem = 0 if not track_mem else process.memory_full_info().uss / (1024 ** 2)
     fetch_data_s = time.time()
     if not isinstance(data, IndexPQ):
         search_space = np.ascontiguousarray(data[candidates])

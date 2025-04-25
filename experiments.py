@@ -98,8 +98,8 @@ if __name__ == "__main__":
     
     logging.info("[Experiment] Experiments started")
     # check that datasize in config is set to correct value. (default = 1)
-    configs_b.append(Config(dataset_name="sift-128-euclidean", batch_size=2048, b=4096, r=2, epochs=2, iterations=2))
-    configs_q.append(Config(dataset_name="sift-128-euclidean", batch_size=2048, b=4096, r=2, epochs=2, iterations=2))
+    # configs_b.append(Config(dataset_name="sift-128-euclidean", batch_size=2048, b=4096, r=2, epochs=2, iterations=2))
+    configs_q.append(Config(dataset_name="sift-128-euclidean", batch_size=2048, b=4096, r=2, epochs=2, iterations=2,  mem_tracking=True))
     # configs_b.append(Config(dataset_name="sift-128-euclidean", batch_size=2048, b=4096, m=10, datasize=10))
     # configs_q.append(Config(dataset_name="bigann", batch_size=2048, b=4096, m=10, pq=True, datasize=10))
     # configs_q.append(Config(dataset_name="bigann", batch_size=2048, b=4096, m=10, datasize=10))
