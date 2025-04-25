@@ -1,8 +1,10 @@
 from utils import get_dataset_obj
 
-ds = get_dataset_obj("bigann", 1000)
+datasets = ["Deep1B", "Yandex", "MSSpaceV"]
 
-print(f"downloading bigann")
-ds.prepare()
-print(f"finished downloading bigann")
+for dataset in datasets:
+    print(f"downloading {dataset}")
+    ds = get_dataset_obj(dataset, 1000)
+    ds.prepare()
+    print(f"finished downloading {dataset}")
 

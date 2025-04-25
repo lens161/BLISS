@@ -161,6 +161,10 @@ def get_dataset_obj(dataset_name, size):
         return ds.BigANNDataset(size)
     elif dataset_name == "deep1b":
         return ds.Deep1BDataset(size)
+    elif dataset_name == "Yandex":
+        return ds.Text2Image1B(size)
+    elif dataset_name == "MSSpaceV":
+        return ds.MSSPACEV1B(size)
     elif dataset_name == "sift-128-euclidean":
         return ds.Sift_128()
     elif dataset_name == "glove-100-angular":
