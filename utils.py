@@ -120,7 +120,7 @@ def make_ground_truth_labels(B, neighbours, index, sample_size):
     # build column indices by applying the mapping to each neighbour array.
     buckets = np.concatenate([index[n] for n in neighbours])
     # Use advanced indexing to set the corresponding entries to True.
-    labels[vectors, buckets] = Tru
+    labels[vectors, buckets] = True
     return torch.from_numpy(labels).float()
 
 def reassign_vector_to_bucket(index, bucket_sizes, candidate_buckets, i, item_index):
