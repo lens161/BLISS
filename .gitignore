@@ -21,6 +21,7 @@ logs/
 *.txt
 hpc_archive/
 datapq.index
+azcopy/
 
 # experiment files 
 experiments_2.py
