@@ -1,12 +1,12 @@
-import csv
 import logging
 import math
 import matplotlib.pyplot as plt # type: ignore
 import numpy as np
 import os
 import time
+import psutil
 import torch
-from faiss import IndexFlatL2, IndexPQ, IndexIVFPQ ,vector_to_array
+from faiss import IndexFlatL2, IndexPQ, IndexIVFPQ, vector_to_array
 from pandas import read_csv
 
 import datasets as ds
@@ -132,6 +132,20 @@ def reassign_vector_to_bucket(index, bucket_sizes, candidate_buckets, i, item_in
     best_bucket = candidates[np.argmin(candidate_sizes)]
     index[item_index] = best_bucket
     bucket_sizes[best_bucket] += 1
+
+def assign_to_buckets_vectorised(bucket_sizes, SIZE, index, chunk_size, i, topk_per_vector):
+    process = psutil.Process(os.getpid())
+    candidate_sizes_per_vector = bucket_sizes[topk_per_vector]    
+    vectors = np.arange(topk_per_vector.shape[0])
+    sizes = np.argmin(candidate_sizes_per_vector, axis=1)
+    # get the least ocupied of each candidate set 
+    least_occupied = topk_per_vector[vectors, sizes]
+    memory_usage = process.memory_full_info().uss / (1024 ** 2)
+    index[i : min(i + chunk_size, SIZE)] = least_occupied
+
+    bucket_increments = np.bincount(least_occupied, minlength=len(bucket_sizes))
+    bucket_sizes[:] = np.add(bucket_sizes, bucket_increments)
+    return memory_usage
 
 def get_all_topk_buckets(loader, k, candidate_buckets, map_model, offset, device):
     logging.info(f"Mapping all train vectors to buckets (baseline)")
