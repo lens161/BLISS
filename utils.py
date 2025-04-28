@@ -72,10 +72,15 @@ def normalise_data(data):
     return data
 
 def get_training_sample(dataset: ds.Dataset, sample_size, SIZE, DIM):
+    '''
+    Get a training sample of sample_size, given a dataset. The sample is taken by selecting random indices.
+    If the dataset is too large to load at once, it is loaded in chunks, and random indices are selected
+    per chunk.
+    '''
     if sample_size == SIZE:
         return dataset.get_dataset(), np.arange(0, SIZE)
     sample = np.zeros((sample_size, DIM))
-    sample_indexes = np.zeros(sample_size)
+    sample_indices = np.zeros(sample_size)
     chunk_size = 1_000_000
     chunk_sample_size = sample_size // chunk_size
     index = 0
@@ -83,11 +88,11 @@ def get_training_sample(dataset: ds.Dataset, sample_size, SIZE, DIM):
         random_order = np.arange(len(batch))
         np.random.seed(i)
         np.random.shuffle(random_order)
-        chunk_sample_indexes = np.sort(random_order[:chunk_sample_size])
-        sample_indexes[index : index+len(batch)] = chunk_sample_indexes
-        sample[index : index+len(batch)] = batch[chunk_sample_indexes]
+        chunk_sample_indices = np.sort(random_order[:chunk_sample_size])
+        sample_indices[index : index+len(batch)] = chunk_sample_indices
+        sample[index : index+len(batch)] = batch[chunk_sample_indices]
         index += len(batch)
-    return sample, sample_indexes
+    return sample, sample_indices
 
 def get_training_sample_from_memmap(memmap_path, mmp_shape, sample_size, SIZE, DIM):
     '''
@@ -134,6 +139,12 @@ def reassign_vector_to_bucket(index, bucket_sizes, candidate_buckets, i, item_in
     bucket_sizes[best_bucket] += 1
 
 def assign_to_buckets_vectorised(bucket_sizes, SIZE, index, chunk_size, i, topk_per_vector):
+    '''
+    Reassign a chunk of vectors to a new bucket. The vectors are reassigned to the least
+    occupied of the top-k buckets predicted by the model, but as multiple vectors are reassigned at once,
+    there is no guarantee that the selected bucket is the least occupied if multiple vectors
+    are getting reassigned to the same bucket in a single batch.
+    '''
     process = psutil.Process(os.getpid())
     candidate_sizes_per_vector = bucket_sizes[topk_per_vector]    
     vectors = np.arange(topk_per_vector.shape[0])
@@ -148,6 +159,9 @@ def assign_to_buckets_vectorised(bucket_sizes, SIZE, index, chunk_size, i, topk_
     return memory_usage
 
 def get_all_topk_buckets(loader, k, candidate_buckets, map_model, offset, device):
+    '''
+    Prepare a table with the top-k buckets for all vectors in a loader according to the model.
+    '''
     logging.info(f"Mapping all train vectors to buckets (baseline)")
     start_idx = offset
     start = time.time()
@@ -160,6 +174,9 @@ def get_all_topk_buckets(loader, k, candidate_buckets, map_model, offset, device
     print(f"getting top k took {time.time()-start}")
 
 def get_topk_buckets_for_batch(batch_data, k, map_model, device):
+    '''
+    Prepare a table with the top-k buckets for a batch of vectors according to the model.
+    '''
     batch_data = batch_data.to(device)
     bucket_probabilities = torch.sigmoid(map_model(batch_data))
     bucket_probabilities_cpu = bucket_probabilities.cpu()
@@ -320,6 +337,10 @@ def set_torch_seed(seed, device):
         torch.mps.manual_seed(seed)
 
 def train_ivfpq(training_data: np.ndarray, data = None, m = 8, nbits = 8, nlist=256):
+    '''
+    Train a PQ index. Training date is encoded into the provided number of bits.
+    If any additional data is passed, it is added to the pq index instead of only adding the train data.
+    '''
     d = training_data.shape[1]
     quantiser = IndexFlatL2(d)
     ivf_pq = IndexIVFPQ(quantiser, d, nlist, m, nbits)
@@ -331,12 +352,17 @@ def train_ivfpq(training_data: np.ndarray, data = None, m = 8, nbits = 8, nlist=
     return (ivf_pq, m)
 
 def random_projection(X, target_dim):
+    '''
+    Make a random projection of a set of input vectors, by multiplying with a random vector of the target dimension.
+    '''
     original_dim = X.shape[1]
     R = np.random.randn(original_dim, target_dim) / np.sqrt(target_dim)
     return np.dot(X, R)
 
 def norm_ent(bucket_sizes):
-    '''get normalised entropy to check balancedness of buckets'''
+    '''
+    Get normalised entropy to check balancedness of buckets.
+    '''
     B = len(bucket_sizes)
     total = sum(bucket_sizes)
     probs = np.zeros(B, dtype=np.float32)
