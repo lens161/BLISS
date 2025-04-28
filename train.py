@@ -70,6 +70,7 @@ def train_model(model, dataset, index, sample_size, bucket_sizes, neighbours, r,
             model.to(config.device)
             reassign_loader = DataLoader(dataset, batch_size=config.batch_size, shuffle=False, num_workers=8)
             start = time.time()
+            print(f"reassigning buckets using mode: {config.reass_mode}")
             if config.reass_mode == 0:
                 reassign_0(model, index, bucket_sizes, config, reassign_loader)
             elif config.reass_mode == 1:
@@ -77,7 +78,7 @@ def train_model(model, dataset, index, sample_size, bucket_sizes, neighbours, r,
             elif config.reass_mode == 2:
                 reassign_2(model, index, bucket_sizes, config, reassign_loader)
             elif config.reass_mode == 3:
-                reassign_3(model, index, bucket_sizes, config, reassign_loader)
+                reassign_3(model, index, bucket_sizes, config, dataset)
             finish = time.time()
             elapsed = finish - start
             print(f"Reassigning took {elapsed:.2f} seconds", flush=True)
@@ -95,9 +96,10 @@ def reassign_0(model, index, bucket_sizes, config: Config, reassign_loader):
     Used for reference to compare to our improved version.
     '''
     N = len(index)
-    candidate_buckets = np.zeros(shape = (N, config.k))
+    candidate_buckets = np.zeros(shape = (N, config.k), dtype=np.uint32)
 
     ut.get_all_topk_buckets(reassign_loader, config.k, candidate_buckets, model, 0, config.device)
+    print(f"candidate buckets type: {candidate_buckets.dtype}")
 
     bucket_sizes[:] = 0
     for i in range(N):
@@ -130,7 +132,7 @@ def reassign_2(model, index, bucket_sizes, config: Config, reassign_loader):
     instead of sequentially.
     '''  
     N = len(index)
-    candidate_buckets = np.zeros(shape = (N, config.k))
+    candidate_buckets = np.zeros(shape = (N, config.k), dtype=np.uint32)
 
     ut.get_all_topk_buckets(reassign_loader, config.k, candidate_buckets, model, 0, config.device)
 
@@ -140,14 +142,16 @@ def reassign_2(model, index, bucket_sizes, config: Config, reassign_loader):
         topk_per_vector = candidate_buckets[i : min(i + chunk_size, N)]
         ut.assign_to_buckets_vectorised(bucket_sizes, N, index, chunk_size, i, topk_per_vector)
     
-def reassign_3(model, index, bucket_sizes, config: Config, reassign_loader):
+def reassign_3(model, index, bucket_sizes, config: Config, dataset):
     '''
     Combination of baseline and our own reassignment, where we get the topk buckets in batches and also
     reassign in chunks instead of sequentially.
     ''' 
     offset = 0
     N = len(index)
+    bucket_sizes [:] = 0
     chunk_size = config.reass_chunk_size
+    reassign_loader = DataLoader(dataset, batch_size=config.reass_chunk_size, shuffle=False, num_workers=8)
     with torch.no_grad():
         for batch_data, _ in reassign_loader:
             topk_per_vector = ut.get_topk_buckets_for_batch(batch_data, config.k, model, config.device).numpy()
