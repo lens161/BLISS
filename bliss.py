@@ -67,7 +67,7 @@ def build_index(dataset: ds.Dataset, config: Config, trial=None):
         print(f"training model {r+1}")
         memory_training_current, load_balances = train_model(model, dataset, sample_buckets, sample_size, bucket_sizes, neighbours, r, SIZE, config)
         memory_training = memory_training_current if memory_training_current > memory_training else memory_training
-        model_path, model_file_size = ut.save_model(model, config.dataset_name, r+1, config.r, config.k, config.b, config.lr, config.batch_size, config.reass_mode, config.reass_chunk_size)
+        model_path, model_file_size = ut.save_model(model, config.dataset_name, r+1, config.r, config.k, config.b, config.lr, config.batch_size, config.reass_mode, config.reass_chunk_size, config.epochs, config.iterations)
         train_time_per_r.append(time.time() - start_training)
         model_sizes_total += model_file_size
         print(f"model {r+1} saved to {model_path}.")
@@ -93,7 +93,7 @@ def build_index(dataset: ds.Dataset, config: Config, trial=None):
         del model 
             
         inverted_index, offsets = invert_index(index, bucket_sizes, SIZE)
-        index_path, index_files_size = ut.save_inverted_index(inverted_index, offsets, config.dataset_name, r+1, config.r, config.k, config.b, config.lr, config.batch_size, config.reass_mode, config.reass_chunk_size)
+        index_path, index_files_size = ut.save_inverted_index(inverted_index, offsets, config.dataset_name, r+1, config.r, config.k, config.b, config.lr, config.batch_size, config.reass_mode, config.reass_chunk_size, config.epochs, config.iterations)
         index_sizes_total += index_files_size
         del inverted_index, offsets
         final_index.append((index_path, model_path))
@@ -242,9 +242,9 @@ def load_indexes_and_models(config: Config, SIZE, DIM, b):
     offsets_paths = []
     model_paths = []
     for i in range (config.r):
-        inverted_indexes_paths.append(f"models/{config.dataset_name}_r{config.r}_k{config.k}_b{config.b}_lr{config.lr}_bs={config.batch_size}_reass={config.reass_mode}_chunk_size={config.reass_chunk_size}/index_model{i+1}_{config.dataset_name}_r{i+1}_k{config.k}_b{config.b}_lr{config.lr}.npy")
-        offsets_paths.append(f"models/{config.dataset_name}_r{config.r}_k{config.k}_b{config.b}_lr{config.lr}_bs={config.batch_size}_reass={config.reass_mode}_chunk_size={config.reass_chunk_size}/offsets_model{i+1}_{config.dataset_name}_r{i+1}_k{config.k}_b{config.b}_lr{config.lr}.npy")
-        model_paths.append(f"models/{config.dataset_name}_r{config.r}_k{config.k}_b{config.b}_lr{config.lr}_bs={config.batch_size}_reass={config.reass_mode}_chunk_size={config.reass_chunk_size}/model_{config.dataset_name}_r{i+1}_k{config.k}_b{config.b}_lr{config.lr}.pt")
+        inverted_indexes_paths.append(f"models/{config.dataset_name}_r{config.r}_k{config.k}_b{config.b}_lr{config.lr}_bs={config.batch_size}_reass={config.reass_mode}_chunk_size={config.reass_chunk_size}_e={config.epochs}_i={config.iterations}/index_model{i+1}_{config.dataset_name}_r{i+1}_k{config.k}_b{config.b}_lr{config.lr}.npy")
+        offsets_paths.append(f"models/{config.dataset_name}_r{config.r}_k{config.k}_b{config.b}_lr{config.lr}_bs={config.batch_size}_reass={config.reass_mode}_chunk_size={config.reass_chunk_size}_e={config.epochs}_i={config.iterations}/offsets_model{i+1}_{config.dataset_name}_r{i+1}_k{config.k}_b{config.b}_lr{config.lr}.npy")
+        model_paths.append(f"models/{config.dataset_name}_r{config.r}_k{config.k}_b{config.b}_lr{config.lr}_bs={config.batch_size}_reass={config.reass_mode}_chunk_size={config.reass_chunk_size}_e={config.epochs}_i={config.iterations}/model_{config.dataset_name}_r{i+1}_k{config.k}_b{config.b}_lr{config.lr}.pt")
 
     indexes = np.zeros(shape = (config.r, SIZE), dtype=np.uint32)
     offsets = np.zeros(shape = (config.r, config.b), dtype=np.uint32)

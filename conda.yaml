@@ -15,6 +15,7 @@ dependencies:
       - pandas
       - psutil
       - pympler
+      - pytables
       - scikit-learn
       - torch
       - torchvision

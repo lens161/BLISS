@@ -203,12 +203,12 @@ def get_B(n):
 # Helpers for loading and saving models and indexes.
 ######################################################################
 
-def save_model(model, dataset_name, r, R, K, B, lr, batch_size, reass_mode, chunk_size):
+def save_model(model, dataset_name, r, R, K, B, lr, batch_size, reass_mode, chunk_size, e, i):
     '''
     Save a (trained) model in the models folder and return the path.
     '''
     model_name = f"model_{dataset_name}_r{r}_k{K}_b{B}_lr{lr}"
-    directory = f"models/{dataset_name}_r{R}_k{K}_b{B}_lr{lr}_bs={batch_size}_reass={reass_mode}_chunk_size={chunk_size}/"
+    directory = f"models/{dataset_name}_r{R}_k{K}_b{B}_lr{lr}_bs={batch_size}_reass={reass_mode}_chunk_size={chunk_size}_e={e}_i={i}/"
     MODEL_PATH = os.path.join(directory, f"{model_name}.pt")
     os.makedirs(directory, exist_ok=True)
     torch.save(model.state_dict(), MODEL_PATH)
@@ -225,13 +225,13 @@ def load_model(model_path, dim, b):
     model.eval()
     return model
 
-def save_inverted_index(inverted_index, offsets, dataset_name, model_num, R, K, B, lr, batch_size, reass_mode, chunk_size):
+def save_inverted_index(inverted_index, offsets, dataset_name, model_num, R, K, B, lr, batch_size, reass_mode, chunk_size, e, i):
     '''
     Save an inverted index (for a specific dataset and parameter setting combination) in the models folder and return the path.
     '''
     index_name = f"index_model{model_num}_{dataset_name}_r{model_num}_k{K}_b{B}_lr{lr}"
     offsets_name = f"offsets_model{model_num}_{dataset_name}_r{model_num}_k{K}_b{B}_lr{lr}"
-    directory = f"models/{dataset_name}_r{R}_k{K}_b{B}_lr{lr}_bs={batch_size}_reass={reass_mode}_chunk_size={chunk_size}/"
+    directory = f"models/{dataset_name}_r{R}_k{K}_b{B}_lr{lr}_bs={batch_size}_reass={reass_mode}_chunk_size={chunk_size}_e={e}_i={i}/"
     if not os.path.exists(directory):
         os.makedirs(directory, exist_ok=True)
     index_path = os.path.join(directory, f"{index_name}.npy")
