@@ -4,11 +4,8 @@ import numpy as np
 import optuna
 import os
 import psutil  # type: ignore
-import resource
-import sys
 import time
 import torch
-from pympler import asizeof
 from torch.utils.data import DataLoader
 from sklearn.utils import murmurhash3_32 as mmh3
 
@@ -17,7 +14,6 @@ import utils as ut
 from bliss_model import BLISS_NN, BLISSDataset
 from config import Config
 from query import query_multiple, query_multiple_batched, load_data_for_inference
-# from query_twostep import query_multiple, query_multiple_batched, load_data_for_inference
 from train import train_model
     
 def build_index(dataset: ds.Dataset, config: Config, trial=None):
@@ -125,6 +121,21 @@ def assign_initial_buckets(train_size, r, B):
     
     return np.array(index, dtype=np.uint32), bucket_sizes
 
+def map_all_to_buckets_0(index, bucket_sizes, full_data, data_batched, data_loader, N, k, model, device):
+    '''
+    Baseline implementation using the same strategy as the BLISS original code <TODO-insert github link>.
+    Gets all candidate buckets per vector at once and does the reassignment sequentially.
+    '''
+    print("started map all", flush=True)
+    process = psutil.Process(os.getpid())
+    candidate_buckets = get_all_candidate_buckets(len(index), model, k, device, full_data, data_batched, data_loader)
+    memory_usage = process.memory_full_info().uss / (1024 ** 2)
+    print("finished getting topk", flush=True)
+
+    for i in range(N):
+        ut.reassign_vector_to_bucket(index, bucket_sizes, candidate_buckets, i, i)
+    return memory_usage
+
 def map_all_to_buckets_1(map_loader, full_data, data_batched, k, index, bucket_sizes, map_model, device):
     '''
     Do a forward pass on the model with batches of vectors, then assign the vectors to a bucket one by one.
@@ -147,19 +158,29 @@ def map_all_to_buckets_1(map_loader, full_data, data_batched, k, index, bucket_s
         offset += len(batch)
     return memory_usage
 
-def map_all_to_buckets_0(index, bucket_sizes, full_data, data_batched, data_loader, N, k, model, device):
-    '''
-    Baseline implementation using the same strategy as the BLISS original code <TODO-insert github link>.
-    Gets all candidate buckets per vector at once and does the reassignment sequentially.
-    '''
-    print("started map all", flush=True)
-    process = psutil.Process(os.getpid())
-    candidate_buckets = get_all_candidate_buckets(len(index), model, k, device, full_data, data_batched, data_loader)
-    memory_usage = process.memory_full_info().uss / (1024 ** 2)
-    print("finished getting topk", flush=True)
+def map_all_to_buckets_2(bucket_sizes, SIZE, model, memory_usage, k, device, index, full_data, data_batched, chunk_size, map_loader):
+    candidate_buckets = get_all_candidate_buckets(SIZE, model, k, device, full_data, data_batched, map_loader)
 
-    for i in range(N):
-        ut.reassign_vector_to_bucket(index, bucket_sizes, candidate_buckets, i, i)
+    for i in range(0, SIZE, chunk_size):
+        # get the topk buckets per vector
+        topk_per_vector = candidate_buckets[i : min(i + chunk_size, SIZE)] # shape = (chunk_size, k)
+        memory_current = ut.assign_to_buckets_vectorised(bucket_sizes, SIZE, index, chunk_size, i, topk_per_vector)
+        memory_usage = memory_current if memory_current>memory_usage else memory_usage
+    return memory_usage
+
+def map_all_to_buckets_3(bucket_sizes, SIZE, model, config, memory_usage, reass_mode, k, index, full_data, data_batched, chunk_size, map_loader):
+    logging.info(f"Mapping all to buckets mode: {reass_mode}")
+    offset = 0
+    process = psutil.Process(os.getpid())
+    for batch in full_data.get_dataset_iterator(bs=1_000_000):
+        data_batched.data = torch.from_numpy(batch).float()
+        with torch.no_grad():
+            for batch_data, _ in map_loader:
+                topk_per_vector = ut.get_topk_buckets_for_batch(batch_data, k, model, config.device).numpy()
+                memory_current = ut.assign_to_buckets_vectorised(bucket_sizes, SIZE, index, chunk_size, offset, topk_per_vector)
+                memory_current = process.memory_full_info().uss / (1024 ** 2)
+                memory_usage = memory_usage if memory_current > memory_usage else memory_usage
+                offset += chunk_size
     return memory_usage
 
 def build_full_index(bucket_sizes, SIZE, model, config: Config):
@@ -181,47 +202,16 @@ def build_full_index(bucket_sizes, SIZE, model, config: Config):
 
     elif reass_mode == 2:
         # Do all forward passes sequentially and then do reassignments in batches
-        candidate_buckets = get_all_candidate_buckets(SIZE, model, k, device, full_data, data_batched, map_loader)
-
-        for i in range(0, SIZE, chunk_size):
-            # get the topk buckets per vector
-            topk_per_vector = candidate_buckets[i : min(i + chunk_size, SIZE)] # shape = (chunk_size, k)
-            memory_current = assign_to_buckets_vectorised(bucket_sizes, SIZE, index, chunk_size, i, topk_per_vector)
-            memory_usage = memory_current if memory_current>memory_usage else memory_usage
+        memory_usage = map_all_to_buckets_2(bucket_sizes, SIZE, model, memory_usage, k, device, index, full_data, data_batched, chunk_size, map_loader)
 
     elif reass_mode == 3:
         # Alternate fowardpasses wih batched reassignment -> vectorised assignment of a whole batch of buckets at once
-        logging.info(f"Mapping all to buckets mode: {reass_mode}")
-        offset = 0
-        process = psutil.Process(os.getpid())
-        for batch in full_data.get_dataset_iterator(bs=1_000_000):
-            data_batched.data = torch.from_numpy(batch).float()
-            with torch.no_grad():
-                for batch_data, _ in map_loader:
-                    topk_per_vector = ut.get_topk_buckets_for_batch(batch_data, k, model, config.device).numpy()
-                    memory_current = assign_to_buckets_vectorised(bucket_sizes, SIZE, index, chunk_size, offset, topk_per_vector)
-                    memory_current = process.memory_full_info().uss / (1024 ** 2)
-                    memory_usage = memory_usage if memory_current > memory_usage else memory_usage
-                    offset += chunk_size
+        memory_usage = map_all_to_buckets_3(bucket_sizes, SIZE, model, config, memory_usage, reass_mode, k, index, full_data, data_batched, chunk_size, map_loader)
 
     end = time.time()
     logging.info(f"final assignment mode:{reass_mode} took {end-start} seconds")
 
     return index, memory_usage
-
-def assign_to_buckets_vectorised(bucket_sizes, SIZE, index, chunk_size, i, topk_per_vector):
-    process = psutil.Process(os.getpid())
-    candidate_sizes_per_vector = bucket_sizes[topk_per_vector]    
-    vectors = np.arange(topk_per_vector.shape[0])
-    sizes = np.argmin(candidate_sizes_per_vector, axis=1)
-    # get the least ocupied of each candidate set 
-    least_occupied = topk_per_vector[vectors, sizes]
-    memory_usage = process.memory_full_info().uss / (1024 ** 2)
-    index[i : min(i + chunk_size, SIZE)] = least_occupied
-
-    bucket_increments = np.bincount(least_occupied, minlength=len(bucket_sizes))
-    bucket_sizes[:] = np.add(bucket_sizes, bucket_increments)
-    return memory_usage
 
 def get_all_candidate_buckets(SIZE, model, k, device, full_data, data_batched, map_loader):
     candidate_buckets = np.zeros(shape= (SIZE, k), dtype=np.uint32) # all topk buckets per vector shape = (N, k).
@@ -332,7 +322,6 @@ def run_bliss(config: Config, mode, experiment_name, trial=None):
         logging.info("Loading models for inference")
         index = load_indexes_and_models(config, SIZE, DIM, b)
         logging.info("Reading query vectors and ground truths")
-        process = psutil.Process(os.getpid())
         data, test, neighbours = load_data_for_inference(dataset, config, SIZE, DIM)
  
         print(f"creating tensor array from Test")
