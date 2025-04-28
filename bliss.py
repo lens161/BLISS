@@ -17,6 +17,9 @@ from query import query_multiple, query_multiple_batched, load_data_for_inferenc
 from train import train_model
     
 def build_index(dataset: ds.Dataset, config: Config, trial=None):
+    '''
+    Main index build loop
+    '''
         
     print("bulding index...")
     logging.info(f"Started building index")
@@ -124,7 +127,7 @@ def assign_initial_buckets(train_size, r, B):
 
 def map_all_to_buckets_0(index, bucket_sizes, full_data, data_batched, data_loader, N, k, model, device):
     '''
-    Baseline implementation using the same strategy as the BLISS original code <TODO-insert github link>.
+    Baseline implementation using the same strategy as the BLISS original code (https://github.com/gaurav16gupta/BLISS).
     Gets all candidate buckets per vector at once and does the reassignment sequentially.
     '''
     print("started map all", flush=True)
@@ -160,6 +163,10 @@ def map_all_to_buckets_1(map_loader, full_data, data_batched, k, index, bucket_s
     return memory_usage
 
 def map_all_to_buckets_2(bucket_sizes, SIZE, model, memory_usage, k, device, index, full_data, data_batched, chunk_size, map_loader):
+    '''
+    First collect the top-k buckets for all vectors by doing forward passes on the model. 
+    Then go through the vectors in batches, reassigning a whole batch at once.
+    '''
     candidate_buckets = get_all_candidate_buckets(SIZE, model, k, device, full_data, data_batched, map_loader)
 
     for i in range(0, SIZE, chunk_size):
@@ -170,6 +177,10 @@ def map_all_to_buckets_2(bucket_sizes, SIZE, model, memory_usage, k, device, ind
     return memory_usage
 
 def map_all_to_buckets_3(bucket_sizes, SIZE, model, config, memory_usage, reass_mode, k, index, full_data, data_batched, chunk_size, map_loader):
+    '''
+    Go through the data in batches. For each batch, get the predicted top-k buckets for all vectors by doing a forward pass on the model.
+    Then reassign the whole batch.
+    '''
     logging.info(f"Mapping all to buckets mode: {reass_mode}")
     offset = 0
     process = psutil.Process(os.getpid())
@@ -185,6 +196,10 @@ def map_all_to_buckets_3(bucket_sizes, SIZE, model, config, memory_usage, reass_
     return memory_usage
 
 def build_full_index(bucket_sizes, SIZE, model, config: Config):
+    '''
+    With a trained model, go through all data (also non-sample data) and create the full index.
+    The method of assigning each vector to its final bucket dependso on the chosen reassignment mode.
+    '''
     bucket_sizes[:] = 0 
     memory_usage = 0
     reass_mode, k, device = config.reass_mode, config.k, config.device
@@ -215,6 +230,9 @@ def build_full_index(bucket_sizes, SIZE, model, config: Config):
     return index, memory_usage
 
 def get_all_candidate_buckets(SIZE, model, k, device, full_data, data_batched, map_loader):
+    '''
+    For a set of data, predict the top-k candidates for each vector according to a model, and aggregate the results.
+    '''
     candidate_buckets = np.zeros(shape= (SIZE, k), dtype=np.uint32) # all topk buckets per vector shape = (N, k).
     offset = 0
     for batch in full_data.get_dataset_iterator(bs = 1_000_000):
