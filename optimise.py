@@ -60,32 +60,8 @@ def create_study_m(name):
     )
     study.optimize(objective, n_trials=20)
 
-# def run_optimisation(name):
-#     study = optuna.load_study(
-#         storage="sqlite:///opt_bliss.db",
-#         study_name = name
-#     )
-#     study.optimize(objective, n_trials=10)
-
-# def run_optimisation(name):
-#     study = optuna.load_study(
-#         storage="sqlite:///opt_bliss.db",
-#         study_name = name
-#     )
-#     study.optimize(objective, n_trials=10)
-
 if __name__ == '__main__':
     optuna.delete_study(study_name="find_m_for_sift", storage="sqlite:///opt_bliss.db")
     STUDY_NAME = "find_m_for_sift"
 
     create_study_m(STUDY_NAME)
-    
-    # processes = []
-    
-    # for _ in range(4):
-    #     p = Process(target=run_optimisation, args=(STUDY_NAME,))
-    #     p.start()
-    #     processes.append(p)
-
-    # for p in processes:
-    #     p.join()

@@ -50,31 +50,8 @@ def create_study_load_balance(name):
     )
     study.optimize(objective, n_trials=50)
 
-# def run_optimisation(name):
-#     study = optuna.load_study(
-#         storage="sqlite:///opt_bliss.db",
-#         study_name = name
-#     )
-#     study.optimize(objective, n_trials=10)
-
-# def run_optimisation(name):
-#     study = optuna.load_study(
-#         storage="sqlite:///opt_bliss.db",
-#         study_name = name
-#     )
-#     study.optimize(objective, n_trials=10)
-
 if __name__ == '__main__':
     STUDY_NAME = "find_b_bs_lr_for_bigann"
 
     create_study_load_balance(STUDY_NAME)
-    
-    # processes = []
-    
-    # for _ in range(4):
-    #     p = Process(target=run_optimisation, args=(STUDY_NAME,))
-    #     p.start()
-    #     processes.append(p)
 
-    # for p in processes:
-    #     p.join()
