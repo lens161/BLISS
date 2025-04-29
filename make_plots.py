@@ -72,12 +72,12 @@ def plot_individual_recall_vs_dist_comps(results, averages, experiment_name):
             os.mkdir(foldername)
         
         # reuse qps from filename and make plot
-        plt.savefig(f"results/{experiment_name}/{dataset_name}_{datasize}_r{r}_k{k}_m{m}_qps{qps:.2f}_avg_rec{avg_recall:.3f}_bs={bs}_reass={reass_mode}_nr_ann={nr_ann}_lr={lr}_chunk_size={chunk_size}_e={epochs}_i={iters}.png", dpi=300)
+        # plt.savefig(f"results/{experiment_name}/{dataset_name}_{datasize}_r{r}_k{k}_m{m}_qps{qps:.2f}_avg_rec{avg_recall:.3f}_bs={bs}_reass={reass_mode}_nr_ann={nr_ann}_lr={lr}_chunk_size={chunk_size}_e={epochs}_i={iters}.png", dpi=300)
         
         # alternatively, calculate recall and qps from individual queries, but qps measurement is slightly off
         # new_recall = result['recall'].mean()
-        # new_qps = len(result) / result['elapsed'].sum()
-        # plt.savefig(f"results/{experiment_name}/r{r}_k{k}_m{m}_qps{new_qps:.2f}_avg_rec{avg_recall:.3f}_bs={bs}_reass={reass_mode}_nr_ann={nr_ann}_lr={lr}.png", dpi=300)
+        new_qps = len(result) / result['elapsed'].sum()
+        plt.savefig(f"results/{experiment_name}/r{r}_k{k}_m{m}_qps{new_qps:.2f}_avg_rec{avg_recall:.3f}_bs={bs}_reass={reass_mode}_nr_ann={nr_ann}_lr={lr}.png", dpi=300)
 
 def plot_recall_vs_dist_comps_per_m(results, averages, experiment_name):
     stats = []
