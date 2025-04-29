@@ -137,11 +137,7 @@ def process_query_batch(data, neighbours, query_vectors, candidate_buckets, inde
         # For query i, extract the predicted buckets per model (shape (r, m))
         predicted_buckets = candidate_buckets[i]
         # Use our helper to obtain the candidate set (as a 1D NumPy array)
-        getting_candidates_start = time.time()
         candidates = get_candidates_for_query_vectorised(predicted_buckets, indexes, offsets)
-        getting_candidates_end = time.time()
-        getting_candidates_time += (getting_candidates_end - getting_candidates_start)
-
         # Count occurrences of each element in cands_unf using np.bincount
         counts = np.bincount(candidates)
         # Get valid elements (those whose counts are greater than or equal to threshold)
@@ -158,6 +154,7 @@ def process_query_batch(data, neighbours, query_vectors, candidate_buckets, inde
             batch_results[i] = (unique_candidates, neighbours[i], 0, (query_end-query_start) + base_time_per_query, ut.recall_single(unique_candidates, neighbours[i]))
         else:
             final_neighbours, dist_comps, current_mem = reorder(data, query, np.array(unique_candidates, dtype=int), requested_amount, process, track_mem)
+            query_end = time.time()
             memory = current_mem if current_mem > memory else memory
             del unique_candidates
             batch_results[i] = (final_neighbours, neighbours[i], dist_comps, (query_end-query_start) + base_time_per_query, ut.recall_single(final_neighbours, neighbours[i]))
@@ -187,23 +184,16 @@ def query_multiple_batched(data, index, vectors, neighbours, config: Config):
     process = psutil.Process(os.getpid())
     max_cand_size = 0
     with torch.no_grad():
-        batch_process_start = time.time()
         for batch_data, batch_indices in query_loader:
+            batch_process_start = time.time()
             print(f"Processing one query batch")
-            forward_pass_start = time.time()
             predicted_buckets_per_query = np.zeros((len(batch_data), len(models), config.m), dtype=np.int32)
             for i, model in enumerate(models):
                 bucket_probabilities = torch.sigmoid(model(batch_data))
                 _, candidate_buckets = torch.topk(bucket_probabilities, config.m, dim=1)
                 predicted_buckets_per_query[:, i, :] = candidate_buckets
-            forward_pass_end = time.time()
-            forward_pass_sum += (forward_pass_end - forward_pass_start)
-            batch_results, collecting_candidates_time, true_nns_time, reordering_time, fetch_data_time, current_mem = process_query_batch(data, neighbours[batch_indices], batch_data, predicted_buckets_per_query, indexes, offsets, config.freq_threshold, config.nr_ann, batch_process_start, process, max_cand_size, config.mem_tracking)
+            batch_results, current_mem = process_query_batch(data, neighbours[batch_indices], batch_data, predicted_buckets_per_query, indexes, offsets, config.freq_threshold, config.nr_ann, batch_process_start, process, max_cand_size, config.mem_tracking)
             memory = current_mem if current_mem > memory else memory
-            collecting_candidates_sum += collecting_candidates_time
-            true_nns_sum += true_nns_time
-            reordering_sum += reordering_time
-            fetch_data_sum += fetch_data_time
             results[batch_idx] = batch_results
             batch_idx += 1
 
