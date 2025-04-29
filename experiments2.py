@@ -75,11 +75,11 @@ if __name__ == "__main__":
     # range_K = 2
     range_threshold = 2
     k_values = [2]
-    m_values = [5, 10, 15]
+    m_values = [i for i in range(5, 21)]
     reass_modes = [0, 1, 2, 3]
     batch_sizes = [1024, 2048, 5000]
     iterations = [3, 4, 5]
-    EXP_NAME = "vary_i_e6_bs3000_sift"
+    EXP_NAME = "baseline_sift_glove"
 
     if not os.path.exists("logs"):
         os.mkdir("logs")
@@ -92,17 +92,17 @@ if __name__ == "__main__":
 
     # add all dataset names that the experiments should be run on
     datasets = [
-                "bigann",
-                # "glove-100-angular",
-                # "sift-128-euclidean"
+                # "bigann",
+                "glove-100-angular",
+                "sift-128-euclidean"
                  ]
     
     logging.info("[Experiment] Experiments started")
 
-    for i in iterations:
-        configs_b.append(Config(dataset_name="sift-128-euclidean", batch_size=3000, b=4096, epochs=6,  iterations=i))
+    for dataset in datasets:
+        configs_b.append(Config(dataset_name="sift-128-euclidean", batch_size=1024, b=4096))
         for m in m_values:
-            configs_q.append(Config(dataset_name="sift-128-euclidean", batch_size=3000, b=4096, epochs=6,  iterations=i, m=m))
+            configs_q.append(Config(dataset_name="sift-128-euclidean", batch_size=1024, b=4096, m=m))
                 
     print(f"EXPERIMENT: {EXP_NAME}")
     logging.info(f"[Experiment] Building indexes")

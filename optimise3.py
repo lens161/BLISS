@@ -55,6 +55,4 @@ def create_study_load_balance(name):
 if __name__ == '__main__':
     STUDY_NAME = "find_bs_lr_e_i_for_sift"
 
-    optuna.study.delete_study(STUDY_NAME, "sqlite:///opt_bliss.db")
-
     create_study_load_balance(STUDY_NAME)
