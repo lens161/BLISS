@@ -17,7 +17,6 @@ from bliss_model import BLISSDataset
 import utils as ut
 from config import Config
 
-
 def load_data_for_inference(dataset, config: Config, SIZE, DIM):
     '''
     For a given dataset, load the load thedataset, test data and ground truths.
@@ -28,7 +27,7 @@ def load_data_for_inference(dataset, config: Config, SIZE, DIM):
     memmap_path = f"memmaps/{config.dataset_name}_{config.datasize}.npy"
     memmap_rp_path = f"memmaps/{config.dataset_name}_{config.datasize}_rp8.npy"
     data = np.memmap(memmap_path, mode='r', shape=(SIZE, DIM), dtype=np.float32) if SIZE > 10_000_000 else np.ascontiguousarray(np.memmap(memmap_path,shape=(SIZE, DIM), mode='r', dtype=np.float32))
-    data_rp = np.memmap(memmap_rp_path, mode='r', shape=(SIZE, 8), dtype=np.float32) if SIZE > 10_000_000 else np.ascontiguousarray(np.memmap(memmap_rp_path,shape=(SIZE, 8), mode='r', dtype=np.float32))
+    # data_rp = np.memmap(memmap_rp_path, mode='r', shape=(SIZE, 8), dtype=np.float32) if SIZE > 10_000_000 else np.ascontiguousarray(np.memmap(memmap_rp_path,shape=(SIZE, 8), mode='r', dtype=np.float32))
 
     test = dataset.get_queries()
     neighbours, _ = dataset.get_groundtruth()
@@ -37,7 +36,7 @@ def load_data_for_inference(dataset, config: Config, SIZE, DIM):
     if dataset.distance() == "angular":
         test = ut.normalise_data(test)
     
-    return data, test, neighbours, data_rp
+    return data, test, neighbours
 
 def query(data, index, query_vector, neighbours, m, freq_threshold, requested_amount):
     '''
@@ -128,47 +127,61 @@ def query_multiple(data, index, vectors, neighbours, config: Config):
     #
     return results
 
-def get_candidates_for_query_vectorised(predicted_buckets, model_indexes, model_offsets):
-    """
-    For a single query:
-      - predicted_buckets: NumPy array of shape (r, m) containing the m predicted buckets for each of the r models.
-      - model_indexes: list or array of candidate arrays for each model (each element is a NumPy 1D array).
-      - model_offsets: 2D NumPy array of shape (r, b+1) containing the bucket offsets for each model.
-    Returns a 1D NumPy array of candidate IDs (with duplicates) aggregated from all r models.
-    """
-    # Number of models (r) and number of bucket predictions per model (m)
+def get_candidates_for_query_vectorised(predicted_buckets, model_indexes, model_offsets, model_rp_files, freq_threshold, rp_dim, timers):
     r, m = predicted_buckets.shape
- 
-    # Create an array for model indices so that we can broadcast over the (r, m) predictions.
-    model_axis = np.arange(r)[:, None]  # shape (r,1)
- 
-    # For each (model, predicted bucket) we want to compute a start index:
-    # If bucket == 0, start index is 0, else it is offsets[model, bucket-1]
-    start_indices = np.where(
-        predicted_buckets == 0,
-        0,
-        model_offsets[model_axis, predicted_buckets - 1]
-    )
- 
-    # Similarly, get the end indices for each bucket:
+    model_axis = np.arange(r)[:, None]
+    
+    s = time.time()
+    start_indices = np.where(predicted_buckets == 0, 0, model_offsets[model_axis, predicted_buckets - 1])
     end_indices = model_offsets[model_axis, predicted_buckets]
-    # At this point, 'start_indices' and 'end_indices' are arrays of shape (r, m)
-    # Their difference gives the number of candidates in each predicted bucket.
-    # Although these differences are computed vectorized, the slices themselves will be ragged
-    # (i.e. different lengths per bucket) so we then extract each slice.
-    candidate_slices = [
-        model_indexes[model][start: end]
-        for model in range(r)
-        for start, end in zip(start_indices[model], end_indices[model])
-    ]
-    # Concatenate all the candidate slices (this gives duplicates if same candidate appears in multiple buckets).
-    if candidate_slices:
-        candidates = np.concatenate(candidate_slices)
-    else:
-        candidates = np.empty(0, dtype=np.int32)
-    return candidates
+    e = time.time()
+    timers[0]+=(e-s)
+ 
+    s = time.time()
+    slices = [(model, start, end)
+              for model in range(r)
+              for start, end in zip(start_indices[model], end_indices[model])]
+    e = time.time()
+    timers[1]+=(e-s)
+ 
+    s = time.time()
+    lengths = [end - start for (_, start, end) in slices]
+    total = sum(lengths)
+    candidate_indices = np.empty(total, dtype=np.int64)
+    candidate_data    = np.empty((total, rp_dim), dtype=np.float32)
+    e = time.time()
+    timers[2]+=(e-s)
+ 
+    s = time.time()
+    pos = 0
+    for (model, start, end), length in zip(slices, lengths):
+        candidate_indices[pos:pos+length] = model_indexes[model][start:end]
+        candidate_data   [pos:pos+length] = model_rp_files[model][start:end]
+        pos += length
+    e = time.time()
+    timers[3]+=(e-s)
+ 
+    s = time.time()
+    unique_vals, first_idx, counts = np.unique(
+        candidate_indices, return_index=True, return_counts=True
+    )
+    e = time.time()
+    timers[4] += (e-s)
+    s = time.time()
+    mask = counts >= freq_threshold
+    e = time.time()
+    timers[5] += (e-s)
+    s = time.time()
+    filtered_vals = unique_vals[mask]
+    e = time.time()
+    timers[6] += (e-s)
+    s = time.time()
+    filtered_data = candidate_data[first_idx[mask]]
+    e = time.time()
+    timers[7]+=(e-s)
+    return filtered_vals, filtered_data
 
-def process_query_batch(data, neighbours, query_vectors, candidate_buckets, indexes, offsets, freq_threshold, requested_amount, m, expected_bucket_size, batch_process_start, data_rp, transformer):
+def process_query_batch_twostep(data, neighbours, query_vectors, candidate_buckets, indexes, offsets, rp_files, freq_threshold, requested_amount, m, expected_bucket_size, batch_process_start, transformer, rp_dim, timers):
     ## input: candidate_buckets np array for a batch of queries
     ## output: the ANNs for the batch of queries, dist_comps per query, recall per query
     batch_results = [[] for i in range(len(query_vectors))]
@@ -185,25 +198,26 @@ def process_query_batch(data, neighbours, query_vectors, candidate_buckets, inde
         predicted_buckets = candidate_buckets[i]
         # Use our helper to obtain the candidate set (as a 1D NumPy array)
         getting_candidates_start = time.time()
-        candidates = get_candidates_for_query_vectorised(predicted_buckets, indexes, offsets)
+        candidate_ids, candidate_rp_data = get_candidates_for_query_vectorised(predicted_buckets, indexes, offsets, rp_files, freq_threshold, rp_dim, timers)
         getting_candidates_end = time.time()
         getting_candidates_time += (getting_candidates_end - getting_candidates_start)
 
-        # Count occurrences of each element in cands_unf using np.bincount
-        counts = np.bincount(candidates)
-        # Get valid elements (those whose counts are greater than or equal to threshold)
-        unique_candidates = np.where(counts >= freq_threshold)[0]
-        if len(unique_candidates) <= requested_amount:
+        if len(candidate_ids) <= requested_amount:
             query_end = time.time()
-            batch_results[i] = (unique_candidates, neighbours[i], 0, (query_end-query_start) + base_time_per_query), ut.recall_single(unique_candidates, neighbours[i])
+            batch_results[i] = (candidate_ids, neighbours[i], 0, (query_end-query_start) + base_time_per_query), ut.recall_single(candidate_ids, neighbours[i])
         else:
-            if len(unique_candidates) > m*expected_bucket_size*2:
+            if len(candidate_ids) > m*expected_bucket_size*2:
                 reduced_query = apply_random_projection(query, transformer)
-                unique_candidates = filter_candidates(unique_candidates, reduced_query, m, expected_bucket_size, data_rp)
+                candidate_ids = filter_candidates(candidate_rp_data, candidate_ids, reduced_query, m, expected_bucket_size)
+                if len(candidate_ids) <= requested_amount:
+                    query_end = time.time()
+                    batch_results[i] = (candidate_ids, neighbours[i], 0, (query_end-query_start) + base_time_per_query), ut.recall_single(candidate_ids, neighbours[i])
+                    del candidate_ids, candidate_rp_data
+                    return batch_results, getting_candidates_time, true_nns_sum, reordering_time, fetch_data_sum, memory
             reordering_start = time.time()
-            final_neighbours, dist_comps, true_nns_time, fetch_data_time, current_mem = reorder(data, query, unique_candidates, requested_amount)
+            final_neighbours, dist_comps, true_nns_time, fetch_data_time, current_mem = reorder(data, query, candidate_ids, requested_amount)
             memory = current_mem if current_mem > memory else memory
-            del unique_candidates
+            del candidate_ids, candidate_rp_data
             query_end = time.time()
             batch_results[i] = (final_neighbours, neighbours[i], dist_comps, (query_end-query_start) + base_time_per_query, ut.recall_single(final_neighbours, neighbours[i]))
             reordering_time += (query_end - reordering_start)
@@ -211,11 +225,14 @@ def process_query_batch(data, neighbours, query_vectors, candidate_buckets, inde
             fetch_data_sum += fetch_data_time
     return batch_results, getting_candidates_time, true_nns_sum, reordering_time, fetch_data_sum, memory
 
-def query_multiple_batched(data, index, vectors, neighbours, config: Config, data_rp):
+def query_multiple_batched(data, index, vectors, neighbours, config: Config):
     '''
     Run multiple queries from a set of query vectors i.e. "Test" from the ANN benchmark datsets.
     '''
-    ((indexes, offsets), models) = index
+    if config.query_twostep:
+        ((indexes, offsets, rp_files), models) = index
+    else:
+        ((indexes, offsets), models) = index
     all_bucket_sizes = np.zeros(shape = (config.r, config.b), dtype=np.uint32)
     for r, offset in enumerate(offsets):
         all_bucket_sizes[r] = np.diff(offset, prepend=0)
@@ -224,7 +241,7 @@ def query_multiple_batched(data, index, vectors, neighbours, config: Config, dat
     expected_bucket_size = len(data) // config.b
     print(f"Number of query vectors: {size}")
     print(f"Number of neighbour entries: {len(neighbours)}", flush=True)
-    nr_batches = math.ceil(size / config.batch_size)
+    nr_batches = math.ceil(size / config.query_batch_size)
     results = [[] for i in range(nr_batches)]
     #
     forward_pass_sum = 0
@@ -232,14 +249,15 @@ def query_multiple_batched(data, index, vectors, neighbours, config: Config, dat
     reordering_sum = 0
     true_nns_sum = 0
     fetch_data_sum = 0
+    timers = [0, 0, 0, 0, 0, 0, 0, 0]
     #
 
     # do forward passes on a batch of queries in all models and then process
     print(f"Processing queries in batches")
     
     queries_batched = BLISSDataset(vectors, device = torch.device("cpu"), mode='train')
-    query_loader = DataLoader(queries_batched, batch_size=config.batch_size, shuffle=False, num_workers=8)
-    transformer = SparseRandomProjection(n_components=data_rp.shape[1])
+    query_loader = DataLoader(queries_batched, batch_size=config.query_batch_size, shuffle=False, num_workers=8)
+    transformer = SparseRandomProjection(n_components=config.rp_dim)
 
     batch_idx = 0
     memory = 0
@@ -255,7 +273,7 @@ def query_multiple_batched(data, index, vectors, neighbours, config: Config, dat
                 predicted_buckets_per_query[:, i, :] = candidate_buckets
             forward_pass_end = time.time()
             forward_pass_sum += (forward_pass_end - forward_pass_start)
-            batch_results, collecting_candidates_time, true_nns_time, reordering_time, fetch_data_time, current_mem = process_query_batch(data, neighbours[batch_indices], batch_data, predicted_buckets_per_query, indexes, offsets, config.freq_threshold, config.nr_ann, config.m, expected_bucket_size, batch_process_start, data_rp, transformer)
+            batch_results, collecting_candidates_time, true_nns_time, reordering_time, fetch_data_time, current_mem = process_query_batch_twostep(data, neighbours[batch_indices], batch_data, predicted_buckets_per_query, indexes, offsets, rp_files, config.freq_threshold, config.nr_ann, config.m, expected_bucket_size, batch_process_start, transformer, config.rp_dim, timers)
             memory = current_mem if current_mem > memory else memory
             collecting_candidates_sum += collecting_candidates_time
             true_nns_sum += true_nns_time
@@ -264,7 +282,6 @@ def query_multiple_batched(data, index, vectors, neighbours, config: Config, dat
             results[batch_idx] = batch_results
             batch_idx += 1
 
-    ut.log_mem("peak memory during querying (obtained during reordering)", memory, config.memlog_path)
     print(f"Time spent on forward passes: {forward_pass_sum}")
     print(f"Time spent collecting candidates: {collecting_candidates_sum}")
     print(f"Time spent on true nns: {true_nns_sum}")
@@ -302,106 +319,8 @@ def apply_random_projection(query, transformer):
     reduced_query = transformer.fit_transform(query)
     return reduced_query
 
-def filter_candidates(candidates, reduced_query, m, expected_bucket_size, data_rp):
-    reduced_candidate_data = np.ascontiguousarray(data_rp[candidates], dtype=np.float32)
-    neighbours = ut.get_nearest_neighbours_in_different_dataset(reduced_candidate_data, reduced_query, m*expected_bucket_size*2)
+def filter_candidates(candidate_rp_data, candidate_ids, reduced_query, m, expected_bucket_size):
+    neighbours = ut.get_nearest_neighbours_in_different_dataset(candidate_rp_data, reduced_query, m*expected_bucket_size*2)
     neighbours = neighbours[0]
-    filtered_candidates = candidates[neighbours]
+    filtered_candidates = candidate_ids[neighbours]
     return filtered_candidates
-
-
-# def get_candidates_from_model(model, index, offsets, candidates, query_vector, m):
-#     '''
-#     For a given model, do a forward pass for query_vector to get the top m buckets for this query. Update the candidate set with all vectors found in those buckets.
-#     '''
-#     with torch.no_grad():
-#         probabilities = torch.sigmoid(model(query_vector))
-
-#     _, m_buckets = torch.topk(probabilities, m)
-#     m_buckets = m_buckets.tolist()
-
-#     candidate_counter = Counter()
-#     for bucket in m_buckets:
-#         start = offsets[bucket-1] if bucket != 0 else 0
-#         end = offsets[bucket]
-#         candidate_counter.update(index[start:end])
-    
-#     for vec, count in candidate_counter.items():
-#         candidates[vec] = candidates.get(vec, 0) + count
-
-# def process_query_chunk(chunk, data, index, m, threshold, requested_amount):
-#     '''
-#     Helper function to unpack vectors and neighbours from chunk, as partial application can only take one new argument.
-#     '''
-#     vectors, neighbours = chunk
-#     return query_multiple(data, index, vectors, neighbours, m, threshold, requested_amount, parallel=True)
-
-# def query_multiple_parallel(data, index, vectors, neighbours, m, threshold, requested_amount, num_workers):
-#     '''
-#     Query in parallel. Tasks of chunk_size are created and a process pool is used to process tasks until all tasks have been completed.
-#     Each task is sent to query_multiple to be processed as if it was a single-threaded task.
-#     '''
-#     chunk_size = 200
-#     query_tasks = [(vectors[i:i+chunk_size], neighbours[i:i+chunk_size]) for i in range(0, len(vectors), chunk_size)]
-#     torch.set_num_threads(1)
-
-#     print(f"Number of query vectors: {len(vectors)}")
-#     print(f"Number of neighbour entries: {len(neighbours)}")
-#     print(f"Splitting queries into chunks of size {chunk_size} and dividing over {num_workers} processes", flush=True)
-
-#     try:
-#         process_func = partial(process_query_chunk, data=data, index=index, m=m, threshold=threshold, requested_amount=requested_amount)
-#         with Pool(processes=num_workers) as pool:
-#             results = pool.map(process_func, query_tasks)
-
-#         final_results = []
-#         for result in results:
-#             final_results.extend(result)
-
-#         print("\nQuerying completed.")
-#     except KeyboardInterrupt:
-#         print(f"\nQuerying process interrupted, exiting...")
-#         pool.terminate()
-#         pool.join()
-#         sys.exit(1)
-#     except BrokenPipeError as e:
-#         print(f"\nAn error occurred during querying: {e}")
-#         pool.terminate()
-#         pool.join()
-#         sys.exit(1)
-#     except Exception as e:
-#         print(f"\nAn error occurred during querying: {e}")
-#         pool.terminate()
-#         pool.join()
-#         sys.exit(1)
-
-#     return final_results
-
-# def query_batched(data, index, query_vector, neighbours, freq_threshold, requested_amount, predicted_buckets):
-#     '''
-#     Query the index for a single vector. Get the candidate set of vectors predicted by each of the R models.
-#     Then, filter the candidate set based on the frequency threshold.
-#     If the number of candidates exceeds the requested amount, reorder using true distance computations.
-#     Then return the remaining set of candidates.
-#     '''
-#     ((indexes, offsets), models) = index
-#     candidates = {}
-#     for i in range(len(models)):
-#         idx = indexes[i]
-#         off = offsets[i]
-#         m_buckets = predicted_buckets[:, i].tolist()
-#         candidate_counter = Counter()
-#         for bucket in m_buckets:
-#             start = off[bucket-1] if bucket != 0 else 0
-#             end = off[bucket]
-#             candidate_counter.update(idx[start:end])
-        
-#         for vec, count in candidate_counter.items():
-#             candidates[vec] = candidates.get(vec, 0) + count
-#     final_results = [key for key, value in candidates.items() if value >= freq_threshold]
-#     # print (f"final results = {len(final_results)}")
-#     if len(final_results) <= requested_amount:
-#         return final_results, 0, recall_single(final_results, neighbours)
-#     else:
-#         final_neighbours, dist_comps = reorder(data, query_vector, np.array(final_results, dtype=int), requested_amount)
-#         return final_neighbours, dist_comps, recall_single(final_neighbours, neighbours)

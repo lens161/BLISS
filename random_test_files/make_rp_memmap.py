@@ -22,12 +22,12 @@ def convert_to_sorted_random_projection(data, r, config: Config, index, target_d
     return reduced_vectors
 
 if __name__ == "__main__":
-    config = Config("sift-128-euclidean", batch_size=2048, b=4096)
+    config = Config("glove-100-angular", batch_size=1000, b=4096)
     dataset = ut.get_dataset_obj(config.dataset_name, size=1)
     dataset.prepare()
     data = dataset.get_dataset()
-    SIZE = 1_000_000
-    DIM = 128
+    SIZE = dataset.nb
+    DIM = dataset.d
     b = 4096
     ((indexes, _), _) = load_indexes_and_models(config, SIZE, DIM, b)
     for r, index in enumerate(indexes, start=1):
