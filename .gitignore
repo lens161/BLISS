@@ -21,6 +21,9 @@ logs/
 *.txt
 hpc_archive/
 datapq.index
+experiments3.py
+reass_mode.job
+baseline.job
 
 # experiment files 
 experiments_2.py
