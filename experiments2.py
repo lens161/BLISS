@@ -100,9 +100,9 @@ if __name__ == "__main__":
     logging.info("[Experiment] Experiments started")
 
     for dataset in datasets:
-        configs_b.append(Config(dataset_name="sift-128-euclidean", batch_size=1024, b=4096))
+        configs_b.append(Config(dataset_name=dataset, batch_size=1024, b=4096))
         for m in m_values:
-            configs_q.append(Config(dataset_name="sift-128-euclidean", batch_size=1024, b=4096, m=m))
+            configs_q.append(Config(dataset_name=dataset, batch_size=1024, b=4096, m=m))
                 
     print(f"EXPERIMENT: {EXP_NAME}")
     logging.info(f"[Experiment] Building indexes")

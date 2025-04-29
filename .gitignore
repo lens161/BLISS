@@ -22,6 +22,9 @@ logs/
 hpc_archive/
 datapq.index
 azcopy/
+experiments3.py
+reass_mode.job
+baseline.job
 
 # experiment files 
 experiments_2.py
