@@ -8,7 +8,7 @@ class Config:
                  epochs = 5, iterations = 4, batch_size = 256, nr_train_neighbours = 100, 
                  nr_ann = 10, b = 0, lr = 0.001, reass_mode = 0, reass_chunk_size = 5000, 
                  query_batch_size = 2048, pq = False, query_batched=True, datasize=1, 
-                 mem_tracking = False):
+                 mem_tracking = False, query_twostep=False, rp_dim=8, rp_seed=42):
         self.dataset_name = dataset_name
         self.r = r
         self.k = k
@@ -18,6 +18,9 @@ class Config:
         self.reass_mode = reass_mode
         self.reass_chunk_size = reass_chunk_size
         self.pq = pq
+        self.query_twostep = query_twostep
+        self.rp_dim = rp_dim
+        self.rp_seed = rp_seed
         self.query_batched = query_batched
         self.freq_threshold = freq_threshold
         self.epochs = epochs
