@@ -172,7 +172,7 @@ def query_multiple_batched(data, index, vectors, neighbours, config: Config):
     size = len(vectors)
     print(f"Number of query vectors: {size}")
     print(f"Number of neighbour entries: {len(neighbours)}", flush=True)
-    nr_batches = math.ceil(size / config.batch_size)
+    nr_batches = math.ceil(size / config.query_batch_size)
     results = [[] for i in range(nr_batches)]
     # do forward passes on a batch of queries in all models and then process
     print(f"Processing queries in batches")
