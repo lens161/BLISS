@@ -42,12 +42,16 @@ def train_model(model, dataset, index, sample_size, bucket_sizes, neighbours, r,
             start = time.time()
             label_times = []
             for batch_data, batch_indices in train_loader:
+                start_batch = time.time()
+                if epoch == 0: 
+                    print(f"starting batch")
                 batch_data = batch_data.to(config.device)
                 s = time.time()
                 batch_labels = ut.make_ground_truth_labels(config.b, neighbours[batch_indices], index, len(batch_data)).to(config.device)
                 e = time.time()
-                memory_current = process.memory_full_info().uss / (1024 ** 2)
-                memory_training = memory_current if memory_current>memory_training else memory_training
+                if(config.mem_tracking):
+                    memory_current = process.memory_full_info().uss / (1024 ** 2)
+                    memory_training = memory_current if memory_current>memory_training else memory_training
                 label_times.append(e-s)
                 optimizer.zero_grad()
                 probabilities = model(batch_data)
@@ -57,12 +61,14 @@ def train_model(model, dataset, index, sample_size, bucket_sizes, neighbours, r,
                 batch_count += 1
                 epoch_loss_sum += loss.item()
                 del loss, batch_data, batch_labels
+                if epoch == 0:
+                    print(f"batch took {time.time()-start_batch}")
             finish = time.time()
             elapsed = finish-start
             print(f"epoch {epoch} took {elapsed}")
             print(f"label making took (sum): {sum(label_times)}")
             print(f"epoch {epoch} loss = {epoch_loss_sum}", flush=True)
-            all_losses[current_epoch]
+            all_losses[current_epoch] = epoch_loss_sum
             current_epoch += 1
         if ((epoch+1) * (i+1) < config.epochs*config.iterations and sample_size != train_size) or sample_size == train_size:
             logging.info("Reassigning vectors to new buckets")
@@ -103,7 +109,7 @@ def reassign_0(model, index, bucket_sizes, config: Config, reassign_loader):
 
     bucket_sizes[:] = 0
     for i in range(N):
-        ut.reassign_vector_to_bucket(index, bucket_sizes, candidate_buckets, i, i)
+        ut.reassign_vector_to_bucket(index, bucket_sizes, candidate_buckets[i], i)
 
 def reassign_1(model, index, bucket_sizes, config: Config, reassign_loader):
     '''
@@ -124,7 +130,7 @@ def reassign_1(model, index, bucket_sizes, config: Config, reassign_loader):
             candidate_buckets = candidate_buckets.numpy()
             
             for i, item_index in enumerate(batch_indices):
-                ut.reassign_vector_to_bucket(index, bucket_sizes, candidate_buckets, i, item_index)
+                ut.reassign_vector_to_bucket(index, bucket_sizes, candidate_buckets[i], item_index)
 
 def reassign_2(model, index, bucket_sizes, config: Config, reassign_loader):
     '''

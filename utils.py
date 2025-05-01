@@ -123,11 +123,10 @@ def make_ground_truth_labels(B, neighbours, index, sample_size):
     labels[vectors, buckets] = True
     return torch.from_numpy(labels).float()
 
-def reassign_vector_to_bucket(index, bucket_sizes, candidate_buckets, i, item_index):
+def reassign_vector_to_bucket(index, bucket_sizes, candidates, item_index):
     '''
     Reassign a vector to the least occupied of the top-k buckets predicted by the model.
     '''
-    candidates = candidate_buckets[i]
     candidate_sizes = bucket_sizes[candidates]
     best_bucket = candidates[np.argmin(candidate_sizes)]
     index[item_index] = best_bucket
