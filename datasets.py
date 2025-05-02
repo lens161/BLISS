@@ -286,6 +286,12 @@ class DatasetCompetitionFormat(Dataset):
         for j0 in range(i0, i1, bs):
             j1 = min(j0 + bs, i1)
             yield sanitize(x[j0:j1])
+    
+    def get_dataset_memmap(self):
+        filename = self.get_dataset_fn()
+        x = xbin_mmap(filename, dtype=self.dtype, maxn=self.nb)
+        assert x.shape == (self.nb, self.d)
+        return x
 
     def get_data_in_range(self, start, end):
         assert start >= 0
