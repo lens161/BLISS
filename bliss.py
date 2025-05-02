@@ -13,7 +13,8 @@ import datasets as ds
 import utils as ut
 from bliss_model import BLISS_NN, BLISSDataset
 from config import Config
-from query import query_multiple, query_multiple_batched, load_data_for_inference
+# temporarily moved import down to run_bliss while we still have two separate query files
+# from query import query_multiple, query_multiple_batched, load_data_for_inference
 from train import train_model
     
 def build_index(dataset: ds.Dataset, config: Config, trial=None):
@@ -93,8 +94,7 @@ def build_index(dataset: ds.Dataset, config: Config, trial=None):
         else:
             index = sample_buckets
             final_assign_time_per_r.append(0)
-        del model 
-            
+        del model
         inverted_index, offsets = invert_index(index, bucket_sizes, SIZE)
         index_path, index_files_size = ut.save_inverted_index(inverted_index, offsets, config.dataset_name, r+1, config.r, config.k, config.b, config.lr, config.batch_size, config.reass_mode, config.reass_chunk_size, config.epochs, config.iterations)
         index_sizes_total += index_files_size
@@ -259,10 +259,13 @@ def load_indexes_and_models(config: Config, SIZE, DIM, b):
     inverted_indexes_paths = []
     offsets_paths = []
     model_paths = []
+    rp_paths = []
     for i in range (config.r):
         inverted_indexes_paths.append(f"models/{config.dataset_name}_r{config.r}_k{config.k}_b{config.b}_lr{config.lr}_bs={config.batch_size}_reass={config.reass_mode}_chunk_size={config.reass_chunk_size}_e={config.epochs}_i={config.iterations}/index_model{i+1}_{config.dataset_name}_r{i+1}_k{config.k}_b{config.b}_lr{config.lr}.npy")
         offsets_paths.append(f"models/{config.dataset_name}_r{config.r}_k{config.k}_b{config.b}_lr{config.lr}_bs={config.batch_size}_reass={config.reass_mode}_chunk_size={config.reass_chunk_size}_e={config.epochs}_i={config.iterations}/offsets_model{i+1}_{config.dataset_name}_r{i+1}_k{config.k}_b{config.b}_lr{config.lr}.npy")
         model_paths.append(f"models/{config.dataset_name}_r{config.r}_k{config.k}_b{config.b}_lr{config.lr}_bs={config.batch_size}_reass={config.reass_mode}_chunk_size={config.reass_chunk_size}_e={config.epochs}_i={config.iterations}/model_{config.dataset_name}_r{i+1}_k{config.k}_b{config.b}_lr{config.lr}.pt")
+        if config.query_twostep:
+            rp_paths.append(f"models/{config.dataset_name}_r{config.r}_k{config.k}_b{config.b}_lr{config.lr}_bs={config.batch_size}_reass={config.reass_mode}_chunk_size={config.reass_chunk_size}_e={config.epochs}_i={config.iterations}/{config.dataset_name}_{config.datasize}_rp{config.rp_dim}_r{i+1}.npy")
 
     indexes = np.zeros(shape = (config.r, SIZE), dtype=np.uint32)
     offsets = np.zeros(shape = (config.r, config.b), dtype=np.uint32)
@@ -276,7 +279,11 @@ def load_indexes_and_models(config: Config, SIZE, DIM, b):
     
     # load models and indexes into memory
     q_models = [ut.load_model(model_path, DIM, b) for model_path in model_paths]
-    index = ((indexes, offsets), q_models)
+    if config.query_twostep:
+        rp_files = [np.memmap(rp_path, mode='r', shape=(SIZE, config.rp_dim), dtype=np.float32) for rp_path in rp_paths]
+        index = ((indexes, offsets, rp_files), q_models)
+    else:
+        index = ((indexes, offsets), q_models)
     return index
 
 def save_dataset_as_memmap(dataset, config: Config, SIZE, DIM):
@@ -334,6 +341,10 @@ def run_bliss(config: Config, mode, experiment_name, trial=None):
         return train_time, final_assign_time, build_time, memory_final_assignment, memory_training, load_balance, index_sizes_total, model_sizes_total, load_balances
     elif mode == 'query':
         # set b if it wasn't already set in config
+        if config.query_twostep:
+            from query_twostep import query_multiple, query_multiple_batched, load_data_for_inference
+        else:
+            from query import query_multiple, query_multiple_batched, load_data_for_inference
         b = config.b if config.b !=0 else 1024
         config.b = b
         
