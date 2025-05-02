@@ -25,7 +25,7 @@ def build_index(dataset: ds.Dataset, config: Config, trial=None):
 
     sample_size = SIZE 
     if SIZE == 10_000_000 or SIZE == 100_000_000:
-        sample_size = 10_000_000
+        sample_size = 1_000_000
     elif SIZE == 1_000_000_000:
         sample_size = 10_000_000
 

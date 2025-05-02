@@ -24,6 +24,16 @@ datapq.index
 experiments3.py
 reass_mode.job
 baseline.job
+exp_reass_mode_0.py
+exp_reass_mode_1.py
+exp_reass_mode_2.py
+exp_reass_mode_3.py
+reass_mode_0.job
+reass_mode_1.job
+reass_mode_2.job
+reass_mode_3.job
+
+
 
 # experiment files 
 experiments_2.py

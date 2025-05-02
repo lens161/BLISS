@@ -100,12 +100,12 @@ if __name__ == "__main__":
     logging.info("[Experiment] Experiments started")
 
     for dataset in datasets:
-        configs_b.append(Config(dataset_name=dataset, batch_size=1024, b=4096))
+    #     configs_b.append(Config(dataset_name=dataset, batch_size=1024, b=4096))
         for m in m_values:
             configs_q.append(Config(dataset_name=dataset, batch_size=1024, b=4096, m=m))
                 
     print(f"EXPERIMENT: {EXP_NAME}")
-    logging.info(f"[Experiment] Building indexes")
+    # logging.info(f"[Experiment] Building indexes")
     build_multiple_indexes_exp(EXP_NAME, configs_b)
     logging.info(f"[Experiment] Starting query experiments")
     run_multiple_query_exp(EXP_NAME, configs_q)
