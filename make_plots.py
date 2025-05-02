@@ -8,10 +8,6 @@ def find_build_file(experiment_name):
     filepath = glob.glob(f"results/{experiment_name}/*build.csv")[0] # list of only 1 file
     return filepath
 
-def find_memory_file(experiment_name):
-    filepath = glob.glob(f"results/{experiment_name}/*memory_log.csv")[0] # list of only 1 file
-    return filepath    
-
 def find_query_files(experiment_name):
     '''
     Find all the .csv files in an experiment folder to collect the results for different inference parameter combinations within an experiment.
@@ -135,6 +131,48 @@ def plot_build_time_vs_chunk_size(experiment_name):
     plt.savefig(f"{out_dir}/build_time_vs_chunk_size_by_mode.png", dpi=300)
     plt.close()
 
+# def plot_recall_vs_dist_comps_per_m_per_dataset(results, averages, experiment_name):
+#     # Group data by dataset_name
+#     dataset_groups = {}
+#     for i, result in enumerate(results):
+#         dataset_name = averages[i]['dataset_name']
+#         avg_recall = averages[i]['avg_recall']
+#         avg_dist_comps = result['distance_computations'].mean()
+#         m = int(averages[i]['m'].iloc[0])
+        
+#         if dataset_name not in dataset_groups:
+#             dataset_groups[dataset_name] = []
+#         dataset_groups[dataset_name].append({'m': m, 'avg_recall': avg_recall, 'avg_dist_comps': avg_dist_comps})
+    
+#     # Define a list of colors for different datasets
+#     colors = ['b', 'g', 'r', 'c', 'm', 'y', 'k']  # Modify as needed if there are more datasets
+
+#     plt.figure(figsize=(8, 5))
+    
+#     # Iterate over the dataset groups and plot each one
+#     for idx, (dataset_name, group) in enumerate(dataset_groups.items()):
+#         group.sort(key=lambda x: x['avg_dist_comps'])
+#         x = [item['avg_dist_comps'] for item in group]
+#         y = [item['avg_recall'] for item in group]
+        
+#         # Use the color from the list or loop back through the colors
+#         color = colors[idx % len(colors)]
+        
+#         # Plot each dataset with its color and a specific marker
+#         plt.plot(x, y, marker='o', linestyle='-', color=color, label=dataset_name)
+    
+#     # Labels and title
+#     plt.xlabel('Number of Distance Computations')
+#     plt.ylabel('Recall')
+#     plt.title('Recall vs. Distance Computations')
+#     plt.legend(title="Dataset Name")
+#     plt.grid(True)
+#     plt.tight_layout()
+
+#     # Save the plot to a file
+#     plt.savefig(f"results/{experiment_name}/recall_vs_dist_comps_per_m.png", dpi=300)
+
+
 def make_plots(experiment_name):
     '''
     Include all plot functions that should be run here.
@@ -146,8 +184,9 @@ def make_plots(experiment_name):
     # TODO: get results from build and memory files
 
     # make plots for whole experiment, add more plot functions as needed
-    # plot_individual_recall_vs_dist_comps(query_results, query_averages, experiment_name)
-    # plot_recall_vs_dist_comps_per_m(query_results, query_averages, experiment_name)
+    plot_individual_recall_vs_dist_comps(query_results, query_averages, experiment_name)
+    plot_recall_vs_dist_comps_per_m(query_results, query_averages, experiment_name)
+    # plot_recall_vs_dist_comps_per_m_per_dataset(query_results, query_averages, experiment_name)
 
 if __name__ == "__main__":
-    make_plots("test_plots")
+    make_plots("test_twostep_deep1B_baseline")
