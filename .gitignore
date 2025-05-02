@@ -25,6 +25,24 @@ azcopy/
 experiments3.py
 reass_mode.job
 baseline.job
+exp_reass_mode_0.py
+exp_reass_mode_1.py
+exp_reass_mode_2.py
+exp_reass_mode_3.py
+exp_reass_mode_0_desk.py
+exp_reass_mode_1_desk.py
+exp_reass_mode_2_desk.py
+exp_reass_mode_3_desk.py
+reass_mode_0.job
+reass_mode_1.job
+reass_mode_2.job
+reass_mode_3.job
+reass_mode_0_desk.job
+reass_mode_1_desk.job
+reass_mode_2_desk.job
+reass_mode_3_desk.job
+
+
 
 # experiment files 
 experiments_2.py

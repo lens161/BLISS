@@ -136,7 +136,7 @@ def map_all_to_buckets_0(index, bucket_sizes, full_data, data_batched, data_load
     print("finished getting topk", flush=True)
 
     for i in range(N):
-        ut.reassign_vector_to_bucket(index, bucket_sizes, candidate_buckets, i, i)
+        ut.reassign_vector_to_bucket(index, bucket_sizes, candidate_buckets[i], i)
     return memory_usage
 
 def map_all_to_buckets_1(map_loader, full_data, data_batched, k, index, bucket_sizes, map_model, device):
@@ -156,7 +156,7 @@ def map_all_to_buckets_1(map_loader, full_data, data_batched, k, index, bucket_s
                 memory_usage = mem_current if mem_current>memory_usage else memory_usage
                 for i, item_index in enumerate(batch_indices):
                     item_idx = item_index + offset
-                    ut.reassign_vector_to_bucket(index, bucket_sizes, candidate_buckets, i, item_idx)
+                    ut.reassign_vector_to_bucket(index, bucket_sizes, candidate_buckets[i], item_idx)
     
         offset += len(batch)
     return memory_usage
@@ -294,7 +294,7 @@ def save_dataset_as_memmap(dataset, config: Config, SIZE, DIM):
     if not os.path.exists(memmap_path):
         mmp = np.memmap(memmap_path, mode ="w+", shape=mmp_shape, dtype=np.float32)
         if SIZE >= 10_000_000:
-            fill_memmap_in_batches(dataset, config, mmp)
+            fill_memmap_in_batches(dataset, mmp)
         else:
             data = dataset.get_dataset()[:]
             if dataset.distance() == "angular":
@@ -304,7 +304,7 @@ def save_dataset_as_memmap(dataset, config: Config, SIZE, DIM):
     del mmp
     return memmap_path, mmp_shape
 
-def fill_memmap_in_batches(dataset, config: Config, mmp):
+def fill_memmap_in_batches(dataset, mmp):
     '''
     Save the dataset in a memmap in batches if the dataset is too large to load into memory in one go.
     '''
