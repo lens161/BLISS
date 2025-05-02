@@ -127,7 +127,7 @@ def query_multiple(data, index, vectors, neighbours, config: Config):
     #
     return results
 
-def get_candidates_for_query_vectorised(predicted_buckets, model_indexes, model_offsets, model_rp_files, freq_threshold, rp_dim, timers):
+def get_candidates_for_query_vectorised(predicted_buckets, model_indexes, model_offsets, model_rp_files, freq_threshold, rp_dim, timers, candidate_amount_limit):
     r, m = predicted_buckets.shape
     model_axis = np.arange(r)[:, None]
     
@@ -148,7 +148,7 @@ def get_candidates_for_query_vectorised(predicted_buckets, model_indexes, model_
     lengths = [end - start for (_, start, end) in slices]
     total = sum(lengths)
     candidate_indices = np.empty(total, dtype=np.int64)
-    candidate_data    = np.empty((total, rp_dim), dtype=np.float32)
+    candidate_data    = None
     e = time.time()
     timers[2]+=(e-s)
  
@@ -156,29 +156,44 @@ def get_candidates_for_query_vectorised(predicted_buckets, model_indexes, model_
     pos = 0
     for (model, start, end), length in zip(slices, lengths):
         candidate_indices[pos:pos+length] = model_indexes[model][start:end]
-        candidate_data   [pos:pos+length] = model_rp_files[model][start:end]
         pos += length
     e = time.time()
     timers[3]+=(e-s)
- 
+
     s = time.time()
     unique_vals, first_idx, counts = np.unique(
         candidate_indices, return_index=True, return_counts=True
     )
     e = time.time()
     timers[4] += (e-s)
+
     s = time.time()
     mask = counts >= freq_threshold
     e = time.time()
     timers[5] += (e-s)
+
     s = time.time()
     filtered_vals = unique_vals[mask]
     e = time.time()
     timers[6] += (e-s)
+
+    if len(filtered_vals) <= candidate_amount_limit:
+        return filtered_vals, None
+ 
+    s = time.time()
+    candidate_data    = np.empty((total, rp_dim), dtype=np.float32)
+    pos = 0
+    for (model, start, end), length in zip(slices, lengths):
+        candidate_data   [pos:pos+length] = model_rp_files[model][start:end]
+        pos += length
+    e = time.time()
+    timers[7] += (e-s)
+
     s = time.time()
     filtered_data = candidate_data[first_idx[mask]]
     e = time.time()
-    timers[7]+=(e-s)
+    timers[8]+=(e-s)
+
     return filtered_vals, filtered_data
 
 def process_query_batch_twostep(data, neighbours, query_vectors, candidate_buckets, indexes, offsets, rp_files, freq_threshold, requested_amount, m, expected_bucket_size, batch_process_start, transformer, rp_dim, timers):
@@ -187,6 +202,7 @@ def process_query_batch_twostep(data, neighbours, query_vectors, candidate_bucke
     batch_results = [[] for i in range(len(query_vectors))]
     batch_process_end = time.time()
     base_time_per_query = (batch_process_end - batch_process_start) / len(query_vectors)
+    candidate_amount_limit = m*expected_bucket_size*2
     getting_candidates_time = 0
     reordering_time = 0
     true_nns_sum = 0
@@ -198,7 +214,7 @@ def process_query_batch_twostep(data, neighbours, query_vectors, candidate_bucke
         predicted_buckets = candidate_buckets[i]
         # Use our helper to obtain the candidate set (as a 1D NumPy array)
         getting_candidates_start = time.time()
-        candidate_ids, candidate_rp_data = get_candidates_for_query_vectorised(predicted_buckets, indexes, offsets, rp_files, freq_threshold, rp_dim, timers)
+        candidate_ids, candidate_rp_data = get_candidates_for_query_vectorised(predicted_buckets, indexes, offsets, rp_files, freq_threshold, rp_dim, timers, candidate_amount_limit)
         getting_candidates_end = time.time()
         getting_candidates_time += (getting_candidates_end - getting_candidates_start)
 
@@ -206,7 +222,7 @@ def process_query_batch_twostep(data, neighbours, query_vectors, candidate_bucke
             query_end = time.time()
             batch_results[i] = (candidate_ids, neighbours[i], 0, (query_end-query_start) + base_time_per_query), ut.recall_single(candidate_ids, neighbours[i])
         else:
-            if len(candidate_ids) > m*expected_bucket_size*2:
+            if candidate_rp_data is not None:
                 reduced_query = apply_random_projection(query, transformer)
                 candidate_ids = filter_candidates(candidate_rp_data, candidate_ids, reduced_query, m, expected_bucket_size)
                 if len(candidate_ids) <= requested_amount:
@@ -249,7 +265,7 @@ def query_multiple_batched(data, index, vectors, neighbours, config: Config):
     reordering_sum = 0
     true_nns_sum = 0
     fetch_data_sum = 0
-    timers = [0, 0, 0, 0, 0, 0, 0, 0]
+    timers = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
     #
 
     # do forward passes on a batch of queries in all models and then process
@@ -287,6 +303,17 @@ def query_multiple_batched(data, index, vectors, neighbours, config: Config):
     print(f"Time spent on true nns: {true_nns_sum}")
     print(f"Time spent on fetching candidates: {fetch_data_sum}")
     print(f"Time spent on other reordering crap: {reordering_sum - true_nns_sum - fetch_data_sum}")
+
+    print(f"Time spent on getting start/end indices: {timers[0]}")
+    print(f"Time spent on prepping slices: {timers[1]}")
+    print(f"Time spent on prepping data structures: {timers[2]}")
+    print(f"Time spent on collecting candidate indices: {timers[3]}")
+    # print(f"Time spent on bincount and filtering candidate indices: {timers[4]}")
+    print(f"Time spent on np.unique: {timers[4]}")
+    print(f"Time spent on making filter mask: {timers[5]}")
+    print(f"Time spent on filtering indices: {timers[6]}")
+    print(f"Time spent on collecting rp vectors: {timers[7]}")
+    print(f"Time spent on filtering rp vectors: {timers[8]}")
     flattened_results = [item for sublist in results for item in sublist]
     return flattened_results
     
