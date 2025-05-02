@@ -16,6 +16,7 @@ def convert_to_sorted_random_projection(dataset, r, config: Config, index, model
             end = len(batch) + start
             indices = index[start : end]
             mmp[start:end] = reduced_vectors[indices]
+            start = end
     else:
         data = np.ascontiguousarray(dataset.get_dataset(), dtype=np.int32)
         reduced_vectors = transformer.fit_transform(data)
