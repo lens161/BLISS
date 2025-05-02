@@ -42,9 +42,6 @@ def train_model(model, dataset, index, sample_size, bucket_sizes, neighbours, r,
             start = time.time()
             label_times = []
             for batch_data, batch_indices in train_loader:
-                start_batch = time.time()
-                if epoch == 0: 
-                    print(f"starting batch")
                 batch_data = batch_data.to(config.device)
                 s = time.time()
                 batch_labels = ut.make_ground_truth_labels(config.b, neighbours[batch_indices], index, len(batch_data)).to(config.device)
@@ -61,8 +58,6 @@ def train_model(model, dataset, index, sample_size, bucket_sizes, neighbours, r,
                 batch_count += 1
                 epoch_loss_sum += loss.item()
                 del loss, batch_data, batch_labels
-                if epoch == 0:
-                    print(f"batch took {time.time()-start_batch}")
             finish = time.time()
             elapsed = finish-start
             print(f"epoch {epoch} took {elapsed}")
