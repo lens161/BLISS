@@ -10,13 +10,14 @@ def convert_to_sorted_random_projection(dataset, r, config: Config, index, model
     mmp = np.memmap(f"models/{model_directory}/{config.dataset_name}_{config.datasize}_rp{target_dimensions}_r{r}.npy", mode ="w+", shape=(SIZE, config.rp_dim), dtype=np.float32)
     if SIZE > 10_000_000:
         start = 0
+        reduced_vectors = np.empty((SIZE, config.rp_dim), dtype=np.float32)
         for batch in dataset.get_dataset_iterator(bs=1_000_000):
             data = np.ascontiguousarray(batch, dtype=np.int32)
-            reduced_vectors = transformer.fit_transform(data)
             end = len(batch) + start
-            indices = index[start : end]
-            mmp[start:end] = reduced_vectors[indices]
+            reduced_vectors[start : end] = transformer.fit_transform(data)
             start = end
+        indices = index[:]
+        mmp[:] = reduced_vectors[indices]
     else:
         data = np.ascontiguousarray(dataset.get_dataset(), dtype=np.int32)
         reduced_vectors = transformer.fit_transform(data)
