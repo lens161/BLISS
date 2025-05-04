@@ -164,7 +164,6 @@ def assign_to_buckets_vectorised(bucket_sizes, SIZE, index, chunk_size, i, topk_
     return memory_usage
 
 def get_all_topk_buckets(loader, k, candidate_buckets, map_model, offset, device):
-    logging.info(f"Mapping all train vectors to buckets (baseline)")
     start_idx = offset
     start = time.time()
     with torch.no_grad():
@@ -173,7 +172,6 @@ def get_all_topk_buckets(loader, k, candidate_buckets, map_model, offset, device
             batch_candidate_buckets = get_topk_buckets_for_batch(batch_data, k, map_model, device).numpy()
             candidate_buckets[start_idx : start_idx + batch_size, :] = batch_candidate_buckets
             start_idx += batch_size
-    print(f"getting top k took {time.time()-start}")
 
 def get_topk_buckets_for_batch(batch_data, k, map_model, device):
     batch_data = batch_data.to(device)
