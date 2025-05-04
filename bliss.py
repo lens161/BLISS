@@ -217,7 +217,7 @@ def build_full_index(bucket_sizes, SIZE, model, config: Config):
 def get_all_candidate_buckets(SIZE, model, k, device, full_data, data_batched, map_loader):
     candidate_buckets = np.zeros(shape= (SIZE, k), dtype=np.uint32) # all topk buckets per vector shape = (N, k).
     offset = 0
-    for batch in full_data.get_dataset_iterator(bs = 1_000_00):
+    for batch in full_data.get_dataset_iterator(bs = 1_000_000):
         data_batched.data = torch.from_numpy(batch).float()
         ut.get_all_topk_buckets(map_loader, k, candidate_buckets, model, offset, device)
         offset += len(batch)
