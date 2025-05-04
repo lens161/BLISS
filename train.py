@@ -27,6 +27,9 @@ def train_model(model, dataset, index, sample_size, bucket_sizes, neighbours, r,
     g = torch.Generator()
     g.manual_seed(r)
     train_loader = DataLoader(dataset, batch_size=config.batch_size, shuffle=True, num_workers=8, generator=g)
+    # create lookup tensors for on gpu label retrieval
+    neighbours_tensor = torch.from_numpy(neighbours).to(torch.int64).to(config.device)
+    lookup = torch.from_numpy(index).to(torch.int64).to(config.device)
     all_losses = np.zeros(shape=config.epochs*config.iterations)
     current_epoch = 0
     process = psutil.Process(os.getpid())
@@ -44,15 +47,15 @@ def train_model(model, dataset, index, sample_size, bucket_sizes, neighbours, r,
             for batch_data, batch_indices in train_loader:
                 batch_data = batch_data.to(config.device)
                 s = time.time()
-                batch_labels = ut.make_ground_truth_labels(config.b, neighbours[batch_indices], index, len(batch_data)).to(config.device)
+                batch_labels = ut.get_labels(neighbours_tensor[batch_indices], lookup, config.b, config.device)
                 e = time.time()
                 if(config.mem_tracking):
                     memory_current = process.memory_full_info().uss / (1024 ** 2)
                     memory_training = memory_current if memory_current>memory_training else memory_training
                 label_times.append(e-s)
                 optimizer.zero_grad()
-                probabilities = model(batch_data)
-                loss = criterion(probabilities, batch_labels)
+                logits = model(batch_data)
+                loss = criterion(logits, batch_labels)
                 loss.backward()
                 optimizer.step()
                 batch_count += 1
@@ -80,6 +83,7 @@ def train_model(model, dataset, index, sample_size, bucket_sizes, neighbours, r,
                 reassign_2(model, index, bucket_sizes, config, reassign_loader)
             elif config.reass_mode == 3:
                 reassign_3(model, index, bucket_sizes, config, dataset)
+            lookup = torch.from_numpy(index).to(torch.int64).to(config.device)
             finish = time.time()
             elapsed = finish - start
             print(f"Reassigning took {elapsed:.2f} seconds", flush=True)
@@ -90,6 +94,7 @@ def train_model(model, dataset, index, sample_size, bucket_sizes, neighbours, r,
 
     # ut.make_loss_plot(config.lr, config.iterations, config.epochs, config.k, config.b, config.experiment_name, all_losses, config.shuffle, config.reass_mode)
     return memory_training, load_balances
+
 
 def reassign_0(model, index, bucket_sizes, config: Config, reassign_loader):
     '''

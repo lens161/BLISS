@@ -109,6 +109,7 @@ def get_training_sample_from_memmap(memmap_path, mmp_shape, sample_size, SIZE, D
 
 def make_ground_truth_labels(B, neighbours, index, sample_size):
     '''
+    DEPRECATED!
     Create ground truth labels for training sample, based on the set of nearest neighbours of each training vector. 
     A label is a B-dimensional vector, where each digit is either 0 (false) if that bucket does not contain any
     nearest neighbours of a vector, and 1 (true) if the bucket contains at least one nearest neighbour of that vector.
@@ -119,9 +120,25 @@ def make_ground_truth_labels(B, neighbours, index, sample_size):
     vectors = np.concatenate([np.full(len(n), i) for i, n in enumerate(neighbours)])
     # build column indices by applying the mapping to each neighbour array.
     buckets = np.concatenate([index[n] for n in neighbours])
-    # Use advanced indexing to set the corresponding entries to True.
+    # set bucket entries to True.
     labels[vectors, buckets] = True
     return torch.from_numpy(labels).float()
+
+def get_labels(neighbours, lookup, b, device=torch.device("cuda")):
+    '''
+    Create new labels tensor and set positions of per vector true buckets to one  
+    '''
+    batch_size = neighbours.shape[0]
+    labels = torch.zeros((batch_size, b), dtype=torch.float32, device=device)
+    # get buckets at neighbour indexes from lookup
+    bucket_ids = lookup[neighbours]
+    # add ones in label matrix at indices of buckets that have neighbours
+    labels.scatter_(
+        dim=1,
+        index=bucket_ids,
+        src=torch.ones_like(bucket_ids, dtype=torch.float32, device=device)
+    )
+    return labels 
 
 def reassign_vector_to_bucket(index, bucket_sizes, candidates, item_index):
     '''

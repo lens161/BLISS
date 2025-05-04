@@ -77,9 +77,9 @@ if __name__ == "__main__":
     k_values = [2]
     m_values = [5, 10, 15]
     reass_modes = [0, 1, 2, 3]
-    batch_sizes = [1024, 2048, 5000]
+    batch_sizes = [1024, 2048, 3072, 4096]
     iterations = [3, 4, 5]
-    EXP_NAME = "vary_i_e6_bs3000_sift"
+    EXP_NAME = "labels"
 
     if not os.path.exists("logs"):
         os.mkdir("logs")
@@ -92,9 +92,9 @@ if __name__ == "__main__":
 
     # add all dataset names that the experiments should be run on
     datasets = [
-                "bigann",
+                # "bigann",
                 # "glove-100-angular",
-                # "sift-128-euclidean"
+                "sift-128-euclidean"
                  ]
     
     logging.info("[Experiment] Experiments started")

@@ -72,7 +72,8 @@ def build_index(dataset: ds.Dataset, config: Config, trial=None):
         model_sizes_total += model_file_size
         print(f"model {r+1} saved to {model_path}.")
 
-        #prune trial when buckets are too unbalanced ie. normalised entropy of bucketsizes is too low
+        # FOR OPTUNA: 
+        # prune trial when buckets are too unbalanced ie. normalised entropy of bucketsizes is too low
         if trial is not None:
             ne = ut.norm_ent(bucket_sizes) # get normalised entropy for current bucketsizes
             trial.report(ne, step=1)
@@ -111,15 +112,15 @@ def assign_initial_buckets(train_size, r, B):
     the hash fucntion used here is the same as in the original code from the BLISS github.
     TODO: add reference link
     '''
-    index = np.zeros(train_size, dtype=np.uint32) # from 0 to train_size-1
-    bucket_sizes = np.zeros(B, dtype=np.uint32)
+    index = np.zeros(train_size, dtype=np.int32) # from 0 to train_size-1
+    bucket_sizes = np.zeros(B, dtype=np.int32)
 
     for i in range(train_size):
         bucket = mmh3(i,seed=r)%B
         index[i] = bucket
         bucket_sizes[bucket] += 1
     
-    return np.array(index, dtype=np.uint32), bucket_sizes
+    return np.array(index, dtype=np.int32), bucket_sizes
 
 def map_all_to_buckets_0(index, bucket_sizes, full_data, data_batched, data_loader, N, k, model, device):
     '''
