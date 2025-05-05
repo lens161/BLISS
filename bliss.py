@@ -35,7 +35,7 @@ def build_index(dataset: ds.Dataset, config: Config, trial=None):
 
     memmap_path, mmp_shape = save_dataset_as_memmap(dataset, config, SIZE, DIM)
     
-    sample = ut.get_training_sample_from_memmap(memmap_path, mmp_shape, sample_size, SIZE, DIM)
+    sample = ut.get_training_sample_from_memmap(memmap_path, mmp_shape, sample_size, SIZE, DIM, config.dataset_name, config.datasize)
     print(f"sample size = {len(sample)}")
 
     print("finding neighbours...", flush=True)
