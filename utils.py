@@ -114,6 +114,7 @@ def get_training_sample_from_memmap(memmap_path, mmp_shape, sample_size, SIZE, D
 
 def make_ground_truth_labels(B, neighbours, index, sample_size):
     '''
+    DEPRECATED!
     Create ground truth labels for training sample, based on the set of nearest neighbours of each training vector. 
     A label is a B-dimensional vector, where each digit is either 0 (false) if that bucket does not contain any
     nearest neighbours of a vector, and 1 (true) if the bucket contains at least one nearest neighbour of that vector.
@@ -124,9 +125,25 @@ def make_ground_truth_labels(B, neighbours, index, sample_size):
     vectors = np.concatenate([np.full(len(n), i) for i, n in enumerate(neighbours)])
     # build column indices by applying the mapping to each neighbour array.
     buckets = np.concatenate([index[n] for n in neighbours])
-    # Use advanced indexing to set the corresponding entries to True.
+    # set bucket entries to True.
     labels[vectors, buckets] = True
     return torch.from_numpy(labels).float()
+
+def get_labels(neighbours, lookup, b, device=torch.device("cuda")):
+    '''
+    Create new labels tensor and set positions of per vector true buckets to one  
+    '''
+    batch_size = neighbours.shape[0]
+    labels = torch.zeros((batch_size, b), dtype=torch.float32, device=device)
+    # get buckets at neighbour indexes from lookup
+    bucket_ids = lookup[neighbours]
+    # add ones in label matrix at indices of buckets that have neighbours
+    labels.scatter_(
+        dim=1,
+        index=bucket_ids,
+        src=torch.ones_like(bucket_ids, dtype=torch.float32, device=device)
+    )
+    return labels 
 
 def reassign_vector_to_bucket(index, bucket_sizes, candidates, item_index):
     '''
@@ -158,10 +175,6 @@ def assign_to_buckets_vectorised(bucket_sizes, SIZE, index, chunk_size, i, topk_
     return memory_usage
 
 def get_all_topk_buckets(loader, k, candidate_buckets, map_model, offset, device):
-    '''
-    Prepare a table with the top-k buckets for all vectors in a loader according to the model.
-    '''
-    logging.info(f"Mapping all train vectors to buckets (baseline)")
     start_idx = offset
     start = time.time()
     with torch.no_grad():
@@ -170,7 +183,6 @@ def get_all_topk_buckets(loader, k, candidate_buckets, map_model, offset, device
             batch_candidate_buckets = get_topk_buckets_for_batch(batch_data, k, map_model, device).numpy()
             candidate_buckets[start_idx : start_idx + batch_size, :] = batch_candidate_buckets
             start_idx += batch_size
-    print(f"getting top k took {time.time()-start}")
 
 def get_topk_buckets_for_batch(batch_data, k, map_model, device):
     '''
