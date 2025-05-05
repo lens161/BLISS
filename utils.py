@@ -43,21 +43,23 @@ def get_train_nearest_neighbours_from_file(dataset, amount, sample_size, dataset
     Helper to read/write nearest neighbour of train data to file so we can test index building without repeating preprocessing each time.
     Should not be used in actual algorithm or experiments where timing the preprocessing is important.
     '''
-    if not os.path.exists(f"data/{dataset_name}-size{datasize}-nbrs{amount}-sample{sample_size}.csv"):
-        filename = f"data/{dataset_name}-size{datasize}-nbrs{amount}-sample{sample_size}.csv"
+    if not os.path.exists(f"data/{dataset_name}-size{datasize}-nbrs{amount}-sample{sample_size}.npy"):
+        filename = f"data/{dataset_name}-size{datasize}-nbrs{amount}-sample{sample_size}.npy"
         print(f"no nbrs file found for {dataset_name} with amount={amount} and samplesize={sample_size}, calculating {amount} nearest neighbours")
         logging.info("No neighbours file found, calculating ground truths of training sample")
         I = get_nearest_neighbours_within_dataset(dataset, amount)
         print("writing neighbours to nbrs file")
         I = np.asarray(I, dtype=np.int32)
-        with open(filename, "w") as f: 
-            np.savetxt(f, I, delimiter=",", fmt='%d')
+        np.save(filename, I)
+        # with open(filename, "w") as f: 
+        #     np.savetxt(f, I, delimiter=",", fmt='%d')
 
     else:
         print(f"found nbrs file for {dataset_name} with amount={amount} and samplesize={sample_size}, reading true nearest neighbours from file")
         logging.info("Reusing ground truths for training sample from file")
-        filename = f"data/{dataset_name}-size{datasize}-nbrs{amount}-sample{sample_size}.csv"
-        I = read_csv(filename, dtype=int, header=None).to_numpy()
+        filename = f"data/{dataset_name}-size{datasize}-nbrs{amount}-sample{sample_size}.npy"
+        # I = read_csv(filename, dtype=int, header=None).to_numpy()
+        I = np.load(filename)
     return I
 
 ######################################################################
@@ -95,22 +97,27 @@ def get_training_sample(dataset: ds.Dataset, sample_size, SIZE, DIM):
         index += len(batch)
     return sample, sample_indices
 
-def get_training_sample_from_memmap(memmap_path, mmp_shape, sample_size, SIZE, DIM):
+def get_training_sample_from_memmap(memmap_path, mmp_shape, sample_size, SIZE, DIM, dataset_name, datasize):
     '''
     Given a dataset (as a memmap), sample data for model training.
     For small datasets, the full dataset is used to train.
     For large datasets, a random sample is taken across the dataset. It is assumed the sample size is small enough to load the sample into memory.
     '''
     sample = np.zeros(shape=(sample_size, DIM), dtype=np.float32)
+    sample_filename = f"data/{dataset_name}_size{datasize}_sample{sample_size}.npy"
     mmp = np.memmap(memmap_path, mode = 'r', shape = mmp_shape, dtype=np.float32)
-    if sample_size!=SIZE:
-        random_order = np.arange(SIZE)
-        np.random.seed(42)
-        np.random.shuffle(random_order)
-        sample_indexes = np.sort(random_order[:sample_size])
-        sample[:] = mmp[sample_indexes, :]
+    if os.path.exists(sample_filename):
+        sample = np.load(sample_filename)
     else:
-        sample[:] = mmp
+        if sample_size!=SIZE:
+            random_order = np.arange(SIZE)
+            np.random.seed(42)
+            np.random.shuffle(random_order)
+            sample_indexes = np.sort(random_order[:sample_size])
+            sample[:] = mmp[sample_indexes, :]
+            np.save(sample_filename, sample)
+        else:
+            sample[:] = mmp
     return torch.from_numpy(sample)
 
 def make_ground_truth_labels(B, neighbours, index, sample_size):
