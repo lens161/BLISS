@@ -25,7 +25,7 @@ def load_data_for_inference(dataset, config: Config, SIZE, DIM):
     '''
     # keep data as a memmap if the dataset is too large, otherwise load into memory fully
     memmap_path = f"memmaps/{config.dataset_name}_{config.datasize}.npy"
-    data = np.memmap(memmap_path, mode='r', shape=(SIZE, DIM), dtype=np.float32) if SIZE > 10_000_000 else np.ascontiguousarray(np.memmap(memmap_path,shape=(SIZE, DIM), mode='r', dtype=np.float32))
+    data = np.memmap(memmap_path, mode='r', shape=(SIZE, DIM), dtype=np.float32) if SIZE > 10_000_000 else np.ascontiguousarray(np.memmap(memmap_path,shape=(SIZE, DIM), mode='r', dtype=np.float32).copy())
 
     test = dataset.get_queries()
     neighbours, _ = dataset.get_groundtruth()
@@ -212,7 +212,7 @@ def reorder(data, query_vector, candidates, requested_amount, process, track_mem
 
     mem = 0 if not track_mem else process.memory_full_info().uss / (1024 ** 2)
     if not isinstance(data, IndexPQ):
-        search_space = np.ascontiguousarray(data[candidates])
+        search_space = np.ascontiguousarray(data[candidates].copy())
     else:
         candidates = np.asarray(candidates, dtype=np.int32)
         # search_space = np.vstack([data.reconstruct_batch(int(i)) for i in candidates])
