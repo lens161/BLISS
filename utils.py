@@ -96,7 +96,7 @@ def get_training_sample(dataset: ds.Dataset, sample_size, SIZE, DIM):
         index += len(batch)
     return sample, sample_indices
 
-def get_training_sample_from_memmap(memmap_path, mmp_shape, sample_size, SIZE, DIM, dataset_name, datasize):
+def get_training_sample_from_memmap(dataset: ds.Dataset, sample_size, SIZE, DIM, dataset_name, datasize):
     '''
     Given a dataset (as a memmap), sample data for model training.
     For small datasets, the full dataset is used to train.
@@ -104,19 +104,19 @@ def get_training_sample_from_memmap(memmap_path, mmp_shape, sample_size, SIZE, D
     '''
     sample = np.zeros(shape=(sample_size, DIM), dtype=np.float32)
     sample_filename = f"data/{dataset_name}_size{datasize}_sample{sample_size}.npy"
-    mmp = np.memmap(memmap_path, mode = 'r', shape = mmp_shape, dtype=np.float32)
     if os.path.exists(sample_filename):
         sample = np.load(sample_filename)
     else:
         if sample_size!=SIZE:
+            dataset_mmp = dataset.get_dataset_memmap()
             random_order = np.arange(SIZE)
             np.random.seed(42)
             np.random.shuffle(random_order)
             sample_indexes = np.sort(random_order[:sample_size])
-            sample[:] = mmp[sample_indexes, :]
+            sample[:] = dataset_mmp[sample_indexes, :].copy()
             np.save(sample_filename, sample)
         else:
-            sample[:] = mmp
+            sample[:] = dataset.get_dataset()
     return torch.from_numpy(sample)
 
 def make_ground_truth_labels(B, neighbours, index, sample_size):

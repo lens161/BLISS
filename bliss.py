@@ -32,10 +32,8 @@ def build_index(dataset: ds.Dataset, config: Config, trial=None):
         sample_size = 1_000_000
     elif SIZE == 1_000_000_000:
         sample_size = 10_000_000
-
-    memmap_path, mmp_shape = save_dataset_as_memmap(dataset, config, SIZE, DIM)
     
-    sample = ut.get_training_sample_from_memmap(memmap_path, mmp_shape, sample_size, SIZE, DIM, config.dataset_name, config.datasize)
+    sample = ut.get_training_sample_from_memmap(dataset, sample_size, SIZE, DIM, config.dataset_name, config.datasize)
     print(f"sample size = {len(sample)}")
 
     print("finding neighbours...", flush=True)
@@ -287,44 +285,6 @@ def load_indexes_and_models(config: Config, SIZE, DIM, b):
         index = ((indexes, offsets), q_models)
     return index
 
-def save_dataset_as_memmap(dataset, config: Config, SIZE, DIM):
-    '''
-    Put a dataset into a memmap and return the path where it was saved. 
-    Small datasets can be loaded into memory and written to a memmap in one go, larger datasets are processed in chunks.
-    '''
-    logging.info("Creating dataset memmap")
-    if not os.path.exists("memmaps/"):
-        os.mkdir("memmaps/")
-    memmap_path = f"memmaps/{config.dataset_name}_{config.datasize}.npy"
-    mmp_shape = (SIZE, DIM)
-    print(f"mmp shape = {mmp_shape}")
-    mmp = None
-    if not os.path.exists(memmap_path):
-        mmp = np.memmap(memmap_path, mode ="w+", shape=mmp_shape, dtype=np.float32)
-        if SIZE >= 10_000_000:
-            fill_memmap_in_batches(dataset, mmp)
-        else:
-            data = dataset.get_dataset()[:]
-            if dataset.distance() == "angular":
-                data = ut.normalise_data(data)
-            mmp[:] = data
-            mmp.flush()
-    del mmp
-    return memmap_path, mmp_shape
-
-def fill_memmap_in_batches(dataset, mmp):
-    '''
-    Save the dataset in a memmap in batches if the dataset is too large to load into memory in one go.
-    '''
-    index = 0
-    for batch in dataset.get_dataset_iterator(bs=1_000_000):
-        batch_size = len(batch)
-        mmp[index: index + batch_size] = batch
-        mmp.flush()
-        del batch
-        gc.collect()
-        index += batch_size
-
 def run_bliss(config: Config, mode, experiment_name, trial=None):
     '''
     Run the BLISS algorithm. Mode determines whether an index is built or whether inference is run on an existing index.
@@ -352,7 +312,7 @@ def run_bliss(config: Config, mode, experiment_name, trial=None):
         logging.info("Loading models for inference")
         index = load_indexes_and_models(config, SIZE, DIM, b)
         logging.info("Reading query vectors and ground truths")
-        data, test, neighbours = load_data_for_inference(dataset, config, SIZE, DIM)
+        data, test, neighbours, using_memmap = load_data_for_inference(dataset, config, SIZE, DIM)
  
         print(f"creating tensor array from Test")
         test = torch.from_numpy(test).to(torch.float32)
@@ -361,9 +321,9 @@ def run_bliss(config: Config, mode, experiment_name, trial=None):
         start = time.time()
         qstart = time.time()
         if config.query_batched:
-            results = query_multiple_batched(data, index, test, neighbours, config)
+            results, memory = query_multiple_batched(data, index, test, neighbours, config, using_memmap)
         else:
-            results = query_multiple(data, index, test, neighbours, config)
+            results, memory = query_multiple(data, index, test, neighbours, config, using_memmap)
         print(f"querying pq={config.pq} took {time.time()-qstart}")
         end = time.time()
 
@@ -372,5 +332,5 @@ def run_bliss(config: Config, mode, experiment_name, trial=None):
         anns = [t[0] for t in results]
         RECALL = ut.recall(anns, neighbours)
         print(f"RECALL = {RECALL}", flush=True)
-        return RECALL, results, total_query_time
+        return RECALL, results, total_query_time, memory
     

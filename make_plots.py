@@ -46,14 +46,15 @@ def get_parameters_and_stats(averages, i):
     chunk_size = int(averages[i]['chunk_size'].iloc[0])
     epochs = int(averages[i]['e'].iloc[0])
     iters = int(averages[i]['i'].iloc[0])
-    return dataset_name, datasize, r, k, m, qps, avg_recall, bs, reass_mode, nr_ann, lr, chunk_size, epochs, iters
+    memory = float(averages[i]['memory'].iloc[0])
+    return dataset_name, datasize, r, k, m, qps, avg_recall, bs, reass_mode, nr_ann, lr, chunk_size, epochs, iters, memory
 
 def plot_individual_recall_vs_dist_comps(results, averages, experiment_name):
     '''
     Make a plot where recall is compared to nr of distance computations (nr of candidates when candidate set was too large and required true distance computations for reordering).
     '''
     for i, result in enumerate(results):
-        dataset_name, datasize, r, k, m, qps, avg_recall, bs, reass_mode, nr_ann, lr, chunk_size, epochs, iters = get_parameters_and_stats(averages, i)
+        dataset_name, datasize, r, k, m, qps, avg_recall, bs, reass_mode, nr_ann, lr, chunk_size, epochs, iters, memory = get_parameters_and_stats(averages, i)
 
         plt.figure(figsize=(8, 5))
         plt.scatter(result['distance_computations'], result['recall'], color='blue', s=20)

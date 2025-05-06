@@ -45,7 +45,7 @@ def run_multiple_query_exp(experiment_name, configs):
     mode = 'query'
     for config in configs:
         individual_results = []
-        avg_recall, stats, total_query_time = run_bliss(config, mode=mode, experiment_name=experiment_name)
+        avg_recall, stats, total_query_time, memory = run_bliss(config, mode=mode, experiment_name=experiment_name)
         print(f"avg recall = {avg_recall}")
         for (anns, true_nns, dist_comps, elapsed, recall) in stats:
             individual_results.append({'ANNs': ','.join(map(str, anns)) if isinstance(anns, (list, np.ndarray)) else str(anns), 
@@ -56,7 +56,7 @@ def run_multiple_query_exp(experiment_name, configs):
         qps = len(stats)/total_query_time
         individual_results_df = pd.DataFrame(individual_results)
         avg_results_and_params = pd.DataFrame([{'dataset_name':config.dataset_name, 'datasize':config.datasize, 'r': config.r, 'k': config.k, 'm': config.m, 'bs': config.batch_size, 'reass_mode': config.reass_mode, 
-                                               'nr_ann': config.nr_ann, 'lr': config.lr, 'chunk_size': config.reass_chunk_size, 'e': config.epochs, 'i': config.iterations, 'avg_recall': avg_recall, 'qps': qps}])
+                                               'nr_ann': config.nr_ann, 'lr': config.lr, 'chunk_size': config.reass_chunk_size, 'e': config.epochs, 'i': config.iterations, 'avg_recall': avg_recall, 'qps': qps, 'memory': memory}])
         foldername = f"results/{experiment_name}"
         if not os.path.exists("results"):
             os.mkdir("results")
@@ -110,4 +110,4 @@ if __name__ == "__main__":
     logging.info(f"[Experiment] Starting query experiments")
     run_multiple_query_exp(EXP_NAME, configs_q)
 
-    make_plots(EXP_NAME)        
+    make_plots(EXP_NAME)    
