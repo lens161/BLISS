@@ -68,6 +68,7 @@ def train_model(model, dataset, index, sample_size, bucket_sizes, neighbours, r,
             print(f"epoch {epoch} loss = {epoch_loss_sum}", flush=True)
             all_losses[current_epoch] = epoch_loss_sum
             current_epoch += 1
+        torch.cuda.empty_cache()
         if ((epoch+1) * (i+1) < config.epochs*config.iterations and sample_size != train_size) or sample_size == train_size:
             logging.info("Reassigning vectors to new buckets")
             model.eval()
@@ -82,13 +83,14 @@ def train_model(model, dataset, index, sample_size, bucket_sizes, neighbours, r,
             elif config.reass_mode == 2:
                 reassign_2(model, index, bucket_sizes, config, reassign_loader)
             elif config.reass_mode == 3:
-                reassign_3(model, index, bucket_sizes, config, dataset)
+                reass_memory = reassign_3(model, index, bucket_sizes, config, dataset)
+                memory_training = reass_memory if reass_memory > memory_training else memory_training
             lookup = torch.from_numpy(index).to(torch.int64).to(config.device)
             finish = time.time()
             elapsed = finish - start
             print(f"Reassigning took {elapsed:.2f} seconds", flush=True)
-        load_balances.append(1 / np.std(bucket_sizes))
         torch.cuda.empty_cache()
+        load_balances.append(1 / np.std(bucket_sizes))
         np.set_printoptions(threshold=6, suppress=True)
         print(f"index after iteration {i}: \r{index}", flush=True)
 
@@ -157,9 +159,19 @@ def reassign_3(model, index, bucket_sizes, config: Config, dataset):
     N = len(index)
     bucket_sizes [:] = 0
     chunk_size = config.reass_chunk_size
+    memory = 0 
     reassign_loader = DataLoader(dataset, batch_size=config.reass_chunk_size, shuffle=False, num_workers=8)
     with torch.no_grad():
         for batch_data, _ in reassign_loader:
             topk_per_vector = ut.get_topk_buckets_for_batch(batch_data, config.k, model, config.device).numpy()
+            if config.mem_tracking:
+                current_mem = torch.cuda.memory_allocated(device=config.device)
+                print(f"memory in batch: {current_mem}")
+                memory = current_mem if current_mem > memory else memory
             ut.assign_to_buckets_vectorised(bucket_sizes, N, index, chunk_size, offset, topk_per_vector)
             offset += chunk_size
+            del batch_data, topk_per_vector
+            if config.device == torch.device("cuda"):
+                torch.cuda.empty_cache()
+    print(f"memory during reassignment (cuda): {memory}")
+    return memory

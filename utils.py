@@ -6,6 +6,7 @@ import os
 import time
 import psutil
 import torch
+from torch.cuda.amp import autocast
 from faiss import IndexFlatL2, IndexPQ, IndexIVFPQ, vector_to_array
 from pandas import read_csv
 
@@ -175,10 +176,14 @@ def get_all_topk_buckets(loader, k, candidate_buckets, map_model, offset, device
 
 def get_topk_buckets_for_batch(batch_data, k, map_model, device):
     batch_data = batch_data.to(device)
-    bucket_probabilities = torch.sigmoid(map_model(batch_data))
+    with torch.no_grad(), autocast():
+        logits = map_model(batch_data)
+        bucket_probabilities = torch.sigmoid(logits)
     bucket_probabilities_cpu = bucket_probabilities.cpu()
     _, candidate_buckets = torch.topk(bucket_probabilities_cpu, k, dim=1)
-
+    del bucket_probabilities, bucket_probabilities_cpu
+    if device == torch.device("cuda"):
+        torch.cuda.empty_cache()
     return candidate_buckets
 
 def get_dataset_obj(dataset_name, size):
