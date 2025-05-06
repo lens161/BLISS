@@ -26,7 +26,7 @@ def load_data_for_inference(dataset, config: Config, SIZE, DIM):
     # keep data as a memmap if the dataset is too large, otherwise load into memory fully
     memmap_path = f"memmaps/{config.dataset_name}_{config.datasize}.npy"
     memmap_rp_path = f"memmaps/{config.dataset_name}_{config.datasize}_rp8.npy"
-    data = np.memmap(memmap_path, mode='r', shape=(SIZE, DIM), dtype=np.float32) if SIZE > 10_000_000 else np.ascontiguousarray(np.memmap(memmap_path,shape=(SIZE, DIM), mode='r', dtype=np.float32))
+    data = np.memmap(memmap_path, mode='r', shape=(SIZE, DIM), dtype=np.float32) if SIZE > 10_000_000 else np.ascontiguousarray(np.memmap(memmap_path,shape=(SIZE, DIM), mode='r', dtype=np.float32).copy())
     # data_rp = np.memmap(memmap_rp_path, mode='r', shape=(SIZE, 8), dtype=np.float32) if SIZE > 10_000_000 else np.ascontiguousarray(np.memmap(memmap_rp_path,shape=(SIZE, 8), mode='r', dtype=np.float32))
 
     test = dataset.get_queries()
@@ -184,7 +184,7 @@ def get_candidates_for_query_vectorised(predicted_buckets, model_indexes, model_
     candidate_data    = np.empty((total, rp_dim), dtype=np.float32)
     pos = 0
     for (model, start, end), length in zip(slices, lengths):
-        candidate_data   [pos:pos+length] = model_rp_files[model][start:end]
+        candidate_data   [pos:pos+length] = model_rp_files[model][start:end].copy()
         pos += length
     e = time.time()
     timers[7] += (e-s)
@@ -202,7 +202,7 @@ def process_query_batch_twostep(data, neighbours, query_vectors, candidate_bucke
     batch_results = [[] for i in range(len(query_vectors))]
     batch_process_end = time.time()
     base_time_per_query = (batch_process_end - batch_process_start) / len(query_vectors)
-    candidate_amount_limit = m*expected_bucket_size*2
+    candidate_amount_limit = 17000
     getting_candidates_time = 0
     reordering_time = 0
     true_nns_sum = 0
@@ -329,7 +329,7 @@ def reorder(data, query_vector, filtered_candidates, requested_amount):
     # mem = process.memory_full_info().uss / (1024 ** 2)
     mem = 0
     fetch_data_s = time.time()
-    search_space = np.ascontiguousarray(data[filtered_candidates])
+    search_space = np.ascontiguousarray(data[filtered_candidates].copy())
     fetch_data_e = time.time()
     dist_comps = len(search_space)
     query_vector = query_vector.reshape(1, -1)
