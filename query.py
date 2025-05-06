@@ -12,20 +12,25 @@ from multiprocessing import Pool
 from pympler import asizeof
 from torch.utils.data import DataLoader
 
+import datasets as ds
 from bliss_model import BLISSDataset
 import utils as ut
 from config import Config
 
 
-def load_data_for_inference(dataset, config: Config, SIZE, DIM):
+def load_data_for_inference(dataset: ds.Dataset, config: Config, SIZE, DIM):
     '''
     For a given dataset, load the load thedataset, test data and ground truths.
     Data is loaded from an existing memmap (created during index building), so that we can return the memmap address when the dataset is too large to load into memory.
     Test data (query vectors) and ground truths (true nearest neighbours of test) are read from the original dataset files.
     '''
-    # keep data as a memmap if the dataset is too large, otherwise load into memory fully
-    memmap_path = f"memmaps/{config.dataset_name}_{config.datasize}.npy"
-    data = np.memmap(memmap_path, mode='r', shape=(SIZE, DIM), dtype=np.float32) if SIZE > 10_000_000 else np.ascontiguousarray(np.memmap(memmap_path,shape=(SIZE, DIM), mode='r', dtype=np.float32).copy())
+    using_memmap = False
+    data = None
+    if SIZE <= 10_000_000:
+        data = dataset.get_dataset() 
+    else:
+        data = dataset.get_dataset_memmap()
+        using_memmap = True
 
     test = dataset.get_queries()
     neighbours, _ = dataset.get_groundtruth()
@@ -34,15 +39,16 @@ def load_data_for_inference(dataset, config: Config, SIZE, DIM):
     if dataset.distance() == "angular":
         test = ut.normalise_data(test)
     
-    return data, test, neighbours
+    return data, test, neighbours, using_memmap
 
-def query(data, index, query_vector, neighbours, m, freq_threshold, requested_amount):
+def query(data, index, query_vector, neighbours, m, freq_threshold, requested_amount, process, mem_tracking, using_memmap):
     '''
     Query the index for a single vector. Get the candidate set of vectors predicted by each of the R models.
     Then, filter the candidate set based on the frequency threshold.
     If the number of candidates exceeds the requested amount, reorder using true distance computations.
     Then return the remaining set of candidates.
     '''
+    memory = 0
     ((indexes, offsets), models) = index
     predicted_buckets = np.zeros((len(models), m), dtype=np.int32)
     for i in range(len(models)):
@@ -55,18 +61,24 @@ def query(data, index, query_vector, neighbours, m, freq_threshold, requested_am
     counts = np.bincount(candidates)
     unique_candidates = np.where(counts >= freq_threshold)[0]
 
+    cand_size = len(unique_candidates)
+    track_mem = False
+    if mem_tracking: 
+        track_mem = False if cand_size <= max_cand_size else True
+        max_cand_size = max_cand_size if cand_size <= max_cand_size else cand_size
+
     # final_results = [key for key, value in candidates.items() if value >= freq_threshold]
     # print (f"final results = {len(final_results)}")
-    if len(unique_candidates) <= requested_amount:
+    if cand_size <= requested_amount:
         # TODO: remove additional return values when removing timers
-        return unique_candidates, neighbours, 0, ut.recall_single(unique_candidates, neighbours), 0, 0, 0
+        return unique_candidates, neighbours, 0, ut.recall_single(unique_candidates, neighbours), mem
     else:
         # TODO: also implement memory measurement here if we keep it
-        final_neighbours, dist_comps, mem = reorder(data, query_vector, np.array(unique_candidates, dtype=int), requested_amount)
+        final_neighbours, dist_comps, mem = reorder(data, query_vector, np.array(unique_candidates, dtype=int), requested_amount, process, using_memmap, track_mem)
         # TODO: remove additional return values when removing timers
         return final_neighbours, neighbours, dist_comps, ut.recall_single(final_neighbours, neighbours), mem
 
-def query_multiple(data, index, vectors, neighbours, config: Config):
+def query_multiple(data, index, vectors, neighbours, config: Config, using_memmap):
     '''
     Run multiple queries from a set of query vectors i.e. "Test" from the ANN benchmark datsets.
     '''
@@ -74,13 +86,15 @@ def query_multiple(data, index, vectors, neighbours, config: Config):
     print(f"Number of query vectors: {size}")
     print(f"Number of neighbour entries: {len(neighbours)}", flush=True)
     results = [[] for i in range(len(vectors))]
+    memory = 0
+    process = psutil.Process(os.getpid())
     for i, vector in enumerate(vectors):
-        sys.stdout.write(f"\r[PID: {os.getpid()}] querying {i+1} of {size}       ")
-        sys.stdout.flush()
+        print(f"\r[PID: {os.getpid()}] querying {i+1} of {size}       ", end='', flush=True)
         start = time.time()
-        anns, true_nns, dist_comps, recall, memory = query(data, index, vector, neighbours[i], config.m, config.freq_threshold, config.nr_ann)
+        anns, true_nns, dist_comps, recall, current_mem = query(data, index, vector, neighbours[i], config.m, config.freq_threshold, config.nr_ann, process, config.mem_tracking, using_memmap)
         end = time.time()
         elapsed = end - start
+        memory = current_mem if current_mem > memory else memory
         results[i] = (anns, true_nns, dist_comps, elapsed, recall)
     print("\r")
     return results, memory
@@ -125,7 +139,7 @@ def get_candidates_for_query_vectorised(predicted_buckets, model_indexes, model_
         candidates = np.empty(0, dtype=np.int32)
     return candidates
 
-def process_query_batch(data, neighbours, query_vectors, candidate_buckets, indexes, offsets, freq_threshold, requested_amount, batch_process_start, process, max_cand_size, mem_tracking):
+def process_query_batch(data, neighbours, query_vectors, candidate_buckets, indexes, offsets, freq_threshold, requested_amount, batch_process_start, process, max_cand_size, mem_tracking, using_memmap):
     ## input: candidate_buckets np array for a batch of queries
     ## output: the ANNs for the batch of queries, dist_comps per query, recall per query
     batch_results = [[] for i in range(len(query_vectors))]
@@ -153,14 +167,14 @@ def process_query_batch(data, neighbours, query_vectors, candidate_buckets, inde
             query_end = time.time()
             batch_results[i] = (unique_candidates, neighbours[i], 0, (query_end-query_start) + base_time_per_query, ut.recall_single(unique_candidates, neighbours[i]))
         else:
-            final_neighbours, dist_comps, current_mem = reorder(data, query, np.array(unique_candidates, dtype=int), requested_amount, process, track_mem)
+            final_neighbours, dist_comps, current_mem = reorder(data, query, np.array(unique_candidates, dtype=int), requested_amount, process, using_memmap, track_mem)
             query_end = time.time()
             memory = current_mem if current_mem > memory else memory
             del unique_candidates
             batch_results[i] = (final_neighbours, neighbours[i], dist_comps, (query_end-query_start) + base_time_per_query, ut.recall_single(final_neighbours, neighbours[i]))
     return batch_results, memory
 
-def query_multiple_batched(data, index, vectors, neighbours, config: Config):
+def query_multiple_batched(data, index, vectors, neighbours, config: Config, using_memmap):
     '''
     Run multiple queries from a set of query vectors i.e. "Test" from the ANN benchmark datsets.
     '''
@@ -192,15 +206,15 @@ def query_multiple_batched(data, index, vectors, neighbours, config: Config):
                 bucket_probabilities = torch.sigmoid(model(batch_data))
                 _, candidate_buckets = torch.topk(bucket_probabilities, config.m, dim=1)
                 predicted_buckets_per_query[:, i, :] = candidate_buckets
-            batch_results, current_mem = process_query_batch(data, neighbours[batch_indices], batch_data, predicted_buckets_per_query, indexes, offsets, config.freq_threshold, config.nr_ann, batch_process_start, process, max_cand_size, config.mem_tracking)
+            batch_results, current_mem = process_query_batch(data, neighbours[batch_indices], batch_data, predicted_buckets_per_query, indexes, offsets, config.freq_threshold, config.nr_ann, batch_process_start, process, max_cand_size, config.mem_tracking, using_memmap)
             memory = current_mem if current_mem > memory else memory
             results[batch_idx] = batch_results
             batch_idx += 1
 
     flattened_results = [item for sublist in results for item in sublist]
-    return flattened_results
+    return flattened_results, memory
     
-def reorder(data, query_vector, candidates, requested_amount, process, track_mem = False):
+def reorder(data, query_vector, candidates, requested_amount, process, using_memmap, track_mem = False):
     '''
     Do true distance calculations on the candidate set of vectors and return the top 'requested_amount' candidates.
     ''' 
@@ -212,7 +226,7 @@ def reorder(data, query_vector, candidates, requested_amount, process, track_mem
 
     mem = 0 if not track_mem else process.memory_full_info().uss / (1024 ** 2)
     if not isinstance(data, IndexPQ):
-        search_space = np.ascontiguousarray(data[candidates].copy())
+        search_space = np.ascontiguousarray(data[candidates].copy()) if using_memmap else np.ascontiguousarray(data[candidates])
     else:
         candidates = np.asarray(candidates, dtype=np.int32)
         # search_space = np.vstack([data.reconstruct_batch(int(i)) for i in candidates])

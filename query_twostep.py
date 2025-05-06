@@ -13,21 +13,24 @@ from pympler import asizeof
 from sklearn.random_projection import SparseRandomProjection
 from torch.utils.data import DataLoader
 
+import datasets as ds
 from bliss_model import BLISSDataset
 import utils as ut
 from config import Config
 
-def load_data_for_inference(dataset, config: Config, SIZE, DIM):
+def load_data_for_inference(dataset: ds.Dataset, config: Config, SIZE, DIM):
     '''
     For a given dataset, load the load thedataset, test data and ground truths.
     Data is loaded from an existing memmap (created during index building), so that we can return the memmap address when the dataset is too large to load into memory.
     Test data (query vectors) and ground truths (true nearest neighbours of test) are read from the original dataset files.
     '''
-    # keep data as a memmap if the dataset is too large, otherwise load into memory fully
-    memmap_path = f"memmaps/{config.dataset_name}_{config.datasize}.npy"
-    memmap_rp_path = f"memmaps/{config.dataset_name}_{config.datasize}_rp8.npy"
-    data = np.memmap(memmap_path, mode='r', shape=(SIZE, DIM), dtype=np.float32) if SIZE > 10_000_000 else np.ascontiguousarray(np.memmap(memmap_path,shape=(SIZE, DIM), mode='r', dtype=np.float32).copy())
-    # data_rp = np.memmap(memmap_rp_path, mode='r', shape=(SIZE, 8), dtype=np.float32) if SIZE > 10_000_000 else np.ascontiguousarray(np.memmap(memmap_rp_path,shape=(SIZE, 8), mode='r', dtype=np.float32))
+    using_memmap = False
+    data = None
+    if SIZE <= 10_000_000:
+        data = dataset.get_dataset() 
+    else:
+        data = dataset.get_dataset_memmap()
+        using_memmap = True
 
     test = dataset.get_queries()
     neighbours, _ = dataset.get_groundtruth()
@@ -36,7 +39,7 @@ def load_data_for_inference(dataset, config: Config, SIZE, DIM):
     if dataset.distance() == "angular":
         test = ut.normalise_data(test)
     
-    return data, test, neighbours
+    return data, test, neighbours, using_memmap
 
 def query(data, index, query_vector, neighbours, m, freq_threshold, requested_amount):
     '''
@@ -196,13 +199,13 @@ def get_candidates_for_query_vectorised(predicted_buckets, model_indexes, model_
 
     return filtered_vals, filtered_data
 
-def process_query_batch_twostep(data, neighbours, query_vectors, candidate_buckets, indexes, offsets, rp_files, freq_threshold, requested_amount, m, expected_bucket_size, batch_process_start, transformer, rp_dim, timers):
+def process_query_batch_twostep(data, neighbours, query_vectors, candidate_buckets, indexes, offsets, rp_files, freq_threshold, requested_amount, m, expected_bucket_size, batch_process_start, transformer, rp_dim, timers, using_memmap):
     ## input: candidate_buckets np array for a batch of queries
     ## output: the ANNs for the batch of queries, dist_comps per query, recall per query
     batch_results = [[] for i in range(len(query_vectors))]
     batch_process_end = time.time()
     base_time_per_query = (batch_process_end - batch_process_start) / len(query_vectors)
-    candidate_amount_limit = 17000
+    candidate_amount_limit = m*expected_bucket_size*2
     getting_candidates_time = 0
     reordering_time = 0
     true_nns_sum = 0
@@ -231,7 +234,7 @@ def process_query_batch_twostep(data, neighbours, query_vectors, candidate_bucke
                     del candidate_ids, candidate_rp_data
                     return batch_results, getting_candidates_time, true_nns_sum, reordering_time, fetch_data_sum, memory
             reordering_start = time.time()
-            final_neighbours, dist_comps, true_nns_time, fetch_data_time, current_mem = reorder(data, query, candidate_ids, requested_amount)
+            final_neighbours, dist_comps, true_nns_time, fetch_data_time, current_mem = reorder(data, query, candidate_ids, requested_amount, using_memmap)
             memory = current_mem if current_mem > memory else memory
             del candidate_ids, candidate_rp_data
             query_end = time.time()
@@ -241,7 +244,7 @@ def process_query_batch_twostep(data, neighbours, query_vectors, candidate_bucke
             fetch_data_sum += fetch_data_time
     return batch_results, getting_candidates_time, true_nns_sum, reordering_time, fetch_data_sum, memory
 
-def query_multiple_batched(data, index, vectors, neighbours, config: Config):
+def query_multiple_batched(data, index, vectors, neighbours, config: Config, using_memmap):
     '''
     Run multiple queries from a set of query vectors i.e. "Test" from the ANN benchmark datsets.
     '''
@@ -289,7 +292,7 @@ def query_multiple_batched(data, index, vectors, neighbours, config: Config):
                 predicted_buckets_per_query[:, i, :] = candidate_buckets
             forward_pass_end = time.time()
             forward_pass_sum += (forward_pass_end - forward_pass_start)
-            batch_results, collecting_candidates_time, true_nns_time, reordering_time, fetch_data_time, current_mem = process_query_batch_twostep(data, neighbours[batch_indices], batch_data, predicted_buckets_per_query, indexes, offsets, rp_files, config.freq_threshold, config.nr_ann, config.m, expected_bucket_size, batch_process_start, transformer, config.rp_dim, timers)
+            batch_results, collecting_candidates_time, true_nns_time, reordering_time, fetch_data_time, current_mem = process_query_batch_twostep(data, neighbours[batch_indices], batch_data, predicted_buckets_per_query, indexes, offsets, rp_files, config.freq_threshold, config.nr_ann, config.m, expected_bucket_size, batch_process_start, transformer, config.rp_dim, timers, using_memmap)
             memory = current_mem if current_mem > memory else memory
             collecting_candidates_sum += collecting_candidates_time
             true_nns_sum += true_nns_time
@@ -315,9 +318,9 @@ def query_multiple_batched(data, index, vectors, neighbours, config: Config):
     print(f"Time spent on collecting rp vectors: {timers[7]}")
     print(f"Time spent on filtering rp vectors: {timers[8]}")
     flattened_results = [item for sublist in results for item in sublist]
-    return flattened_results
+    return flattened_results, memory
     
-def reorder(data, query_vector, filtered_candidates, requested_amount):
+def reorder(data, query_vector, filtered_candidates, requested_amount, using_memmap):
     '''
     Do true distance calculations on the candidate set of vectors and return the top 'requested_amount' candidates.
     ''' 
@@ -329,7 +332,7 @@ def reorder(data, query_vector, filtered_candidates, requested_amount):
     # mem = process.memory_full_info().uss / (1024 ** 2)
     mem = 0
     fetch_data_s = time.time()
-    search_space = np.ascontiguousarray(data[filtered_candidates].copy())
+    search_space = np.ascontiguousarray(data[filtered_candidates].copy()) if using_memmap else np.ascontiguousarray(data[filtered_candidates])
     fetch_data_e = time.time()
     dist_comps = len(search_space)
     query_vector = query_vector.reshape(1, -1)
