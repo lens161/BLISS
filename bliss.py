@@ -13,8 +13,7 @@ import datasets as ds
 import utils as ut
 from bliss_model import BLISS_NN, BLISSDataset
 from config import Config
-# temporarily moved import down to run_bliss while we still have two separate query files
-# from query import query_multiple, query_multiple_batched, load_data_for_inference
+from query import query_multiple, query_multiple_batched, load_data_for_inference, query_multiple_batched_twostep, query_multiple_twostep
 from train import train_model
     
 def build_index(dataset: ds.Dataset, config: Config, trial=None):
@@ -96,6 +95,7 @@ def build_index(dataset: ds.Dataset, config: Config, trial=None):
         del model
         inverted_index, offsets = invert_index(index, bucket_sizes, SIZE)
         index_path, index_files_size = ut.save_inverted_index(inverted_index, offsets, config.dataset_name, r+1, config.r, config.k, config.b, config.lr, config.batch_size, config.reass_mode, config.reass_chunk_size, config.epochs, config.iterations)
+        # TODO: write RP files if query_twostep is enabled!
         index_sizes_total += index_files_size
         del inverted_index, offsets
         final_index.append((index_path, model_path))
@@ -302,10 +302,6 @@ def run_bliss(config: Config, mode, experiment_name, trial=None):
         return train_time, final_assign_time, build_time, memory_final_assignment, memory_training, load_balance, index_sizes_total, model_sizes_total, load_balances
     elif mode == 'query':
         # set b if it wasn't already set in config
-        if config.query_twostep:
-            from query_twostep import query_multiple, query_multiple_batched, load_data_for_inference
-        else:
-            from query import query_multiple, query_multiple_batched, load_data_for_inference
         b = config.b if config.b !=0 else 1024
         config.b = b
         
@@ -320,8 +316,12 @@ def run_bliss(config: Config, mode, experiment_name, trial=None):
         logging.info("Starting inference")
         start = time.time()
         qstart = time.time()
-        if config.query_batched:
+        if config.query_batched and config.query_twostep:
+            results, memory = query_multiple_batched_twostep(data, index, test, neighbours, config, using_memmap)
+        elif config.query_batched:
             results, memory = query_multiple_batched(data, index, test, neighbours, config, using_memmap)
+        elif config.query_twostep:
+            results, memory = query_multiple_twostep(data, index, test, neighbours, config, using_memmap)
         else:
             results, memory = query_multiple(data, index, test, neighbours, config, using_memmap)
         print(f"querying pq={config.pq} took {time.time()-qstart}")
