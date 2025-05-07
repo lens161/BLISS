@@ -24,7 +24,9 @@ def load_data_for_inference(dataset: ds.Dataset, config: Config, SIZE, DIM):
     using_memmap = False
     data = None
     if SIZE <= 10_000_000:
-        data = dataset.get_dataset() 
+        data = dataset.get_dataset()
+        if dataset.distance() == "angular":
+                data = ut.normalise_data(data) 
     else:
         data = dataset.get_dataset_memmap()
         using_memmap = True

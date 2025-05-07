@@ -116,7 +116,10 @@ def get_training_sample_from_memmap(dataset: ds.Dataset, sample_size, SIZE, DIM,
             sample[:] = dataset_mmp[sample_indexes, :].copy()
             np.save(sample_filename, sample)
         else:
-            sample[:] = dataset.get_dataset()
+            data = dataset.get_dataset()
+            if dataset.distance() == "angular":
+                data = normalise_data(data)
+            sample[:] = data
     return torch.from_numpy(sample)
 
 def make_ground_truth_labels(B, neighbours, index, sample_size):
