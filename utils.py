@@ -194,7 +194,9 @@ def get_all_topk_buckets(loader, k, candidate_buckets, map_model, offset, device
     with torch.no_grad():
         for batch_data, _, in loader:
             batch_size = len(batch_data)
-            batch_candidate_buckets, memory = get_topk_buckets_for_batch(batch_data, k, map_model, device, mem_tracking)
+            batch_candidate_buckets, current_mem = get_topk_buckets_for_batch(batch_data, k, map_model, device, mem_tracking)
+            if mem_tracking:
+                memory = current_mem if current_mem>memory else memory
             batch_candidate_buckets.numpy()
             candidate_buckets[start_idx : start_idx + batch_size, :] = batch_candidate_buckets
             start_idx += batch_size

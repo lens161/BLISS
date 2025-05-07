@@ -86,7 +86,7 @@ def train_model(model, dataset, index, sample_size, bucket_sizes, neighbours, r,
             elif config.reass_mode == 2:
                 reass_memory = reassign_2(model, index, bucket_sizes, config, reassign_loader)
             elif config.reass_mode == 3:
-                reass_memory = reassign_3(model, index, bucket_sizes, config, dataset)
+                reass_memory = reassign_3(model, index, bucket_sizes, config, reassign_loader, dataset)
                 memory_training = reass_memory if reass_memory > memory_training else memory_training
             lookup = torch.from_numpy(index).to(torch.int64).to(config.device)
             finish = time.time()
@@ -158,7 +158,7 @@ def reassign_2(model, index, bucket_sizes, config: Config, reassign_loader):
         ut.assign_to_buckets_vectorised(bucket_sizes, N, index, chunk_size, i, topk_per_vector)
     return memory
     
-def reassign_3(model, index, bucket_sizes, config: Config, dataset):
+def reassign_3(model, index, bucket_sizes,  config: Config, reassign_loader):
     '''
     Combination of baseline and our own reassignment, where we get the topk buckets in batches and also
     reassign in chunks instead of sequentially.
@@ -166,17 +166,16 @@ def reassign_3(model, index, bucket_sizes, config: Config, dataset):
     offset = 0
     N = len(index)
     bucket_sizes [:] = 0
-    chunk_size = config.reass_chunk_size
+    batch_size = config.batch_size
     memory = 0 
-    reassign_loader = DataLoader(dataset, batch_size=config.reass_chunk_size, shuffle=False, num_workers=8)
     with torch.no_grad():
         for batch_data, _ in reassign_loader:
             topk_per_vector, current_memory = ut.get_topk_buckets_for_batch(batch_data, config.k, model, config.device, config.mem_tracking)
             if config.mem_tracking:
                 memory = current_memory if current_memory > memory else memory
             topk_per_vector.numpy()
-            ut.assign_to_buckets_vectorised(bucket_sizes, N, index, chunk_size, offset, topk_per_vector)
-            offset += chunk_size
+            ut.assign_to_buckets_vectorised(bucket_sizes, N, index, batch_size, offset, topk_per_vector)
+            offset += batch_size
             del batch_data, topk_per_vector
             if config.device == torch.device("cuda"):
                 torch.cuda.empty_cache()
