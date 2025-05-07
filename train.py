@@ -86,7 +86,7 @@ def train_model(model, dataset, index, sample_size, bucket_sizes, neighbours, r,
             elif config.reass_mode == 2:
                 reass_memory = reassign_2(model, index, bucket_sizes, config, reassign_loader)
             elif config.reass_mode == 3:
-                reass_memory = reassign_3(model, index, bucket_sizes, config, reassign_loader, dataset)
+                reass_memory = reassign_3(model, index, bucket_sizes, config, reassign_loader)
                 memory_training = reass_memory if reass_memory > memory_training else memory_training
             lookup = torch.from_numpy(index).to(torch.int64).to(config.device)
             finish = time.time()

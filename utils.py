@@ -206,15 +206,27 @@ def get_topk_buckets_for_batch(batch_data, k, map_model, device, mem_tracking=Fa
     '''
     Prepare a table with the top-k buckets for a batch of vectors according to the model.
     '''
+    process = psutil.Process(os.getpid())
     memory=0
     batch_data = batch_data.to(device)
-    with torch.no_grad(), autocast("cuda"):
-        logits = map_model(batch_data)
-        bucket_probabilities = torch.sigmoid(logits)
+    # only do autocast (mixed precision) on cuda devices
+    if device == torch.device("cuda"):
+        with torch.no_grad(), autocast("cuda"):
+            logits = map_model(batch_data)
+            bucket_probabilities = torch.sigmoid(logits)
+    else:
+        with torch.no_grad():
+            logits = map_model(batch_data)
+            bucket_probabilities = torch.sigmoid(logits)
+
     bucket_probabilities_cpu = bucket_probabilities.cpu()
     _, candidate_buckets = torch.topk(bucket_probabilities_cpu, k, dim=1)
+
     if mem_tracking:
-        memory = torch.cuda.memory_allocated(device) / (1024**2)
+        if device == torch.device("cuda") or device == torch.device("mps"):
+            memory = torch.cuda.memory_allocated(device)
+        else:
+            memory = process.memory_full_info().uss / (1024 ** 2)
     del bucket_probabilities, bucket_probabilities_cpu
     if device == torch.device("cuda"):
         torch.cuda.empty_cache()
