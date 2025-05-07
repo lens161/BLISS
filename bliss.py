@@ -153,7 +153,7 @@ def map_all_to_buckets_1(map_loader, full_data, data_batched, k, index, bucket_s
         data_batched.data = torch.from_numpy(batch).float()
         with torch.no_grad():
             for batch_data, batch_indices in map_loader:
-                candidate_buckets, vram = ut.get_topk_buckets_for_batch(batch_data, k, map_model, device)
+                candidate_buckets, vram = ut.get_topk_buckets_for_batch(batch_data, k, map_model, device, mem_tracking)
                 candidate_buckets.numpy()
                 if mem_tracking:
                     mem_current = process.memory_full_info().uss / (1024 ** 2)
@@ -171,13 +171,13 @@ def map_all_to_buckets_2(bucket_sizes, SIZE, model, memory_usage, k, device, ind
     First collect the top-k buckets for all vectors by doing forward passes on the model. 
     Then go through the vectors in batches, reassigning a whole batch at once.
     '''
-    candidate_buckets, vram = get_all_candidate_buckets(SIZE, model, k, device, full_data, data_batched, map_loader)
+    candidate_buckets, vram = get_all_candidate_buckets(SIZE, model, k, device, full_data, data_batched, map_loader, mem_tracking)
     memory_usage=0
     for i in range(0, SIZE, chunk_size):
         # get the topk buckets per vector
         topk_per_vector = candidate_buckets[i : min(i + chunk_size, SIZE)] # shape = (chunk_size, k)
         if mem_tracking:
-            memory_current = ut.assign_to_buckets_vectorised(bucket_sizes, SIZE, index, chunk_size, i, topk_per_vector)
+            memory_current = ut.assign_to_buckets_vectorised(bucket_sizes, SIZE, index, chunk_size, i, topk_per_vector, mem_tracking)
             memory_usage = memory_current if memory_current>memory_usage else memory_usage
             memory_usage = vram if vram > memory_usage else memory_usage
     return memory_usage
@@ -194,7 +194,7 @@ def map_all_to_buckets_3(bucket_sizes, SIZE, model, config, memory_usage, reass_
         data_batched.data = torch.from_numpy(batch).float()
         with torch.no_grad():
             for batch_data, _ in map_loader:
-                topk_per_vector, vram = ut.get_topk_buckets_for_batch(batch_data, k, model, config.device)
+                topk_per_vector, vram = ut.get_topk_buckets_for_batch(batch_data, k, model, config.device, mem_tracking)
                 topk_per_vector.numpy()
                 memory_current = ut.assign_to_buckets_vectorised(bucket_sizes, SIZE, index, chunk_size, offset, topk_per_vector, mem_tracking)
                 if mem_tracking:
@@ -237,7 +237,7 @@ def build_full_index(bucket_sizes, SIZE, model, config: Config):
 
     return index, memory_usage
 
-def get_all_candidate_buckets(SIZE, model, k, device, full_data, data_batched, map_loader, mem_tracking):
+def get_all_candidate_buckets(SIZE, model, k, device, full_data, data_batched, map_loader, mem_tracking=False):
     '''
     For a set of data, predict the top-k candidates for each vector according to a model, and aggregate the results.
     '''
