@@ -29,7 +29,9 @@ def build_multiple_indexes_exp(experiment_name, configs):
                       'reass_mode': reass_mode, 'reass_chunk_size':reass_chunk_size,
                         # Measurements/Results:
                       'build_time':build_time, 'train_time_per_r':train_time, 'final_assign_time_per_r':final_assign_time,
-                      'mem_training':memory_training, 'mem_final_ass':memory_final_assignment, 'load_balance':normalised_entropy, 
+                      'ram_training':memory_training[0], 'vram_training':memory_training[1], 
+                      'ram_final_ass':memory_final_assignment[0],'vram_final_assignement':memory_final_assignment[1], 
+                      'load_balance':normalised_entropy, 
                       'index_sizes_total': index_sizes_total,'model_sizes_total': model_sizes_total, 'load_balances': load_balances})
     df = pd.DataFrame(stats)
         
@@ -76,11 +78,11 @@ if __name__ == "__main__":
     range_threshold = 2
     k_values = [2]
     m_values = [5, 10, 15]
-    reass_modes = [0, 1, 2, 3]
+    reass_modes = [0, 1]
     batch_sizes = [1024, 2048, 5000]
     chunk_sizes = [5000]
     iterations = [3, 4, 5]
-    EXP_NAME = "check_mem"
+    EXP_NAME = "check_mem_and_vram_3"
 
     if not os.path.exists("logs"):
         os.mkdir("logs")
@@ -110,6 +112,6 @@ if __name__ == "__main__":
     logging.info(f"[Experiment] Building indexes")
     build_multiple_indexes_exp(EXP_NAME, configs_b)
     # logging.info(f"[Experiment] Starting query experiments")
-    run_multiple_query_exp(EXP_NAME, configs_q)
+    # run_multiple_query_exp(EXP_NAME, configs_q)
 
-    make_plots(EXP_NAME)        
+    # make_plots(EXP_NAME)        

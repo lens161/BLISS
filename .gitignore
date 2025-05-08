@@ -39,8 +39,13 @@ reass_mode_1_desk_10.job
 reass_mode_2_desk_10.job
 reass_mode_3_desk_10.job
 reass_mode_3_desk_mem.job
+reass_mode_0_mem.job
+reass_mode_1_mem.job
+reass_mode_2_mem.job
+reass_mode_3_mem.job
 
 # experiment files 
+exp_check_nomem.py
 experiments_2.py
 experiments3.py
 query_only.py
@@ -60,6 +65,10 @@ exp_reass_mode_2_desk10.py
 exp_reass_mode_3_desk10.py
 exp_reass_mode_0_desk10.py
 exp_reass_mode_3_desk_mem.py
+exp_reass_mode_0_mem.py
+exp_reass_mode_1_mem.py
+exp_reass_mode_2_mem.py
+exp_reass_mode_3_mem.py
 
 # C extensions
 *.so

@@ -29,7 +29,9 @@ def build_multiple_indexes_exp(experiment_name, configs):
                       'reass_mode': reass_mode, 'reass_chunk_size':reass_chunk_size,
                         # Measurements/Results:
                       'build_time':build_time, 'train_time_per_r':train_time, 'final_assign_time_per_r':final_assign_time,
-                      'mem_training':memory_training, 'mem_final_ass':memory_final_assignment, 'load_balance':normalised_entropy, 
+                      'ram_training':memory_training[0], 'vram_training':memory_training[1], 
+                      'ram_final_ass':memory_final_assignment[0],'vram_final_assignement':memory_final_assignment[1], 
+                      'load_balance':normalised_entropy, 
                       'index_sizes_total': index_sizes_total,'model_sizes_total': model_sizes_total, 'load_balances': load_balances})
     df = pd.DataFrame(stats)
         
@@ -100,14 +102,12 @@ if __name__ == "__main__":
     logging.info("[Experiment] Experiments started")
 
     for i in iterations:
-        # configs_b.append(Config(dataset_name="sift-128-euclidean", batch_size=3000, b=4096, epochs=6,  iterations=i))
-        for m in m_values:
-            configs_q.append(Config(dataset_name="sift-128-euclidean", batch_size=3000, b=4096, epochs=6,  iterations=i, m=m))
+        configs_b.append(Config(dataset_name="sift-128-euclidean", batch_size=5000, b=4096, reass_mode=0, reass_chunk_size=40_000))
                 
     print(f"EXPERIMENT: {EXP_NAME}")
-    # logging.info(f"[Experiment] Building indexes")
+    logging.info(f"[Experiment] Building indexes")
     build_multiple_indexes_exp(EXP_NAME, configs_b)
-    logging.info(f"[Experiment] Starting query experiments")
-    run_multiple_query_exp(EXP_NAME, configs_q)
+    # logging.info(f"[Experiment] Starting query experiments")
+    # run_multiple_query_exp(EXP_NAME, configs_q)
 
-    make_plots(EXP_NAME)    
+    # make_plots(EXP_NAME)    

@@ -1,10 +1,11 @@
 #!/bin/bash
 
 #SBATCH --job-name=check_mem # Job name
-#SBATCH --output=outputs/check_mem.out                           
+#SBATCH --output=outputs/check_mem.out  
+#SBATCH --cpus-per-task=8                         
 #SBATCH --exclude=cn[3-19]
-#SBATCH --gres=gpu                      # Need GPU
 #SBATCH --time=24:00:00                    
+#SBATCH --gres=gpu                      # Need GPU
 #SBATCH --partition=scavenge
 #SBATCH --mail-type=BEGIN,FAIL,END      # Send an email when the job finishes
 #SBATCH --exclusive                     # get entire machine for task
