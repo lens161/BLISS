@@ -75,6 +75,7 @@ def plot_individual_recall_vs_dist_comps(results, averages, experiment_name):
         # new_recall = result['recall'].mean()
         # new_qps = len(result) / result['elapsed'].sum()
         # plt.savefig(f"results/{experiment_name}/r{r}_k{k}_m{m}_qps{new_qps:.2f}_avg_rec{avg_recall:.3f}_bs={bs}_reass={reass_mode}_nr_ann={nr_ann}_lr={lr}.png", dpi=300)
+        plt.close()
 
 def plot_recall_vs_dist_comps_per_m(results, averages, experiment_name):
     stats = []
@@ -97,6 +98,7 @@ def plot_recall_vs_dist_comps_per_m(results, averages, experiment_name):
     plt.grid(True)
     plt.tight_layout()
     plt.savefig(f"results/{experiment_name}/recall_vs_dist_comps_per_m.png", dpi=300)
+    plt.close()
 
 def plot_build_time_vs_chunk_size(experiment_name):
     """
@@ -179,8 +181,8 @@ def make_plots(experiment_name):
     Include all plot functions that should be run here.
     '''
     # get results from query files
-    # query_files = find_query_files(experiment_name)
-    # query_results, query_averages = compile_query_results(query_files)
+    query_files = find_query_files(experiment_name)
+    query_results, query_averages = compile_query_results(query_files)
     plot_build_time_vs_chunk_size(experiment_name)
     # TODO: get results from build and memory files
 
@@ -190,4 +192,4 @@ def make_plots(experiment_name):
     # plot_recall_vs_dist_comps_per_m_per_dataset(query_results, query_averages, experiment_name)
 
 if __name__ == "__main__":
-    make_plots("test_twostep_deep1B_baseline")
+    make_plots("sift_diff_epochs_v4")
