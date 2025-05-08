@@ -3,12 +3,10 @@ import math
 import matplotlib.pyplot as plt # type: ignore
 import numpy as np
 import os
-import time
 import psutil
 import torch
 from torch.amp import autocast
 from faiss import IndexFlatL2, IndexPQ, IndexIVFPQ, vector_to_array
-from pandas import read_csv
 
 import datasets as ds
 from bliss_model import BLISS_NN
@@ -23,11 +21,20 @@ def get_nearest_neighbours_within_dataset(dataset, amount):
     Find the true nearest neighbours of vectors within a dataset. To avoid returning a datapoint as its own neighbour, we search for amount+1 neighbours and then filter out
     the first vector (ordered by distance so the vector itself should be the first point).
     '''
-    nbrs = IndexFlatL2(dataset.shape[1])
-    nbrs.add(dataset)
-    _, I = nbrs.search(dataset, amount+1)
-    I = I[:, 1:]
-    return I
+    nbrs = np.zeros((len(dataset), amount), dtype=np.int32)
+    nbrs_index = IndexFlatL2(dataset.shape[1])
+    nbrs_index.add(dataset)
+    chunk_size = 100_000
+    chunks = math.ceil(len(dataset) / chunk_size)
+    start = 0
+    for i in range(0, chunks):
+        end = min(len(dataset), start+chunk_size)
+        _, I = nbrs_index.search(dataset[start:end], amount+1)
+        I = I[:, 1:]
+        I = I.astype(np.int32)
+        nbrs[start:end] = I
+        start = end
+    return nbrs
 
 def get_nearest_neighbours_in_different_dataset(dataset, queries, amount):
     '''
@@ -36,6 +43,7 @@ def get_nearest_neighbours_in_different_dataset(dataset, queries, amount):
     nbrs = IndexFlatL2(dataset.shape[1])
     nbrs.add(dataset)
     _, I = nbrs.search(queries, amount)
+    I = np.asarray(I, dtype=np.int32)
     return I
 
 def get_train_nearest_neighbours_from_file(dataset, amount, sample_size, dataset_name, datasize):
@@ -49,16 +57,12 @@ def get_train_nearest_neighbours_from_file(dataset, amount, sample_size, dataset
         logging.info("No neighbours file found, calculating ground truths of training sample")
         I = get_nearest_neighbours_within_dataset(dataset, amount)
         print("writing neighbours to nbrs file")
-        I = np.asarray(I, dtype=np.int32)
         np.save(filename, I)
-        # with open(filename, "w") as f: 
-        #     np.savetxt(f, I, delimiter=",", fmt='%d')
 
     else:
         print(f"found nbrs file for {dataset_name} with amount={amount} and samplesize={sample_size}, reading true nearest neighbours from file")
         logging.info("Reusing ground truths for training sample from file")
         filename = f"data/{dataset_name}-size{datasize}-nbrs{amount}-sample{sample_size}.npy"
-        # I = read_csv(filename, dtype=int, header=None).to_numpy()
         I = np.load(filename)
     return I
 
