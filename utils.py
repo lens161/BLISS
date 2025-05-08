@@ -6,6 +6,7 @@ import os
 import time
 import psutil
 import torch
+from torch.amp import autocast
 from faiss import IndexFlatL2, IndexPQ, IndexIVFPQ, vector_to_array
 from pandas import read_csv
 
@@ -164,46 +165,75 @@ def reassign_vector_to_bucket(index, bucket_sizes, candidates, item_index):
     index[item_index] = best_bucket
     bucket_sizes[best_bucket] += 1
 
-def assign_to_buckets_vectorised(bucket_sizes, SIZE, index, chunk_size, i, topk_per_vector):
+def assign_to_buckets_vectorised(bucket_sizes, SIZE, index, chunk_size, i, topk_per_vector, memory_tracking=False):
     '''
     Reassign a chunk of vectors to a new bucket. The vectors are reassigned to the least
     occupied of the top-k buckets predicted by the model, but as multiple vectors are reassigned at once,
     there is no guarantee that the selected bucket is the least occupied if multiple vectors
     are getting reassigned to the same bucket in a single batch.
     '''
-    process = psutil.Process(os.getpid())
+    memory_usage = 0
     candidate_sizes_per_vector = bucket_sizes[topk_per_vector]    
     vectors = np.arange(topk_per_vector.shape[0])
     sizes = np.argmin(candidate_sizes_per_vector, axis=1)
     # get the least ocupied of each candidate set 
     least_occupied = topk_per_vector[vectors, sizes]
-    memory_usage = process.memory_full_info().uss / (1024 ** 2)
+    if memory_tracking:
+        process = psutil.Process(os.getpid())
+        memory_usage = process.memory_full_info().uss / (1024 ** 2)
     index[i : min(i + chunk_size, SIZE)] = least_occupied
 
     bucket_increments = np.bincount(least_occupied, minlength=len(bucket_sizes))
     bucket_sizes[:] = np.add(bucket_sizes, bucket_increments)
     return memory_usage
 
-def get_all_topk_buckets(loader, k, candidate_buckets, map_model, offset, device):
+def get_all_topk_buckets(loader, k, candidate_buckets, map_model, offset, device,  mem_tracking = False):
+    '''
+    Prepare a table with the top-k buckets for all vectors in a loader according to the model.
+    '''
+    logging.info(f"Mapping all train vectors to buckets")
     start_idx = offset
-    start = time.time()
+    memory = 0
     with torch.no_grad():
         for batch_data, _, in loader:
             batch_size = len(batch_data)
-            batch_candidate_buckets = get_topk_buckets_for_batch(batch_data, k, map_model, device).numpy()
+            batch_candidate_buckets, current_mem = get_topk_buckets_for_batch(batch_data, k, map_model, device, mem_tracking)
+            if mem_tracking:
+                memory = current_mem if current_mem>memory else memory
+            batch_candidate_buckets.numpy()
             candidate_buckets[start_idx : start_idx + batch_size, :] = batch_candidate_buckets
             start_idx += batch_size
+    return memory
 
-def get_topk_buckets_for_batch(batch_data, k, map_model, device):
+def get_topk_buckets_for_batch(batch_data, k, map_model, device, mem_tracking=False):
     '''
     Prepare a table with the top-k buckets for a batch of vectors according to the model.
     '''
+    process = psutil.Process(os.getpid())
+    memory=0
     batch_data = batch_data.to(device)
-    bucket_probabilities = torch.sigmoid(map_model(batch_data))
+    # only do autocast (mixed precision) on cuda devices
+    if device == torch.device("cuda"):
+        with torch.no_grad(), autocast("cuda"):
+            logits = map_model(batch_data)
+            bucket_probabilities = torch.sigmoid(logits)
+    else:
+        with torch.no_grad():
+            logits = map_model(batch_data)
+            bucket_probabilities = torch.sigmoid(logits)
+
     bucket_probabilities_cpu = bucket_probabilities.cpu()
     _, candidate_buckets = torch.topk(bucket_probabilities_cpu, k, dim=1)
 
-    return candidate_buckets
+    if mem_tracking:
+        if device == torch.device("cuda") or device == torch.device("mps"):
+            memory = torch.cuda.memory_allocated(device)
+        else:
+            memory = process.memory_full_info().uss / (1024 ** 2)
+    del bucket_probabilities, bucket_probabilities_cpu
+    if device == torch.device("cuda"):
+        torch.cuda.empty_cache()
+    return candidate_buckets, memory
 
 def get_dataset_obj(dataset_name, size):
     '''

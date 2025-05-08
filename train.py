@@ -56,6 +56,9 @@ def train_model(model, dataset, index, sample_size, bucket_sizes, neighbours, r,
                 optimizer.zero_grad()
                 logits = model(batch_data)
                 loss = criterion(logits, batch_labels)
+                if(config.mem_tracking):
+                    memory_current = process.memory_full_info().uss / (1024 ** 2)
+                    memory_training = memory_current if memory_current>memory_training else memory_training
                 loss.backward()
                 optimizer.step()
                 batch_count += 1
@@ -68,6 +71,7 @@ def train_model(model, dataset, index, sample_size, bucket_sizes, neighbours, r,
             print(f"epoch {epoch} loss = {epoch_loss_sum}", flush=True)
             all_losses[current_epoch] = epoch_loss_sum
             current_epoch += 1
+        torch.cuda.empty_cache()
         if ((epoch+1) * (i+1) < config.epochs*config.iterations and sample_size != train_size) or sample_size == train_size:
             logging.info("Reassigning vectors to new buckets")
             model.eval()
@@ -76,19 +80,20 @@ def train_model(model, dataset, index, sample_size, bucket_sizes, neighbours, r,
             start = time.time()
             print(f"reassigning buckets using mode: {config.reass_mode}")
             if config.reass_mode == 0:
-                reassign_0(model, index, bucket_sizes, config, reassign_loader)
+                reass_memory = reassign_0(model, index, bucket_sizes, config, reassign_loader)
             elif config.reass_mode == 1:
-                reassign_1(model, index, bucket_sizes, config, reassign_loader)
+                reass_memory = reassign_1(model, index, bucket_sizes, config, reassign_loader)
             elif config.reass_mode == 2:
-                reassign_2(model, index, bucket_sizes, config, reassign_loader)
+                reass_memory = reassign_2(model, index, bucket_sizes, config, reassign_loader)
             elif config.reass_mode == 3:
-                reassign_3(model, index, bucket_sizes, config, dataset)
+                reass_memory = reassign_3(model, index, bucket_sizes, config, reassign_loader)
+                memory_training = reass_memory if reass_memory > memory_training else memory_training
             lookup = torch.from_numpy(index).to(torch.int64).to(config.device)
             finish = time.time()
             elapsed = finish - start
             print(f"Reassigning took {elapsed:.2f} seconds", flush=True)
-        load_balances.append(1 / np.std(bucket_sizes))
         torch.cuda.empty_cache()
+        load_balances.append(1 / np.std(bucket_sizes))
         np.set_printoptions(threshold=6, suppress=True)
         print(f"index after iteration {i}: \r{index}", flush=True)
 
@@ -104,12 +109,13 @@ def reassign_0(model, index, bucket_sizes, config: Config, reassign_loader):
     N = len(index)
     candidate_buckets = np.zeros(shape = (N, config.k), dtype=np.uint32)
 
-    ut.get_all_topk_buckets(reassign_loader, config.k, candidate_buckets, model, 0, config.device)
+    memory = ut.get_all_topk_buckets(reassign_loader, config.k, candidate_buckets, model, 0, config.device, config.mem_tracking)
     print(f"candidate buckets type: {candidate_buckets.dtype}")
 
     bucket_sizes[:] = 0
     for i in range(N):
         ut.reassign_vector_to_bucket(index, bucket_sizes, candidate_buckets[i], i)
+    return memory
 
 def reassign_1(model, index, bucket_sizes, config: Config, reassign_loader):
     '''
@@ -118,7 +124,7 @@ def reassign_1(model, index, bucket_sizes, config: Config, reassign_loader):
     is chosen as the new bucket. After all vectors are reassigned, new ground truth labels are generated to continue training.
     '''  
     bucket_sizes[:] = 0  
-
+    memory = 0
     with torch.no_grad():
         for batch_data, batch_indices in reassign_loader:
 
@@ -128,9 +134,12 @@ def reassign_1(model, index, bucket_sizes, config: Config, reassign_loader):
 
             _, candidate_buckets = torch.topk(bucket_probabilities_cpu, config.k, dim=1)
             candidate_buckets = candidate_buckets.numpy()
-            
+            if config.mem_tracking:
+                current_mem =  torch.cuda.memory_allocated(config.device) / (1024**2)
+                memory = current_mem if current_mem>memory else memory
             for i, item_index in enumerate(batch_indices):
                 ut.reassign_vector_to_bucket(index, bucket_sizes, candidate_buckets[i], item_index)
+    return memory
 
 def reassign_2(model, index, bucket_sizes, config: Config, reassign_loader):
     '''
@@ -140,15 +149,16 @@ def reassign_2(model, index, bucket_sizes, config: Config, reassign_loader):
     N = len(index)
     candidate_buckets = np.zeros(shape = (N, config.k), dtype=np.uint32)
 
-    ut.get_all_topk_buckets(reassign_loader, config.k, candidate_buckets, model, 0, config.device)
+    memory = ut.get_all_topk_buckets(reassign_loader, config.k, candidate_buckets, model, 0, config.device, config.mem_tracking)
 
     chunk_size = config.reass_chunk_size
     bucket_sizes[:] = 0
     for i in range(0, N, chunk_size):
         topk_per_vector = candidate_buckets[i : min(i + chunk_size, N)]
         ut.assign_to_buckets_vectorised(bucket_sizes, N, index, chunk_size, i, topk_per_vector)
+    return memory
     
-def reassign_3(model, index, bucket_sizes, config: Config, dataset):
+def reassign_3(model, index, bucket_sizes,  config: Config, reassign_loader):
     '''
     Combination of baseline and our own reassignment, where we get the topk buckets in batches and also
     reassign in chunks instead of sequentially.
@@ -156,10 +166,17 @@ def reassign_3(model, index, bucket_sizes, config: Config, dataset):
     offset = 0
     N = len(index)
     bucket_sizes [:] = 0
-    chunk_size = config.reass_chunk_size
-    reassign_loader = DataLoader(dataset, batch_size=config.reass_chunk_size, shuffle=False, num_workers=8)
+    batch_size = config.batch_size
+    memory = 0 
     with torch.no_grad():
         for batch_data, _ in reassign_loader:
-            topk_per_vector = ut.get_topk_buckets_for_batch(batch_data, config.k, model, config.device).numpy()
-            ut.assign_to_buckets_vectorised(bucket_sizes, N, index, chunk_size, offset, topk_per_vector)
-            offset += chunk_size
+            topk_per_vector, current_memory = ut.get_topk_buckets_for_batch(batch_data, config.k, model, config.device, config.mem_tracking)
+            if config.mem_tracking:
+                memory = current_memory if current_memory > memory else memory
+            topk_per_vector.numpy()
+            ut.assign_to_buckets_vectorised(bucket_sizes, N, index, batch_size, offset, topk_per_vector)
+            offset += batch_size
+            del batch_data, topk_per_vector
+            if config.device == torch.device("cuda"):
+                torch.cuda.empty_cache()
+    return memory

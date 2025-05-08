@@ -23,20 +23,18 @@ def load_data_for_inference(dataset: ds.Dataset, config: Config, SIZE, DIM):
     '''
     using_memmap = False
     data = None
+    test = dataset.get_queries()
     if SIZE <= 10_000_000:
         data = dataset.get_dataset()
         if dataset.distance() == "angular":
-                data = ut.normalise_data(data) 
+                data = ut.normalise_data(data)
+                test = ut.normalise_data(test)
     else:
         data = dataset.get_dataset_memmap()
         using_memmap = True
 
-    test = dataset.get_queries()
     neighbours, _ = dataset.get_groundtruth()
     neighbours = neighbours[:, :config.nr_ann]
-
-    if dataset.distance() == "angular":
-        test = ut.normalise_data(test)
     
     return data, test, neighbours, using_memmap
 
