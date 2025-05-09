@@ -21,6 +21,10 @@ def train_model(model, dataset, index, sample_size, bucket_sizes, neighbours, r,
     For larger datasets, the last reassignment is skipped, as training is only done in a sample but all remaining data needs to
     be assigned immediately after training the model.
     '''
+    # torch.use_deterministic_algorithms(True)
+    # torch.backends.cudnn.deterministic = True
+    # torch.backends.cudnn.benchmark   = False
+
     model.to(config.device)
     criterion = nn.BCEWithLogitsLoss()
     optimizer = optim.Adam(model.parameters(), lr=config.lr)
@@ -33,7 +37,8 @@ def train_model(model, dataset, index, sample_size, bucket_sizes, neighbours, r,
     all_losses = np.zeros(shape=config.epochs*config.iterations)
     current_epoch = 0
     process = psutil.Process(os.getpid())
-    memory_training = 0
+    ram = 0
+    vram = 0 
     load_balances = []
     for i in range(config.iterations):
         model.train() 
@@ -50,15 +55,21 @@ def train_model(model, dataset, index, sample_size, bucket_sizes, neighbours, r,
                 batch_labels = ut.get_labels(neighbours_tensor[batch_indices], lookup, config.b, config.device)
                 e = time.time()
                 if(config.mem_tracking):
-                    memory_current = process.memory_full_info().uss / (1024 ** 2)
-                    memory_training = memory_current if memory_current>memory_training else memory_training
+                    ram_current = process.memory_full_info().uss / (1024 ** 2)
+                    ram = ram_current if ram_current>ram else ram
+                    if config.device == torch.device("cuda") or config.device == torch.device("mps"):
+                        vram_current = torch.cuda.memory_allocated(config.device)
+                        vram = vram_current if vram_current>vram else vram
                 label_times.append(e-s)
                 optimizer.zero_grad()
                 logits = model(batch_data)
                 loss = criterion(logits, batch_labels)
                 if(config.mem_tracking):
-                    memory_current = process.memory_full_info().uss / (1024 ** 2)
-                    memory_training = memory_current if memory_current>memory_training else memory_training
+                    ram_current = process.memory_full_info().uss / (1024 ** 2)
+                    ram = ram_current if ram_current>ram else ram
+                    if config.device == torch.device("cuda") or config.device == torch.device("mps"):
+                        vram_current = torch.cuda.memory_allocated(config.device)
+                        vram = vram_current if vram_current>vram else vram
                 loss.backward()
                 optimizer.step()
                 batch_count += 1
@@ -80,14 +91,18 @@ def train_model(model, dataset, index, sample_size, bucket_sizes, neighbours, r,
             start = time.time()
             print(f"reassigning buckets using mode: {config.reass_mode}")
             if config.reass_mode == 0:
-                reass_memory = reassign_0(model, index, bucket_sizes, config, reassign_loader)
+                reass_ram = reassign_0(model, index, bucket_sizes, config, reassign_loader)
             elif config.reass_mode == 1:
-                reass_memory = reassign_1(model, index, bucket_sizes, config, reassign_loader)
+                reass_ram = reassign_1(model, index, bucket_sizes, config, reassign_loader)
             elif config.reass_mode == 2:
-                reass_memory = reassign_2(model, index, bucket_sizes, config, reassign_loader)
+                reass_ram = reassign_2(model, index, bucket_sizes, config, reassign_loader)
             elif config.reass_mode == 3:
-                reass_memory = reassign_3(model, index, bucket_sizes, config, reassign_loader)
-                memory_training = reass_memory if reass_memory > memory_training else memory_training
+                reass_ram = reassign_3(model, index, bucket_sizes, config, reassign_loader)
+
+            if config.device == torch.device("cpu"):
+                ram = reass_ram if reass_ram > ram else ram
+            else:
+                vram = reass_ram if reass_ram> vram else vram
             lookup = torch.from_numpy(index).to(torch.int64).to(config.device)
             finish = time.time()
             elapsed = finish - start
@@ -98,7 +113,7 @@ def train_model(model, dataset, index, sample_size, bucket_sizes, neighbours, r,
         print(f"index after iteration {i}: \r{index}", flush=True)
 
     # ut.make_loss_plot(config.lr, config.iterations, config.epochs, config.k, config.b, config.experiment_name, all_losses, config.shuffle, config.reass_mode)
-    return memory_training, load_balances
+    return ram, vram, load_balances
 
 
 def reassign_0(model, index, bucket_sizes, config: Config, reassign_loader):
