@@ -52,9 +52,7 @@ def query(data, indexes, offsets, models, query_vector, neighbours, m, freq_thre
         bucket_probabilities = torch.sigmoid(model(query_vector))
         _, candidate_buckets = torch.topk(bucket_probabilities, m)
         predicted_buckets[i, :] = candidate_buckets
-    candidates = get_candidates_for_query_vectorised(predicted_buckets, indexes, offsets)
-    counts = np.bincount(candidates)
-    unique_candidates = np.where(counts >= freq_threshold)[0]
+    unique_candidates = get_candidates_for_query_vectorised(predicted_buckets, indexes, offsets, freq_threshold)
 
     cand_size = len(unique_candidates)
     # TODO: fix memory tracking! no access to max_cand_size
@@ -91,7 +89,7 @@ def query_multiple(data, index, query_vectors, neighbours, config: Config, using
     print("\r")
     return results, memory
 
-def get_candidates_for_query_vectorised(predicted_buckets, model_indexes, model_offsets):
+def get_candidates_for_query_vectorised(predicted_buckets, model_indexes, model_offsets, freq_threshold):
     """
     For a single query:
       - predicted_buckets: NumPy array of shape (r, m) containing the m predicted buckets for each of the r models.
@@ -99,37 +97,31 @@ def get_candidates_for_query_vectorised(predicted_buckets, model_indexes, model_
       - model_offsets: 2D NumPy array of shape (r, b+1) containing the bucket offsets for each model.
     Returns a 1D NumPy array of candidate IDs (with duplicates) aggregated from all r models.
     """
-    # Number of models (r) and number of bucket predictions per model (m)
     r, m = predicted_buckets.shape
- 
-    # Create an array for model indices so that we can broadcast over the (r, m) predictions.
     model_axis = np.arange(r)[:, None]  # shape (r,1)
- 
-    # For each (model, predicted bucket) we want to compute a start index:
-    # If bucket == 0, start index is 0, else it is offsets[model, bucket-1]
-    start_indices = np.where(
-        predicted_buckets == 0,
-        0,
-        model_offsets[model_axis, predicted_buckets - 1]
-    )
- 
-    # Similarly, get the end indices for each bucket:
+    start_indices = np.where(predicted_buckets == 0, 0, model_offsets[model_axis, predicted_buckets - 1])
     end_indices = model_offsets[model_axis, predicted_buckets]
-    # At this point, 'start_indices' and 'end_indices' are arrays of shape (r, m)
-    # Their difference gives the number of candidates in each predicted bucket.
-    # Although these differences are computed vectorized, the slices themselves will be ragged
-    # (i.e. different lengths per bucket) so we then extract each slice.
-    candidate_slices = [
-        model_indexes[model][start: end]
-        for model in range(r)
-        for start, end in zip(start_indices[model], end_indices[model])
-    ]
-    # Concatenate all the candidate slices (this gives duplicates if same candidate appears in multiple buckets).
-    if candidate_slices:
-        candidates = np.concatenate(candidate_slices)
-    else:
-        candidates = np.empty(0, dtype=np.int32)
-    return candidates
+
+    candidate_slices = [(model, start, end)
+            for model in range(r)
+            for start, end in zip(start_indices[model], end_indices[model])]
+
+    lengths = [end - start for (_, start, end) in candidate_slices]
+    total = sum(lengths)
+    candidate_indices = np.empty(total, dtype=np.int64)
+ 
+    pos = 0
+    for (model, start, end), length in zip(candidate_slices, lengths):
+        candidate_indices[pos:pos+length] = model_indexes[model][start:end]
+        pos += length
+
+    unique_vals, counts = np.unique(
+        candidate_indices, return_counts=True
+    )
+
+    mask = counts >= freq_threshold
+    unique_candidates = unique_vals[mask]
+    return unique_candidates
 
 def process_query_batch(data, neighbours, query_vectors, candidate_buckets, indexes, offsets, freq_threshold, requested_amount, batch_process_start, process, max_cand_size, mem_tracking, using_memmap):
     ## input: candidate_buckets np array for a batch of queries
@@ -143,11 +135,8 @@ def process_query_batch(data, neighbours, query_vectors, candidate_buckets, inde
         # For query i, extract the predicted buckets per model (shape (r, m))
         predicted_buckets = candidate_buckets[i]
         # Use our helper to obtain the candidate set (as a 1D NumPy array)
-        candidates = get_candidates_for_query_vectorised(predicted_buckets, indexes, offsets)
-        # Count occurrences of each element in cands_unf using np.bincount
-        counts = np.bincount(candidates)
-        # Get valid elements (those whose counts are greater than or equal to threshold)
-        unique_candidates = np.where(counts >= freq_threshold)[0]
+        unique_candidates = get_candidates_for_query_vectorised(predicted_buckets, indexes, offsets, freq_threshold)
+
         cand_size = len(unique_candidates)
         # set memory tracking and update current largest encountered candidate set site if necessary
         track_mem = False
