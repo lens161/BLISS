@@ -15,27 +15,27 @@ from bliss_model import BLISSDataset
 from config import Config
 
 
-def load_data_for_inference(dataset: ds.Dataset, config: Config, SIZE, DIM):
+def load_data_for_inference(dataset, config: Config, SIZE, DIM):
     '''
     For a given dataset, load the load thedataset, test data and ground truths.
     Data is loaded from an existing memmap (created during index building), so that we can return the memmap address when the dataset is too large to load into memory.
     Test data (query vectors) and ground truths (true nearest neighbours of test) are read from the original dataset files.
     '''
-    using_memmap = False
-    data = None
+    # keep data as a memmap if the dataset is too large, otherwise load into memory fully
     test = dataset.get_queries()
-    if SIZE <= 10_000_000:
-        data = dataset.get_dataset()
-        if dataset.distance() == "angular":
-                data = ut.normalise_data(data)
-                test = ut.normalise_data(test)
-    else:
-        data = dataset.get_dataset_memmap()
+    using_memmap = False
+    memmap_path = f"memmaps/{config.dataset_name}_{config.datasize}.npy"
+    if SIZE > 10_000_000:
+        data = np.memmap(memmap_path, mode='r', shape=(SIZE, DIM), dtype=np.float32)
         using_memmap = True
+    else:
+        np.ascontiguousarray(np.memmap(memmap_path,shape=(SIZE, DIM), mode='r', dtype=np.float32).copy())
+        if dataset.distance() == "angular":
+            test = ut.normalise_data(test)
 
     neighbours, _ = dataset.get_groundtruth()
     neighbours = neighbours[:, :config.nr_ann]
-    
+
     return data, test, neighbours, using_memmap
 
 def query(data, indexes, offsets, models, query_vector, neighbours, m, freq_threshold, requested_amount, process, mem_tracking, using_memmap):
@@ -46,13 +46,21 @@ def query(data, indexes, offsets, models, query_vector, neighbours, m, freq_thre
     Then return the remaining set of candidates.
     '''
     predicted_buckets = np.zeros((len(models), m), dtype=np.int32)
+    print(f"Doing forward passes")
+    start = time.time()
     for i in range(len(models)):
         model = models[i]
         model.eval()
         bucket_probabilities = torch.sigmoid(model(query_vector))
         _, candidate_buckets = torch.topk(bucket_probabilities, m)
         predicted_buckets[i, :] = candidate_buckets
+    end = time.time()
+    print(f"Doing forward passes took {end-start}")
+    print(f"Getting candidate ids")
+    start = time.time()
     unique_candidates = get_candidates_for_query_vectorised(predicted_buckets, indexes, offsets, freq_threshold)
+    end = time.time()
+    print(f"Getting candidates took {end-start}")
 
     cand_size = len(unique_candidates)
     # TODO: fix memory tracking! no access to max_cand_size
@@ -64,6 +72,7 @@ def query(data, indexes, offsets, models, query_vector, neighbours, m, freq_thre
     if cand_size <= requested_amount:
         return unique_candidates, neighbours, 0, ut.recall_single(unique_candidates, neighbours), 0
     else:
+        print(f"Starting reordering")
         final_neighbours, dist_comps, mem = reorder(data, query_vector, np.array(unique_candidates, dtype=int), requested_amount, process, using_memmap, track_mem)
         return final_neighbours, neighbours, dist_comps, ut.recall_single(final_neighbours, neighbours), mem
 
@@ -84,6 +93,7 @@ def query_multiple(data, index, query_vectors, neighbours, config: Config, using
         anns, true_nns, dist_comps, recall, current_mem = query(data, indexes, offsets, models, query_vector, neighbours[i], config.m, config.freq_threshold, config.nr_ann, process, config.mem_tracking, using_memmap)
         end = time.time()
         elapsed = end - start
+        print(f"Query took {elapsed}")
         memory = current_mem if current_mem > memory else memory
         results[i] = (anns, true_nns, dist_comps, elapsed, recall)
     print("\r")
@@ -199,15 +209,24 @@ def reorder(data, query_vector, candidates, requested_amount, process, using_mem
     # candidates = np.sort(candidates)
 
     mem = 0 if not track_mem else process.memory_full_info().uss / (1024 ** 2)
+    print(f"Getting full candidate vectors")
+    start = time.time()
     if not isinstance(data, IndexPQ):
         search_space = np.ascontiguousarray(data[candidates].copy()) if using_memmap else np.ascontiguousarray(data[candidates])
     else:
         candidates = np.asarray(candidates, dtype=np.int32)
         # search_space = np.vstack([data.reconstruct_batch(int(i)) for i in candidates])
         search_space = np.vstack(data.reconstruct_batch(candidates))
+    end = time.time()
+    print(f"Getting {len(candidates)} full vectors took {end-start}")
     dist_comps = len(search_space)
     query_vector = query_vector.reshape(1, -1)
+    print("Starting true distance comps")
+    start = time.time()
     neighbours = ut.get_nearest_neighbours_in_different_dataset(search_space, query_vector, requested_amount)
+    end = time.time()
+    print(f"True distance comps took {end-start}")
+
     del search_space
     neighbours = neighbours[0]
     final_neighbours = candidates[neighbours]
