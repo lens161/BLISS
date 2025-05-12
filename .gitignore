@@ -23,6 +23,7 @@ hpc_archive/
 datapq.index
 azcopy/
 
+scrape.py
 # job files
 reass_mode.job
 baseline.job
