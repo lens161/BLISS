@@ -70,6 +70,10 @@ exp_reass_mode_1_mem.py
 exp_reass_mode_2_mem.py
 exp_reass_mode_3_mem.py
 
+exp_billion.py
+exp_billion2.py
+exp_billion3.py
+
 # C extensions
 *.so
 

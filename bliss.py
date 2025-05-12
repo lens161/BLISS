@@ -203,7 +203,7 @@ def map_all_to_buckets_3(bucket_sizes, SIZE, model, config, memory_usage, reass_
                 if mem_tracking:
                     memory_usage = memory_current if memory_current > memory_usage else memory_usage
                     vram = vram_topk if memory_usage > vram_topk else memory_usage
-                offset += chunk_size
+                offset += len(batch_data)
     return memory_usage, vram
 
 def build_full_index(bucket_sizes, SIZE, model, config: Config):
