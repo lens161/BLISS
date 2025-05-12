@@ -191,6 +191,30 @@ def assign_to_buckets_vectorised(bucket_sizes, SIZE, index, chunk_size, i, topk_
     bucket_sizes[:] = np.add(bucket_sizes, bucket_increments)
     return memory_usage
 
+# copy for rm 3 just to be shure using length of least occupied does not fuck up the other modes
+def assign_to_buckets_vectorised_rm3(bucket_sizes, SIZE, index, chunk_size, i, topk_per_vector, memory_tracking=False):
+    '''
+    Reassign a chunk of vectors to a new bucket. The vectors are reassigned to the least
+    occupied of the top-k buckets predicted by the model, but as multiple vectors are reassigned at once,
+    there is no guarantee that the selected bucket is the least occupied if multiple vectors
+    are getting reassigned to the same bucket in a single batch.
+    '''
+    memory_usage = 0
+    candidate_sizes_per_vector = bucket_sizes[topk_per_vector]    
+    vectors = np.arange(topk_per_vector.shape[0])
+    sizes = np.argmin(candidate_sizes_per_vector, axis=1)
+    # get the least ocupied of each candidate set 
+    least_occupied = topk_per_vector[vectors, sizes]
+    end = len(least_occupied)
+    if memory_tracking:
+        process = psutil.Process(os.getpid())
+        memory_usage = process.memory_full_info().uss / (1024 ** 2)
+    index[i : i+end] = least_occupied
+
+    bucket_increments = np.bincount(least_occupied, minlength=len(bucket_sizes))
+    bucket_sizes[:] = np.add(bucket_sizes, bucket_increments)
+    return memory_usage
+
 def get_all_topk_buckets(loader, k, candidate_buckets, map_model, offset, device,  mem_tracking = False):
     '''
     Prepare a table with the top-k buckets for all vectors in a loader according to the model.

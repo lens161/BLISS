@@ -21,10 +21,6 @@ def train_model(model, dataset, index, sample_size, bucket_sizes, neighbours, r,
     For larger datasets, the last reassignment is skipped, as training is only done in a sample but all remaining data needs to
     be assigned immediately after training the model.
     '''
-    # torch.use_deterministic_algorithms(True)
-    # torch.backends.cudnn.deterministic = True
-    # torch.backends.cudnn.benchmark   = False
-
     model.to(config.device)
     criterion = nn.BCEWithLogitsLoss()
     optimizer = optim.Adam(model.parameters(), lr=config.lr)
