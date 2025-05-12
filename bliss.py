@@ -47,6 +47,7 @@ def build_index(dataset: ds.Dataset, config: Config, trial=None):
     memory_training = 0
     vmemory_trainig = 0
     memory_final_assignment = 0
+    vmemory_final_assignment = 0
     bucket_size_stats = []
     model_sizes_total = 0
     index_sizes_total = 0
