@@ -134,6 +134,78 @@ def plot_build_time_vs_chunk_size(experiment_name):
     plt.savefig(f"{out_dir}/build_time_vs_chunk_size_by_mode.png", dpi=300)
     plt.close()
 
+def plot_mem_vs_chunk_size(experiment_name):
+    """
+    Read a build-log CSV and plot chunk size vs total build time,
+    with separate lines for each reass_mode found in the data.
+    """
+    csv_file = f"results/{experiment_name}/{experiment_name}_build.csv"
+    df = pd.read_csv(csv_file)
+
+    out_dir = f"results/{experiment_name}"
+    os.makedirs(out_dir, exist_ok=True)
+
+    plt.figure(figsize=(8, 5))
+    for mode in sorted(df['reass_mode'].unique()):
+        subset = df[df['reass_mode'] == mode]
+        # sort by chunk size for a clean line
+        subset = subset.sort_values('reass_chunk_size')
+        plt.plot(
+            subset['reass_chunk_size'],
+            subset['ram_final_ass'],
+            marker='o',
+            linestyle='-',
+            label=f"Mark {mode}"
+        )
+
+    plt.xlabel("Chunk size")
+    plt.ylabel("RAM used during final assignemnt (MB)")
+    plt.title(f"Build time vs chunk size")
+    plt.grid(True)
+    plt.legend(title="Reassign mode")
+    plt.tight_layout()
+
+    plt.savefig(f"{out_dir}/ram_vs_chunk_size_by_mode.png", dpi=300)
+    plt.close()
+
+def plot_vram_vs_chunk_size(experiment_name):
+    """
+    Read a build-log CSV and plot chunk size vs total build time,
+    with separate lines for each reass_mode found in the data.
+    """
+    csv_file = f"results/{experiment_name}/{experiment_name}_build.csv"
+    df = pd.read_csv(csv_file)
+
+    out_dir = f"results/{experiment_name}"
+    os.makedirs(out_dir, exist_ok=True)
+
+    plt.figure(figsize=(8, 5))
+    for mode in sorted(df['reass_mode'].unique()):
+        subset = df[df['reass_mode'] == mode]
+        # sort by chunk size for a clean line
+        subset = subset.sort_values('reass_chunk_size')
+        if mode == 2:
+            ls = ':'
+        else: 
+            ls = '-'
+        plt.plot(
+            subset['reass_chunk_size'],
+            subset['vram_final_assignement'],
+            marker='o',
+            linestyle=ls,
+            label=f"Mark {mode}"
+        )
+
+    plt.xlabel("Chunk size")
+    plt.ylabel("VRAM used during final assignemnt (MB)")
+    plt.title(f"Build time vs chunk size")
+    plt.grid(True)
+    plt.legend(title="Reassign mode")
+    plt.tight_layout()
+
+    plt.savefig(f"{out_dir}/vram_vs_chunk_size_by_mode.png", dpi=300)
+    plt.close()
+
 # def plot_recall_vs_dist_comps_per_m_per_dataset(results, averages, experiment_name):
 #     # Group data by dataset_name
 #     dataset_groups = {}
@@ -181,15 +253,17 @@ def make_plots(experiment_name):
     Include all plot functions that should be run here.
     '''
     # get results from query files
-    query_files = find_query_files(experiment_name)
-    query_results, query_averages = compile_query_results(query_files)
-    plot_build_time_vs_chunk_size(experiment_name)
-    # TODO: get results from build and memory files
+    # query_files = find_query_files(experiment_name)
+    # query_results, query_averages = compile_query_results(query_files)
+    # plot_build_time_vs_chunk_size(experiment_name)
+    plot_mem_vs_chunk_size(experiment_name)
+    plot_vram_vs_chunk_size(experiment_name)
+    # # TODO: get results from build and memory files
 
-    # make plots for whole experiment, add more plot functions as needed
-    plot_individual_recall_vs_dist_comps(query_results, query_averages, experiment_name)
-    plot_recall_vs_dist_comps_per_m(query_results, query_averages, experiment_name)
+    # # make plots for whole experiment, add more plot functions as needed
+    # plot_individual_recall_vs_dist_comps(query_results, query_averages, experiment_name)
+    # plot_recall_vs_dist_comps_per_m(query_results, query_averages, experiment_name)
     # plot_recall_vs_dist_comps_per_m_per_dataset(query_results, query_averages, experiment_name)
 
 if __name__ == "__main__":
-    make_plots("sift_diff_epochs_v4")
+    make_plots("compare_memory")
