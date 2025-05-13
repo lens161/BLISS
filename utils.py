@@ -215,7 +215,7 @@ def assign_to_buckets_vectorised_rm3(bucket_sizes, SIZE, index, chunk_size, i, t
     bucket_sizes[:] = np.add(bucket_sizes, bucket_increments)
     return memory_usage
 
-def get_all_topk_buckets(loader, k, candidate_buckets, map_model, offset, device,  mem_tracking = False):
+def get_all_topk_buckets(loader, k, candidate_buckets, map_model, offset, device):
     '''
     Prepare a table with the top-k buckets for all vectors in a loader according to the model.
     '''
@@ -225,21 +225,15 @@ def get_all_topk_buckets(loader, k, candidate_buckets, map_model, offset, device
     with torch.no_grad():
         for batch_data, _, in loader:
             batch_size = len(batch_data)
-            batch_candidate_buckets, current_mem = get_topk_buckets_for_batch(batch_data, k, map_model, device, mem_tracking)
-            if mem_tracking:
-                memory = current_mem if current_mem>memory else memory
+            batch_candidate_buckets = get_topk_buckets_for_batch(batch_data, k, map_model, device)
             batch_candidate_buckets.numpy()
             candidate_buckets[start_idx : start_idx + batch_size, :] = batch_candidate_buckets
             start_idx += batch_size
-    return memory
 
-def get_topk_buckets_for_batch(batch_data, k, map_model, device, mem_tracking=False):
+def get_topk_buckets_for_batch(batch_data, k, map_model, device):
     '''
     Prepare a table with the top-k buckets for a batch of vectors according to the model.
     '''
-    if mem_tracking:
-        process = psutil.Process(os.getpid())
-    memory=0
     batch_data = batch_data.to(device)
     # only do autocast (mixed precision) on cuda devices
     if device == torch.device("cuda"):
@@ -253,16 +247,9 @@ def get_topk_buckets_for_batch(batch_data, k, map_model, device, mem_tracking=Fa
 
     bucket_probabilities_cpu = bucket_probabilities.cpu()
     _, candidate_buckets = torch.topk(bucket_probabilities_cpu, k, dim=1)
-
-    if mem_tracking:
-        if device == torch.device("cuda") or device == torch.device("mps"):
-            memory = torch.cuda.memory_allocated(device) / (1024**2)
-        else:
-            memory = process.memory_full_info().uss / (1024 ** 2)
     del bucket_probabilities, bucket_probabilities_cpu
-    if device == torch.device("cuda"):
-        torch.cuda.empty_cache()
-    return candidate_buckets, memory
+
+    return candidate_buckets
 
 def get_dataset_obj(dataset_name, size):
     '''

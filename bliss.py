@@ -134,7 +134,7 @@ def map_all_to_buckets_0(index, bucket_sizes, full_data, data_batched, data_load
     print("started map all", flush=True)
     memory_usage = 0
     vram = 0
-    candidate_buckets, vram  = get_all_candidate_buckets(len(index), model, k, device, full_data, data_batched, data_loader, mem_tracking)
+    candidate_buckets = get_all_candidate_buckets(len(index), model, k, device, full_data, data_batched, data_loader, mem_tracking)
     if mem_tracking:
         process = psutil.Process(os.getpid())
         current_mem = process.memory_full_info().uss / (1024 ** 2)
@@ -143,7 +143,7 @@ def map_all_to_buckets_0(index, bucket_sizes, full_data, data_batched, data_load
 
     for i in range(N):
         ut.reassign_vector_to_bucket(index, bucket_sizes, candidate_buckets[i], i)
-    return memory_usage, vram
+    return memory_usage
 
 def map_all_to_buckets_1(map_loader, full_data, data_batched, k, index, bucket_sizes, map_model, device, mem_tracking=False):
     '''
@@ -156,7 +156,7 @@ def map_all_to_buckets_1(map_loader, full_data, data_batched, k, index, bucket_s
         data_batched.data = torch.from_numpy(batch).float()
         with torch.no_grad():
             for batch_data, batch_indices in map_loader:
-                candidate_buckets, vram = ut.get_topk_buckets_for_batch(batch_data, k, map_model, device, mem_tracking)
+                candidate_buckets = ut.get_topk_buckets_for_batch(batch_data, k, map_model, device)
                 candidate_buckets.numpy()
                 if mem_tracking:
                     process = psutil.Process(os.getpid())
@@ -167,14 +167,14 @@ def map_all_to_buckets_1(map_loader, full_data, data_batched, k, index, bucket_s
                     ut.reassign_vector_to_bucket(index, bucket_sizes, candidate_buckets[i], item_idx)
     
         offset += len(batch)
-    return memory_usage, vram
+    return memory_usage
 
 def map_all_to_buckets_2(bucket_sizes, SIZE, model, memory_usage, k, device, index, full_data, data_batched, chunk_size, map_loader, mem_tracking=False):
     '''
     First collect the top-k buckets for all vectors by doing forward passes on the model. 
     Then go through the vectors in batches, reassigning a whole batch at once.
     '''
-    candidate_buckets, vram = get_all_candidate_buckets(SIZE, model, k, device, full_data, data_batched, map_loader, mem_tracking)
+    candidate_buckets = get_all_candidate_buckets(SIZE, model, k, device, full_data, data_batched, map_loader)
     memory_usage=0
     for i in range(0, SIZE, chunk_size):
         # get the topk buckets per vector
@@ -182,7 +182,7 @@ def map_all_to_buckets_2(bucket_sizes, SIZE, model, memory_usage, k, device, ind
         memory_current = ut.assign_to_buckets_vectorised(bucket_sizes, SIZE, index, chunk_size, i, topk_per_vector, mem_tracking)
         if mem_tracking:
             memory_usage = memory_current if memory_current>memory_usage else memory_usage
-    return memory_usage, vram
+    return memory_usage
 
 def map_all_to_buckets_3(bucket_sizes, SIZE, model, config, memory_usage, reass_mode, k, index, full_data, data_batched, chunk_size, map_loader, mem_tracking=False):
     '''
@@ -192,19 +192,17 @@ def map_all_to_buckets_3(bucket_sizes, SIZE, model, config, memory_usage, reass_
     logging.info(f"Mapping all to buckets mode: {reass_mode}")
     offset = 0
     memory_usage=0
-    vram = 0 
     for batch in full_data.get_dataset_iterator(bs=1_000_000):
         data_batched.data = torch.from_numpy(batch).float()
         with torch.no_grad():
             for batch_data, _ in map_loader:
-                topk_per_vector, vram_topk = ut.get_topk_buckets_for_batch(batch_data, k, model, config.device, mem_tracking)
+                topk_per_vector = ut.get_topk_buckets_for_batch(batch_data, k, model, config.device, mem_tracking)
                 topk_per_vector.numpy()
                 memory_current = ut.assign_to_buckets_vectorised_rm3(bucket_sizes, SIZE, index, chunk_size, offset, topk_per_vector, mem_tracking)
                 if mem_tracking:
                     memory_usage = memory_current if memory_current > memory_usage else memory_usage
-                    vram = vram_topk if memory_usage > vram_topk else memory_usage
                 offset += len(batch_data)
-    return memory_usage, vram
+    return memory_usage
 
 def build_full_index(bucket_sizes, SIZE, model, config: Config):
     '''
@@ -220,28 +218,34 @@ def build_full_index(bucket_sizes, SIZE, model, config: Config):
     data_batched = BLISSDataset(None, device = torch.device("cpu"), mode='build')
     chunk_size = config.reass_chunk_size
     map_loader = DataLoader(data_batched, batch_size=chunk_size, shuffle=False, num_workers=8)
+
+    if config.device.type == "cuda":
+        torch.cuda.reset_peak_memory_stats(config.device)
     # map all vectors to buckets using the chosen reassignment strategy
     start = time.time()
     if reass_mode == 0: # baseline implementation 
-        memory_usage, vram = map_all_to_buckets_0(index, bucket_sizes, full_data, data_batched, map_loader, SIZE, k, model, device, config.mem_tracking)
+        memory_usage = map_all_to_buckets_0(index, bucket_sizes, full_data, data_batched, map_loader, SIZE, k, model, device, config.mem_tracking)
 
     elif reass_mode == 1: # reassign all vectors in a foward pass batch directly 
-        memory_usage, vram = map_all_to_buckets_1(map_loader, full_data, data_batched, k, index, bucket_sizes, model, device, config.mem_tracking)
+        memory_usage = map_all_to_buckets_1(map_loader, full_data, data_batched, k, index, bucket_sizes, model, device, config.mem_tracking)
 
     elif reass_mode == 2:
         # Do all forward passes sequentially and then do reassignments in batches
-        memory_usage, vram = map_all_to_buckets_2(bucket_sizes, SIZE, model, memory_usage, k, device, index, full_data, data_batched, chunk_size, map_loader, config.mem_tracking)
+        memory_usage = map_all_to_buckets_2(bucket_sizes, SIZE, model, memory_usage, k, device, index, full_data, data_batched, chunk_size, map_loader, config.mem_tracking)
 
     elif reass_mode == 3:
         # Alternate fowardpasses wih batched reassignment -> vectorised assignment of a whole batch of buckets at once
-        memory_usage, vram = map_all_to_buckets_3(bucket_sizes, SIZE, model, config, memory_usage, reass_mode, k, index, full_data, data_batched, chunk_size, map_loader, config.mem_tracking)
+        memory_usage= map_all_to_buckets_3(bucket_sizes, SIZE, model, config, memory_usage, reass_mode, k, index, full_data, data_batched, chunk_size, map_loader, config.mem_tracking)
 
     end = time.time()
     logging.info(f"final assignment mode:{reass_mode} took {end-start} seconds")
+    vram = 0
+    if config.device.type == "cuda":
+        vram = torch.cuda.max_memory_allocated(config.device)
 
     return index, memory_usage, vram
 
-def get_all_candidate_buckets(SIZE, model, k, device, full_data, data_batched, map_loader, mem_tracking=False):
+def get_all_candidate_buckets(SIZE, model, k, device, full_data, data_batched, map_loader):
     '''
     For a set of data, predict the top-k candidates for each vector according to a model, and aggregate the results.
     '''
@@ -249,9 +253,9 @@ def get_all_candidate_buckets(SIZE, model, k, device, full_data, data_batched, m
     offset = 0
     for batch in full_data.get_dataset_iterator(bs = 1_000_000):
         data_batched.data = torch.from_numpy(batch).float()
-        memory = ut.get_all_topk_buckets(map_loader, k, candidate_buckets, model, offset, device, mem_tracking)
+        ut.get_all_topk_buckets(map_loader, k, candidate_buckets, model, offset, device)
         offset += len(batch)
-    return candidate_buckets, memory
+    return candidate_buckets
 
 def invert_index(index, bucket_sizes, SIZE):
     '''
