@@ -184,12 +184,11 @@ def map_all_to_buckets_2(bucket_sizes, SIZE, model, memory_usage, k, device, ind
             memory_usage = memory_current if memory_current>memory_usage else memory_usage
     return memory_usage
 
-def map_all_to_buckets_3(bucket_sizes, SIZE, model, config, memory_usage, reass_mode, k, index, full_data, data_batched, chunk_size, map_loader, mem_tracking=False):
+def map_all_to_buckets_3(bucket_sizes, SIZE, model, config, memory_usage, k, index, full_data, data_batched, chunk_size, map_loader, mem_tracking=False):
     '''
     Go through the data in batches. For each batch, get the predicted top-k buckets for all vectors by doing a forward pass on the model.
     Then reassign the whole batch.
     '''
-    logging.info(f"Mapping all to buckets mode: {reass_mode}")
     offset = 0
     memory_usage=0
     for batch in full_data.get_dataset_iterator(bs=1_000_000):
@@ -235,7 +234,7 @@ def build_full_index(bucket_sizes, SIZE, model, config: Config):
 
     elif reass_mode == 3:
         # Alternate fowardpasses wih batched reassignment -> vectorised assignment of a whole batch of buckets at once
-        memory_usage= map_all_to_buckets_3(bucket_sizes, SIZE, model, config, memory_usage, reass_mode, k, index, full_data, data_batched, chunk_size, map_loader, config.mem_tracking)
+        memory_usage= map_all_to_buckets_3(bucket_sizes, SIZE, model, config, memory_usage, k, index, full_data, data_batched, chunk_size, map_loader, config.mem_tracking)
 
     end = time.time()
     logging.info(f"final assignment mode:{reass_mode} took {end-start} seconds")
