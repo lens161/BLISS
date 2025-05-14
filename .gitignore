@@ -22,6 +22,8 @@ logs/
 hpc_archive/
 datapq.index
 azcopy/
+scratch_inputs/
+scratch_results/
 
 # job files
 reass_mode.job
@@ -43,6 +45,7 @@ reass_mode_0_mem.job
 reass_mode_1_mem.job
 reass_mode_2_mem.job
 reass_mode_3_mem.job
+scripts/baseline_scripts/
 
 # experiment files 
 exp_check_nomem.py
@@ -69,6 +72,7 @@ exp_reass_mode_0_mem.py
 exp_reass_mode_1_mem.py
 exp_reass_mode_2_mem.py
 exp_reass_mode_3_mem.py
+baseline_experiments/
 
 exp_billion.py
 exp_billion2.py
