@@ -133,12 +133,10 @@ def map_all_to_buckets_0(index, bucket_sizes, full_data, data_batched, data_load
     '''
     print("started map all", flush=True)
     memory_usage = 0
-    vram = 0
-    candidate_buckets = get_all_candidate_buckets(len(index), model, k, device, full_data, data_batched, data_loader, mem_tracking)
+    candidate_buckets = get_all_candidate_buckets(len(index), model, k, device, full_data, data_batched, data_loader)
     if mem_tracking:
         process = psutil.Process(os.getpid())
-        current_mem = process.memory_full_info().uss / (1024 ** 2)
-        memory_usage = current_mem if current_mem > memory_usage else memory_usage
+        memory_usage = process.memory_full_info().uss / (1024 ** 2)
     print("finished getting topk", flush=True)
 
     for i in range(N):
@@ -174,8 +172,12 @@ def map_all_to_buckets_2(bucket_sizes, SIZE, model, memory_usage, k, device, ind
     First collect the top-k buckets for all vectors by doing forward passes on the model. 
     Then go through the vectors in batches, reassigning a whole batch at once.
     '''
+    memory_usage = 0
     candidate_buckets = get_all_candidate_buckets(SIZE, model, k, device, full_data, data_batched, map_loader)
-    memory_usage=0
+    if  mem_tracking:
+        process = psutil.Process(os.getpid())
+        memory_usage = process.memory_full_info().uss / (1024 ** 2)
+
     for i in range(0, SIZE, chunk_size):
         # get the topk buckets per vector
         topk_per_vector = candidate_buckets[i : min(i + chunk_size, SIZE)] # shape = (chunk_size, k)
@@ -195,7 +197,7 @@ def map_all_to_buckets_3(bucket_sizes, SIZE, model, config, memory_usage, k, ind
         data_batched.data = torch.from_numpy(batch).float()
         with torch.no_grad():
             for batch_data, _ in map_loader:
-                topk_per_vector = ut.get_topk_buckets_for_batch(batch_data, k, model, config.device, mem_tracking)
+                topk_per_vector = ut.get_topk_buckets_for_batch(batch_data, k, model, config.device)
                 topk_per_vector.numpy()
                 memory_current = ut.assign_to_buckets_vectorised_rm3(bucket_sizes, SIZE, index, chunk_size, offset, topk_per_vector, mem_tracking)
                 if mem_tracking:

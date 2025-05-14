@@ -1,8 +1,8 @@
 import logging
 import matplotlib.pyplot as plt # type: ignore
-import numpy as np
+import numpy as np # type: ignore
 import os
-import pandas as pd
+import pandas as pd # type: ignore
 
 from bliss import run_bliss
 from config import Config
@@ -29,7 +29,9 @@ def build_multiple_indexes_exp(experiment_name, configs):
                       'reass_mode': reass_mode, 'reass_chunk_size':reass_chunk_size,
                         # Measurements/Results:
                       'build_time':build_time, 'train_time_per_r':train_time, 'final_assign_time_per_r':final_assign_time,
-                      'mem_training':memory_training, 'mem_final_ass':memory_final_assignment, 'load_balance':normalised_entropy, 
+                      'ram_training':memory_training[0], 'vram_training':memory_training[1], 
+                      'ram_final_ass':memory_final_assignment[0],'vram_final_assignement':memory_final_assignment[1], 
+                      'load_balance':normalised_entropy, 
                       'index_sizes_total': index_sizes_total,'model_sizes_total': model_sizes_total, 'load_balances': load_balances})
     df = pd.DataFrame(stats)
         
@@ -45,7 +47,7 @@ def run_multiple_query_exp(experiment_name, configs):
     mode = 'query'
     for config in configs:
         individual_results = []
-        avg_recall, stats, total_query_time = run_bliss(config, mode=mode, experiment_name=experiment_name)
+        avg_recall, stats, total_query_time, memory = run_bliss(config, mode=mode, experiment_name=experiment_name)
         print(f"avg recall = {avg_recall}")
         for (anns, true_nns, dist_comps, elapsed, recall) in stats:
             individual_results.append({'ANNs': ','.join(map(str, anns)) if isinstance(anns, (list, np.ndarray)) else str(anns), 
@@ -75,11 +77,12 @@ if __name__ == "__main__":
     # range_K = 2
     range_threshold = 2
     k_values = [2]
-    m_values = [i for i in range(5, 21)]
+    m_values = [5, 10, 15]
     reass_modes = [0, 1, 2, 3]
     batch_sizes = [1024, 2048, 5000]
+    chunk_sizes = [5000, 10_000, 20_000, 40_000, 60_000, 80_000]
     iterations = [3, 4, 5]
-    EXP_NAME = "baseline_sift_glove"
+    EXP_NAME = "rm_0_new"
 
     if not os.path.exists("logs"):
         os.mkdir("logs")
@@ -92,22 +95,19 @@ if __name__ == "__main__":
 
     # add all dataset names that the experiments should be run on
     datasets = [
-                # "bigann",
-                "glove-100-angular",
-                "sift-128-euclidean"
+                "bigann",
+                # "glove-100-angular",
+                # "sift-128-euclidean"
                  ]
     
     logging.info("[Experiment] Experiments started")
 
-    for dataset in datasets:
-    #     configs_b.append(Config(dataset_name=dataset, batch_size=1024, b=4096))
-        for m in m_values:
-            configs_q.append(Config(dataset_name=dataset, batch_size=1024, b=4096, m=m))
+    configs_b.append(Config(dataset_name="bigann", batch_size=1024, b=16384, reass_mode=0, reass_chunk_size=40_000, datasize=100, mem_tracking=True))
                 
     print(f"EXPERIMENT: {EXP_NAME}")
-    # logging.info(f"[Experiment] Building indexes")
+    logging.info(f"[Experiment] Building indexes")
     build_multiple_indexes_exp(EXP_NAME, configs_b)
-    logging.info(f"[Experiment] Starting query experiments")
-    run_multiple_query_exp(EXP_NAME, configs_q)
+    # logging.info(f"[Experiment] Starting query experiments")
+    # run_multiple_query_exp(EXP_NAME, configs_q)
 
-    make_plots(EXP_NAME)        
+    # make_plots(EXP_NAME)        
