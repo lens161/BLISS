@@ -22,6 +22,7 @@ logs/
 hpc_archive/
 datapq.index
 azcopy/
+cluster_backup/
 
 scrape.py
 # job files
