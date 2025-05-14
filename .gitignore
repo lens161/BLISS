@@ -22,6 +22,8 @@ logs/
 hpc_archive/
 datapq.index
 azcopy/
+scratch_inputs/
+scratch_results/
 
 # job files
 reass_mode.job
