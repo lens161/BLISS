@@ -44,6 +44,10 @@ reass_mode_0_mem.job
 reass_mode_1_mem.job
 reass_mode_2_mem.job
 reass_mode_3_mem.job
+reass_mode_0_mem_any.job
+reass_mode_1_mem_any.job
+reass_mode_2_mem_any.job
+reass_mode_3_mem_any.job
 
 # experiment files 
 exp_check_nomem.py
@@ -70,6 +74,14 @@ exp_reass_mode_0_mem.py
 exp_reass_mode_1_mem.py
 exp_reass_mode_2_mem.py
 exp_reass_mode_3_mem.py
+exp_rm_0_mem_new.py
+exp_rm_1_mem_new.py
+exp_rm_2_mem_new.py
+exp_rm_3_mem_new.py
+exp_reass_mode_0_mem_any.py
+exp_reass_mode_1_mem_any.py
+exp_reass_mode_2_mem_any.py
+exp_reass_mode_3_mem_any.py
 
 exp_billion.py
 exp_billion2.py
