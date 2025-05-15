@@ -24,6 +24,7 @@ datapq.index
 azcopy/
 scratch_inputs/
 scratch_results/
+old_outputs/
 
 # job files
 reass_mode.job
