@@ -100,38 +100,61 @@ def plot_recall_vs_dist_comps_per_m(results, averages, experiment_name):
     plt.savefig(f"results/{experiment_name}/recall_vs_dist_comps_per_m.png", dpi=300)
     plt.close()
 
-def plot_build_time_vs_chunk_size(experiment_name):
+def plot_time_vs_chunk_size(experiment_name, hardware = 'hp', time = 'build'):
     """
-    Read a build-log CSV and plot chunk size vs total build time,
+    Set hardware = 'hp' for hp nodes
+    Set hardware = 'desk' for desktops
+    Read a build-log CSV and plot chunk size vs total build time (in hours),
     with separate lines for each reass_mode found in the data.
     """
-    csv_file = f"results/{experiment_name}/{experiment_name}_build.csv"
+
+    time_metric = 'minutes' if time == 'train' else 'hours'
+
+    if hardware == 'hp':
+        csv_file = f"results/{experiment_name}/{experiment_name}_build.csv"
+        out_dir = f"results/{experiment_name}"
+    elif hardware == 'desk':
+        csv_file = f"results/{experiment_name}_desk/{experiment_name}_build.csv"
+        out_dir = f"results/{experiment_name}_desk"
+    else:
+        print("no hardware type given. enter 'hp' or 'desk' ")
+
+
     df = pd.read_csv(csv_file)
 
-    out_dir = f"results/{experiment_name}"
+    # convert seconds to hours
+    df['build_time'] = df['build_time'] / 3600
+    df['train_time'] = df['train_time_per_r'] / 60
+    df['reass_time'] = df['final_assign_time_per_r'] / 3600
+
     os.makedirs(out_dir, exist_ok=True)
 
     plt.figure(figsize=(8, 5))
     for mode in sorted(df['reass_mode'].unique()):
-        subset = df[df['reass_mode'] == mode]
-        # sort by chunk size for a clean line
-        subset = subset.sort_values('reass_chunk_size')
+        subset = df[df['reass_mode'] == mode].sort_values('reass_chunk_size')
+        key = f'{time}_time'
         plt.plot(
             subset['reass_chunk_size'],
-            subset['build_time'],
-            marker='o',
+            subset[key],
+            marker='x',
             linestyle='-',
             label=f"Mark {mode}"
         )
 
-    plt.xlabel("Chunk Size")
-    plt.ylabel("Total Build Time (s)")
-    plt.title(f"Build Time vs Chunk Size ({experiment_name})")
+    name = time.capitalize()
+    if time == 'reass':
+        name = 'Final assignment'
+    plt.xlabel("Chunk size")
+    plt.ylabel(f"Total time ({time_metric})")
+    if hardware == 'desk' :
+        plt.title(f"{name} time vs chunk size (desktop)")
+    elif hardware == 'hp': 
+        plt.title(f"{name} time vs chunk size (high performance node)")
     plt.grid(True)
-    plt.legend(title="Reassign Mode")
+    plt.legend(title="Reassign mode")
     plt.tight_layout()
 
-    plt.savefig(f"{out_dir}/build_time_vs_chunk_size_by_mode.png", dpi=300)
+    plt.savefig(f"{out_dir}/{time}_time_vs_chunk_size_by_mode.png", dpi=300)
     plt.close()
 
 def plot_mem_vs_chunk_size(experiment_name):
@@ -255,9 +278,11 @@ def make_plots(experiment_name):
     # get results from query files
     # query_files = find_query_files(experiment_name)
     # query_results, query_averages = compile_query_results(query_files)
-    # plot_build_time_vs_chunk_size(experiment_name)
-    plot_mem_vs_chunk_size(experiment_name)
-    plot_vram_vs_chunk_size(experiment_name)
+    plot_time_vs_chunk_size(experiment_name,'desk', "build")
+    plot_time_vs_chunk_size(experiment_name,'desk', "train")
+    plot_time_vs_chunk_size(experiment_name,'desk', "reass")
+    # plot_mem_vs_chunk_size(experiment_name)
+    # plot_vram_vs_chunk_size(experiment_name)
     # # TODO: get results from build and memory files
 
     # # make plots for whole experiment, add more plot functions as needed
@@ -266,4 +291,4 @@ def make_plots(experiment_name):
     # plot_recall_vs_dist_comps_per_m_per_dataset(query_results, query_averages, experiment_name)
 
 if __name__ == "__main__":
-    make_plots("compare_memory")
+    make_plots("compare_time")
