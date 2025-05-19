@@ -154,7 +154,7 @@ def plot_time_vs_chunk_size(experiment_name, hardware = 'hp', time = 'build'):
     plt.legend(title="Reassign mode")
     plt.tight_layout()
 
-    plt.savefig(f"{out_dir}/{time}_time_vs_chunk_size_by_mode.png", dpi=300)
+    plt.savefig(f"{out_dir}/{time}_time_vs_chunk_size_by_mode.svg", dpi=300)
     plt.close()
 
 def plot_mem_vs_chunk_size(experiment_name):
@@ -276,19 +276,16 @@ def make_plots(experiment_name):
     Include all plot functions that should be run here.
     '''
     # get results from query files
-    # query_files = find_query_files(experiment_name)
-    # query_results, query_averages = compile_query_results(query_files)
-    plot_time_vs_chunk_size(experiment_name,'desk', "build")
-    plot_time_vs_chunk_size(experiment_name,'desk', "train")
-    plot_time_vs_chunk_size(experiment_name,'desk', "reass")
+    query_files = find_query_files(experiment_name)
+    query_results, query_averages = compile_query_results(query_files)
     # plot_mem_vs_chunk_size(experiment_name)
     # plot_vram_vs_chunk_size(experiment_name)
     # # TODO: get results from build and memory files
 
     # # make plots for whole experiment, add more plot functions as needed
-    # plot_individual_recall_vs_dist_comps(query_results, query_averages, experiment_name)
+    # plot_time_vs_chunk_size(experiment_name,'hp', "train")
+    # plot_time_vs_chunk_size(experiment_name,'hp', "reass")
+    # plot_time_vs_chunk_size(experiment_name,'hp', "build")
+    plot_individual_recall_vs_dist_comps(query_results, query_averages, experiment_name)
     # plot_recall_vs_dist_comps_per_m(query_results, query_averages, experiment_name)
     # plot_recall_vs_dist_comps_per_m_per_dataset(query_results, query_averages, experiment_name)
-
-if __name__ == "__main__":
-    make_plots("compare_time")
