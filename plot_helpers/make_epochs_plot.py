@@ -58,9 +58,11 @@ def collect_data_for_plot(hdf5_dir, m, include_qps=False):
                 # Extract recall or QPS
                 if include_qps:
                     qps = float(row['qps'])
-                    recall = None  # Not used if we're plotting QPS
+                    query_time_ms = 1000 / qps if qps > 0 else float('nan')
+                    recall = None
                 else:
-                    qps = None  # Not used if we're plotting recall
+                    qps = None
+                    query_time_ms = None
                     recall = float(row['avg_recall'])
 
                 # Match the parameters from averages with build.csv (match on epochs and iterations)
@@ -69,7 +71,6 @@ def collect_data_for_plot(hdf5_dir, m, include_qps=False):
                     (build_df['iterations'] == i)
                 ]
                 
-                # If there are no matches, or multiple matches, handle accordingly
                 if match.empty:
                     print(f"Warning: No matching row in build.csv for epochs={e}, iterations={i} in {h5_file}")
                     continue
@@ -77,17 +78,16 @@ def collect_data_for_plot(hdf5_dir, m, include_qps=False):
                     print(f"Warning: Multiple matches found in build.csv for epochs={e}, iterations={i} in {h5_file}")
                     continue
 
-                # Extract load_balance from the matched row
                 load_balance_str = match.iloc[0]['load_balances']
                 load_balance = process_load_balance(load_balance_str)
 
             # Append the results
-            data.append((epoch_count, recall, qps, load_balance))
+            data.append((epoch_count, recall, qps, query_time_ms, load_balance))
 
         except Exception as e:
             print(f"Error processing {h5_file}: {e}")
 
-    return pd.DataFrame(data, columns=['epoch_count', 'recall', 'qps', 'load_balance'])
+    return pd.DataFrame(data, columns=['epoch_count', 'recall', 'qps', 'query_time_ms', 'load_balance'])
 
 def plot_load_balance_and_recall(df, directory, m):
     """Plot load balance and recall against epoch count with dual Y axes."""
@@ -95,26 +95,24 @@ def plot_load_balance_and_recall(df, directory, m):
 
     fig, ax1 = plt.subplots(figsize=(7, 6))
 
-    # x-axis
     ax1.tick_params(axis='x', labelsize=14)
-    ax1.xaxis.set_major_locator(MultipleLocator(5))  # Set x-axis ticks every 5 units
+    ax1.xaxis.set_major_locator(MultipleLocator(5))
 
-    # --- Primary Y-axis: Load Balance ---
     color1 = 'tab:blue'
-    ax1.set_xlabel('Epochs', fontsize=18, labelpad=15)
-    ax1.set_ylabel('Load Balance', color=color1, fontsize=18, labelpad=15)
-    line1, = ax1.plot(df['epoch_count'], df['load_balance'], color=color1, marker='x', linestyle='--', label='Load Balance', linewidth=3, markersize=8, markeredgewidth=2)
-    ax1.tick_params(axis='y', labelcolor=color1, labelsize=14)
+    ax1.set_xlabel('Epochs', fontsize=10, labelpad=15)
+    ax1.set_ylabel('Load Balance', color=color1, fontsize=10)
+    line1, = ax1.plot(df['epoch_count'], df['load_balance'], color=color1, marker='x', linestyle='--',
+                      label='Load Balance', linewidth=3, markersize=8, markeredgewidth=2)
+    ax1.tick_params(axis='y', labelcolor=color1, labelsize=8)
     ax1.ticklabel_format(style='sci', axis='y', scilimits=(0, 0))
 
-    # --- Secondary Y-axis: Recall ---
     ax2 = ax1.twinx()
     color2 = 'tab:red'
-    ax2.set_ylabel(f'Recall (m={m})', color=color2, fontsize=18, labelpad=15)
-    line2, = ax2.plot(df['epoch_count'], df['recall'], color=color2, marker='o', label=f'Recall (m={m})', linewidth=3, markersize=8, markeredgewidth=2)
-    ax2.tick_params(axis='y', labelcolor=color2, labelsize=14)
+    ax2.set_ylabel(f'Recall (m={m})', color=color2, fontsize=10)
+    line2, = ax2.plot(df['epoch_count'], df['recall'], color=color2, marker='o', label=f'Recall (m={m})',
+                      linewidth=3, markersize=8, markeredgewidth=2)
+    ax2.tick_params(axis='y', labelcolor=color2, labelsize=8)
 
-    # --- Legend ---
     lines = [line1, line2]
     labels = [line.get_label() for line in lines]
 
@@ -123,52 +121,48 @@ def plot_load_balance_and_recall(df, directory, m):
         labels,
         loc='center right',
         bbox_to_anchor=(1.00, 0.5),
-        fontsize=12,  # Increase font size of the legend text
-        title_fontsize=12,  # Font size for the title in the legend (if any)
-        borderpad=0.3,  # Padding around the text inside the legend box
-        borderaxespad=1,  # Distance between the legend and the axes
-        framealpha=0.8,  # Transparency of the legend box
-        edgecolor='black',  # Border color of the legend box
-        handlelength=2,  # Length of the legend handles (the lines in the legend)
-        handleheight=2,  # Height of the legend handles (the lines in the legend)
+        fontsize=8,
+        borderpad=0.3,
+        borderaxespad=1,
+        framealpha=0.8,
+        edgecolor='black',
+        handlelength=2,
+        handleheight=2,
     )
 
-    fig.suptitle(f'Load Balance and Recall (m={m}) vs Epochs', fontsize = 20)
+    fig.suptitle(f'Load Balance and Recall (m={m}) vs Epochs', fontsize=12)
     fig.tight_layout()
     plt.grid(True)
 
-    # Save the plot as SVG instead of PNG
     output_path = os.path.join(directory, "load_balance_and_recall_per_epochs.svg")
     plt.savefig(output_path, format='svg', bbox_inches='tight')
     plt.close()
     print(f"Plot saved to: {output_path}")
 
-def plot_load_balance_and_qps(df, directory, m):
-    """Plot load balance and QPS against epoch count with dual Y axes."""
+def plot_load_balance_and_query_time(df, directory, m):
+    """Plot load balance and query time against epoch count with dual Y axes."""
     df = df.sort_values(by='epoch_count')
 
-    fig, ax1 = plt.subplots(figsize=(7, 6))
+    fig, ax1 = plt.subplots(figsize=(11, 9))
 
-    # x-axis
     ax1.tick_params(axis='x', labelsize=14)
-    ax1.xaxis.set_major_locator(MultipleLocator(5))  # Set x-axis ticks every 5 units
+    ax1.xaxis.set_major_locator(MultipleLocator(5))
 
-    # --- Primary Y-axis: Load Balance ---
     color1 = 'tab:blue'
     ax1.set_xlabel('Epochs', fontsize=18, labelpad=15)
     ax1.set_ylabel('Load Balance', color=color1, fontsize=18, labelpad=15)
-    line1, = ax1.plot(df['epoch_count'], df['load_balance'], color=color1, marker='x', linestyle='--', label='Load Balance', linewidth=3, markersize=8, markeredgewidth=2)
+    line1, = ax1.plot(df['epoch_count'], df['load_balance'], color=color1, marker='x', linestyle='--',
+                      label='Load Balance', linewidth=3, markersize=8, markeredgewidth=2)
     ax1.tick_params(axis='y', labelcolor=color1, labelsize=14)
     ax1.ticklabel_format(style='sci', axis='y', scilimits=(0, 0))
 
-    # --- Secondary Y-axis: QPS ---
     ax2 = ax1.twinx()
     color2 = 'tab:red'
-    ax2.set_ylabel(f'QPS', color=color2, fontsize=18, labelpad=15)
-    line2, = ax2.plot(df['epoch_count'], df['qps'], color=color2, marker='o', label='QPS', linewidth=3, markersize=8, markeredgewidth=2)
+    ax2.set_ylabel('Query Time (ms/query)', color=color2, fontsize=18, labelpad=15)
+    line2, = ax2.plot(df['epoch_count'], df['query_time_ms'], color=color2, marker='o', label='Query Time',
+                      linewidth=3, markersize=8, markeredgewidth=2)
     ax2.tick_params(axis='y', labelcolor=color2, labelsize=14)
 
-    # --- Legend ---
     lines = [line1, line2]
     labels = [line.get_label() for line in lines]
 
@@ -177,26 +171,24 @@ def plot_load_balance_and_qps(df, directory, m):
         labels,
         loc='center right',
         bbox_to_anchor=(1.00, 0.5),
-        fontsize=12,  # Increase font size of the legend text
-        title_fontsize=12,  # Font size for the title in the legend (if any)
-        borderpad=0.3,  # Padding around the text inside the legend box
-        borderaxespad=1,  # Distance between the legend and the axes
-        framealpha=0.8,  # Transparency of the legend box
-        edgecolor='black',  # Border color of the legend box
-        handlelength=2,  # Length of the legend handles (the lines in the legend)
-        handleheight=2,  # Height of the legend handles (the lines in the legend)
+        fontsize=12,
+        title_fontsize=12,
+        borderpad=0.3,
+        borderaxespad=1,
+        framealpha=0.8,
+        edgecolor='black',
+        handlelength=2,
+        handleheight=2,
     )
 
-    fig.suptitle(f'Load Balance and QPS vs Epochs', fontsize = 20)
+    fig.suptitle(f'Load Balance and Query Time vs Epochs', fontsize=20)
     fig.tight_layout()
     plt.grid(True)
 
-    # Save the plot as SVG instead of PNG
-    output_path = os.path.join(directory, "load_balance_and_qps_per_epochs.svg")
+    output_path = os.path.join(directory, "load_balance_and_query_time_per_epochs.svg")
     plt.savefig(output_path, format='svg', bbox_inches='tight')
     plt.close()
     print(f"Plot saved to: {output_path}")
-
 
 # Main usage
 if __name__ == "__main__":
@@ -205,10 +197,10 @@ if __name__ == "__main__":
 
     # Collect data for both plots
     df_recall = collect_data_for_plot(directory, m, include_qps=False)
-    df_qps = collect_data_for_plot(directory, m, include_qps=True)
+    df_qtime = collect_data_for_plot(directory, m, include_qps=True)
 
     # Plot for Recall
     plot_load_balance_and_recall(df_recall, directory, m)
 
-    # Plot for QPS
-    plot_load_balance_and_qps(df_qps, directory, m)
+    # Plot for Query Time (converted from QPS)
+    plot_load_balance_and_query_time(df_qtime, directory, m)

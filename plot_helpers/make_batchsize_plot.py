@@ -95,7 +95,7 @@ def plot_batch_size_dual_y(df, directory, m, include_qps=False):
     # --- Right Y-axis: Recall or QPS ---
     ax2 = ax1.twinx()
     if include_qps:
-        color2 = 'tab:green'
+        color2 = 'tab:red'
         metric_label = 'QPS'
         metric_data = df['qps']
     else:
