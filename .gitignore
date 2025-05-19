@@ -23,6 +23,7 @@ hpc_archive/
 datapq.index
 azcopy/
 cluster_backup/
+cluster_outputs/
 scratch_inputs/
 scratch_results/
 scrape.py

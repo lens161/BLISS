@@ -71,7 +71,7 @@ def build_index(dataset: ds.Dataset, config: Config, trial=None):
         ram_training, vram_trainig, load_balances = train_model(model, dataset, sample_buckets, sample_size, bucket_sizes, neighbours, r, SIZE, config)
         memory_training = ram_training if ram_training > memory_training else memory_training
         vmemory_trainig = vram_trainig if vram_trainig>vmemory_trainig else vmemory_trainig
-        model_path, model_file_size = ut.save_model(model, config.dataset_name, r+1, config.r, config.k, config.b, config.lr, config.batch_size, config.reass_mode, config.reass_chunk_size, config.epochs, config.iterations)
+        model_path, model_file_size, model_directory = ut.save_model(model, config.dataset_name, r+1, config.r, config.k, config.b, config.lr, config.batch_size, config.reass_mode, config.reass_chunk_size, config.epochs, config.iterations)
         train_time_per_r.append(time.time() - start_training)
         model_sizes_total += model_file_size
         print(f"model {r+1} saved to {model_path}.")
@@ -98,7 +98,11 @@ def build_index(dataset: ds.Dataset, config: Config, trial=None):
         del model
         inverted_index, offsets = invert_index(index, bucket_sizes, SIZE)
         index_path, index_files_size = ut.save_inverted_index(inverted_index, offsets, config.dataset_name, r+1, config.r, config.k, config.b, config.lr, config.batch_size, config.reass_mode, config.reass_chunk_size, config.epochs, config.iterations)
-        # TODO: write RP files if query_twostep is enabled!
+        if config.query_twostep:
+            rp_path = f"{model_directory}/{config.dataset_name}_{config.datasize}_rp{config.rp_dim}_r{r}.npy"
+            dataset_helper = ut.get_dataset_obj(config.dataset_name, config.datasize)
+            ut.save_rp_memmap(dataset_helper, inverted_index, SIZE, config.rp_dim, rp_path)
+            print(f"Saved rp data for index {r+1}")
         index_sizes_total += index_files_size
         del inverted_index, offsets
         final_index.append((index_path, model_path))

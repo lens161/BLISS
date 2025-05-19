@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt # type: ignore
 import numpy as np
 import os
 import psutil
+from sklearn.random_projection import SparseRandomProjection
 import torch
 from torch.amp import autocast
 from faiss import IndexFlatL2, IndexPQ, IndexIVFPQ, vector_to_array
@@ -297,7 +298,7 @@ def save_model(model, dataset_name, r, R, K, B, lr, batch_size, reass_mode, chun
     os.makedirs(directory, exist_ok=True)
     torch.save(model.state_dict(), MODEL_PATH)
     file_size = os.path.getsize(MODEL_PATH) / 1024**2
-    return MODEL_PATH, file_size
+    return MODEL_PATH, file_size, directory
 
 def load_model(model_path, dim, b):
     '''
@@ -437,3 +438,22 @@ def norm_ent(bucket_sizes):
     shann_entropy = - sum(probs[probs>0]*np.log(probs[probs>0]))
     norm_entropy = shann_entropy/math.log(B)
     return norm_entropy
+
+def save_rp_memmap(dataset, inverted_index, SIZE, rp_dim, rp_path):
+    transformer = SparseRandomProjection(n_components=rp_dim, random_state=42)
+    mmp = np.memmap(rp_path, mode ="w+", shape=(SIZE, rp_dim), dtype=np.float32)
+    if SIZE > 10_000_000:
+        start = 0
+        reduced_vectors = np.empty((SIZE, rp_dim), dtype=np.float32)
+        for batch in dataset.get_dataset_iterator(bs=1_000_000):
+            end = len(batch) + start
+            reduced_vectors[start : end] = transformer.fit_transform(batch)
+            start = end
+        indices = inverted_index[:]
+        mmp[:] = reduced_vectors[indices]
+    else:
+        data = dataset.get_dataset()
+        reduced_vectors = transformer.fit_transform(data)
+        indices = inverted_index[:]
+        mmp[:] = reduced_vectors[indices]
+    mmp.flush()
