@@ -47,14 +47,16 @@ def get_parameters_and_stats(averages, i):
     epochs = int(averages[i]['e'].iloc[0])
     iters = int(averages[i]['i'].iloc[0])
     memory = float(averages[i]['memory'].iloc[0])
-    return dataset_name, datasize, r, k, m, qps, avg_recall, bs, reass_mode, nr_ann, lr, chunk_size, epochs, iters, memory
+    query_twostep = bool(averages[i]['query_twostep'].iloc[0])
+    twostep_limit = int(averages[i]['twostep_limit'].iloc[0])
+    return dataset_name, datasize, r, k, m, qps, avg_recall, bs, reass_mode, nr_ann, lr, chunk_size, epochs, iters, memory, query_twostep, twostep_limit
 
 def plot_individual_recall_vs_dist_comps(results, averages, experiment_name):
     '''
     Make a plot where recall is compared to nr of distance computations (nr of candidates when candidate set was too large and required true distance computations for reordering).
     '''
     for i, result in enumerate(results):
-        dataset_name, datasize, r, k, m, qps, avg_recall, bs, reass_mode, nr_ann, lr, chunk_size, epochs, iters, memory = get_parameters_and_stats(averages, i)
+        dataset_name, datasize, r, k, m, qps, avg_recall, bs, reass_mode, nr_ann, lr, chunk_size, epochs, iters, memory, query_twostep, twostep_limit = get_parameters_and_stats(averages, i)
 
         plt.figure(figsize=(8, 5))
         plt.scatter(result['distance_computations'], result['recall'], color='blue', s=20)
@@ -69,7 +71,7 @@ def plot_individual_recall_vs_dist_comps(results, averages, experiment_name):
             os.mkdir(foldername)
         
         # reuse qps from filename and make plot
-        plt.savefig(f"results/{experiment_name}/{dataset_name}_{datasize}_r{r}_k{k}_m{m}_qps{qps:.2f}_avg_rec{avg_recall:.3f}_bs={bs}_reass={reass_mode}_nr_ann={nr_ann}_lr={lr}_chunk_size={chunk_size}_e={epochs}_i={iters}.png", dpi=300)
+        plt.savefig(f"results/{experiment_name}/{dataset_name}_{datasize}_r{r}_k{k}_m{m}_qps{qps:.2f}_avg_rec{avg_recall:.3f}_bs={bs}_reass={reass_mode}_nr_ann={nr_ann}_lr={lr}_chunk_size={chunk_size}_e={epochs}_i={iters}_twostep={query_twostep}_limit={twostep_limit}.png", dpi=300)
         
         # alternatively, calculate recall and qps from individual queries, but qps measurement is slightly off
         # new_recall = result['recall'].mean()

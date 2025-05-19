@@ -314,16 +314,17 @@ def query_twostep(data, indexes, offsets, models, rp_files, query_vector, neighb
         max_cand_size = max_cand_size if cand_size <= max_cand_size else cand_size
 
     if cand_size <= requested_amount:
-        return candidate_ids, neighbours, 0, ut.recall_single(candidate_ids, neighbours), 0
+        return candidate_ids, neighbours, 0, 0, ut.recall_single(candidate_ids, neighbours), 0
     else:
+        rp_dist_comps = cand_size
         if candidate_rp_data is not None:
             reduced_query = apply_random_projection(query_vector, transformer)
-            candidate_ids = filter_candidates(candidate_rp_data, candidate_ids, reduced_query, m, candidate_amount_limit)
+            candidate_ids = filter_candidates(candidate_rp_data, candidate_ids, reduced_query, candidate_amount_limit)
             if len(candidate_ids) <= requested_amount:
-                return candidate_ids, neighbours, 0, ut.recall_single(candidate_ids, neighbours), 0
+                return candidate_ids, neighbours, 0, rp_dist_comps, ut.recall_single(candidate_ids, neighbours), 0
         final_neighbours, dist_comps, current_mem = reorder(data, query_vector, candidate_ids, requested_amount, process, using_memmap, track_mem)
         del candidate_ids, candidate_rp_data
-        return final_neighbours, neighbours, dist_comps, ut.recall_single(final_neighbours, neighbours), current_mem
+        return final_neighbours, neighbours, dist_comps, rp_dist_comps, ut.recall_single(final_neighbours, neighbours), current_mem
 
 def query_multiple_twostep(data, index, query_vectors, neighbours, config: Config, using_memmap):
     '''
@@ -341,11 +342,11 @@ def query_multiple_twostep(data, index, query_vectors, neighbours, config: Confi
     for i, query_vector in enumerate(query_vectors):
         print(f"\r[PID: {os.getpid()}] querying {i+1} of {size}       ", end='', flush=True)
         start = time.time()
-        anns, true_nns, dist_comps, recall, current_mem = query_twostep(data, indexes, offsets, models, rp_files, query_vector, neighbours[i], config.m, config.query_twostep_limit, config.freq_threshold, config.nr_ann, process, config.mem_tracking, transformer, config.rp_dim, timers, using_memmap)
+        anns, true_nns, dist_comps, rp_dist_comps, recall, current_mem = query_twostep(data, indexes, offsets, models, rp_files, query_vector, neighbours[i], config.m, config.query_twostep_limit, config.freq_threshold, config.nr_ann, process, config.mem_tracking, transformer, config.rp_dim, timers, using_memmap)
         end = time.time()
         elapsed = end - start
         memory = current_mem if current_mem > memory else memory
-        results[i] = (anns, true_nns, dist_comps, elapsed, recall)
+        results[i] = (anns, true_nns, dist_comps, rp_dist_comps, elapsed, recall)
     print("\r")
     
     print(f"Time spent on getting start/end indices: {timers[0]}")
@@ -385,21 +386,22 @@ def process_query_batch_twostep(data, neighbours, query_vectors, candidate_bucke
 
         if cand_size <= requested_amount:
             query_end = time.time()
-            batch_results[i] = (candidate_ids, neighbours[i], 0, (query_end-query_start) + base_time_per_query, ut.recall_single(candidate_ids, neighbours[i]))
+            batch_results[i] = (candidate_ids, neighbours[i], 0, 0, (query_end-query_start) + base_time_per_query, ut.recall_single(candidate_ids, neighbours[i]))
         else:
+            rp_dist_comps = cand_size
             if candidate_rp_data is not None:
                 reduced_query = apply_random_projection(query, transformer)
-                candidate_ids = filter_candidates(candidate_rp_data, candidate_ids, reduced_query, m, candidate_amount_limit)
+                candidate_ids = filter_candidates(candidate_rp_data, candidate_ids, reduced_query, candidate_amount_limit)
                 if len(candidate_ids) <= requested_amount:
                     query_end = time.time()
-                    batch_results[i] = (candidate_ids, neighbours[i], 0, (query_end-query_start) + base_time_per_query), ut.recall_single(candidate_ids, neighbours[i])
+                    batch_results[i] = (candidate_ids, neighbours[i], 0, rp_dist_comps, (query_end-query_start) + base_time_per_query), ut.recall_single(candidate_ids, neighbours[i])
                     del candidate_ids, candidate_rp_data
                     return batch_results, memory
             final_neighbours, dist_comps, current_mem = reorder(data, query, candidate_ids, requested_amount, process, using_memmap, track_mem)
             memory = current_mem if current_mem > memory else memory
             del candidate_ids, candidate_rp_data
             query_end = time.time()
-            batch_results[i] = (final_neighbours, neighbours[i], dist_comps, (query_end-query_start) + base_time_per_query, ut.recall_single(final_neighbours, neighbours[i]))
+            batch_results[i] = (final_neighbours, neighbours[i], dist_comps, rp_dist_comps, (query_end-query_start) + base_time_per_query, ut.recall_single(final_neighbours, neighbours[i]))
     return batch_results, memory
 
 def query_multiple_batched_twostep(data, index, vectors, neighbours, config: Config, using_memmap):
@@ -458,7 +460,7 @@ def apply_random_projection(query, transformer):
     reduced_query = transformer.fit_transform(query)
     return reduced_query
 
-def filter_candidates(candidate_rp_data, candidate_ids, reduced_query, m, candidate_limit):
+def filter_candidates(candidate_rp_data, candidate_ids, reduced_query, candidate_limit):
     neighbours = ut.get_nearest_neighbours_in_different_dataset(candidate_rp_data, reduced_query, candidate_limit)
     neighbours = neighbours[0]
     filtered_candidates = candidate_ids[neighbours]
