@@ -1,8 +1,8 @@
 import logging
 import matplotlib.pyplot as plt # type: ignore
-import numpy as np # type: ignore
+import numpy as np
 import os
-import pandas as pd # type: ignore
+import pandas as pd
 
 from bliss import run_bliss
 from config import Config
@@ -58,7 +58,7 @@ def run_multiple_query_exp(experiment_name, configs):
         qps = len(stats)/total_query_time
         individual_results_df = pd.DataFrame(individual_results)
         avg_results_and_params = pd.DataFrame([{'dataset_name':config.dataset_name, 'datasize':config.datasize, 'r': config.r, 'k': config.k, 'm': config.m, 'bs': config.batch_size, 'reass_mode': config.reass_mode, 
-                                               'nr_ann': config.nr_ann, 'lr': config.lr, 'chunk_size': config.reass_chunk_size, 'e': config.epochs, 'i': config.iterations, 'avg_recall': avg_recall, 'qps': qps}])
+                                               'nr_ann': config.nr_ann, 'lr': config.lr, 'chunk_size': config.reass_chunk_size, 'e': config.epochs, 'i': config.iterations, 'avg_recall': avg_recall, 'qps': qps, 'memory': memory}])
         foldername = f"results/{experiment_name}"
         if not os.path.exists("results"):
             os.mkdir("results")
@@ -79,10 +79,10 @@ if __name__ == "__main__":
     k_values = [2]
     m_values = [5, 10, 15]
     reass_modes = [0, 1, 2, 3]
-    batch_sizes = [1024, 2048, 5000]
-    chunk_sizes = [5000, 10_000, 20_000, 40_000, 60_000, 80_000]
+    chunk_sizes = [5000, 10_000, 20_000, 40_000, 60_000]
+    batch_sizes = [1024, 2048, 3072, 4096]
     iterations = [3, 4, 5]
-    EXP_NAME = "rm_0_new"
+    EXP_NAME = "query_rm3"
 
     if not os.path.exists("logs"):
         os.mkdir("logs")
@@ -102,12 +102,15 @@ if __name__ == "__main__":
     
     logging.info("[Experiment] Experiments started")
 
-    configs_b.append(Config(dataset_name="bigann", batch_size=1024, b=16384, reass_mode=0, reass_chunk_size=40_000, datasize=100, mem_tracking=True))
+    for dataset in datasets:
+        for chunk_size in chunk_sizes:
+            for m in m_values:
+                configs_q.append(Config(dataset_name=dataset, batch_size=1024, b=16384, reass_chunk_size=chunk_size, m=m, reass_mode=3, datasize=100))
                 
     print(f"EXPERIMENT: {EXP_NAME}")
-    logging.info(f"[Experiment] Building indexes")
-    build_multiple_indexes_exp(EXP_NAME, configs_b)
-    # logging.info(f"[Experiment] Starting query experiments")
-    # run_multiple_query_exp(EXP_NAME, configs_q)
+    # logging.info(f"[Experiment] Building indexes")
+    # build_multiple_indexes_exp(EXP_NAME, configs_b)
+    logging.info(f"[Experiment] Starting query experiments")
+    run_multiple_query_exp(EXP_NAME, configs_q)
 
-    # make_plots(EXP_NAME)        
+    # make_plots(EXP_NAME)    
