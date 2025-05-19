@@ -22,11 +22,15 @@ logs/
 hpc_archive/
 datapq.index
 azcopy/
+cluster_backup/
+cluster_outputs/
+old_outputs/
 scratch_inputs/
 scratch_results/
-old_outputs/
+scrape.py
 
 # job files
+scripts/baseline_scripts/
 reass_mode.job
 baseline.job
 reass_mode_0.job
@@ -46,9 +50,15 @@ reass_mode_0_mem.job
 reass_mode_1_mem.job
 reass_mode_2_mem.job
 reass_mode_3_mem.job
-scripts/baseline_scripts/
+reass_mode_0_mem_any.job
+reass_mode_1_mem_any.job
+reass_mode_2_mem_any.job
+reass_mode_3_mem_any.job
+query_rm2.job
+query_rm3.job
 
-# experiment files 
+# experiment files
+baseline_experiments/ 
 exp_check_nomem.py
 experiments_2.py
 experiments3.py
@@ -73,7 +83,18 @@ exp_reass_mode_0_mem.py
 exp_reass_mode_1_mem.py
 exp_reass_mode_2_mem.py
 exp_reass_mode_3_mem.py
-baseline_experiments/
+exp_rm_0_mem_new.py
+exp_rm_1_mem_new.py
+exp_rm_2_mem_new.py
+exp_rm_3_mem_new.py
+exp_reass_mode_0_mem_any.py
+exp_reass_mode_1_mem_any.py
+exp_reass_mode_2_mem_any.py
+exp_reass_mode_3_mem_any.py
+
+exp_billion.py
+exp_billion2.py
+exp_billion3.py
 
 # C extensions
 *.so

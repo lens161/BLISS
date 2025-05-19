@@ -81,7 +81,7 @@ if __name__ == "__main__":
     reass_modes = [0, 1, 2, 3]
     batch_sizes = [1024, 2048, 3072, 4096]
     iterations = [3, 4, 5]
-    EXP_NAME = "labels"
+    EXP_NAME = "test_mem_tracking"
 
     if not os.path.exists("logs"):
         os.mkdir("logs")
@@ -100,9 +100,8 @@ if __name__ == "__main__":
                  ]
     
     logging.info("[Experiment] Experiments started")
-
-    for i in iterations:
-        configs_b.append(Config(dataset_name="sift-128-euclidean", batch_size=5000, b=4096, reass_mode=0, reass_chunk_size=40_000))
+    for rm in reass_modes:
+        configs_b.append(Config(dataset_name="bigann", batch_size=1024, b=8192, reass_mode=rm, reass_chunk_size=40_000, epochs=2, iterations=2, r=2, datasize=10, mem_tracking=True))
                 
     print(f"EXPERIMENT: {EXP_NAME}")
     logging.info(f"[Experiment] Building indexes")
