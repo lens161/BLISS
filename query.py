@@ -24,7 +24,7 @@ def load_data_for_inference(dataset: ds.Dataset, config: Config, SIZE, DIM):
     using_memmap = False
     data = None
     test = dataset.get_queries()
-    if SIZE <= 100_000_000:
+    if SIZE <= 10_000_000:
         data = dataset.get_dataset()
         if dataset.distance() == "angular":
                 data = ut.normalise_data(data)
@@ -288,7 +288,7 @@ def get_candidates_for_query_vectorised_twostep(predicted_buckets, model_indexes
 
     return filtered_vals, filtered_data
 
-def query_twostep(data, indexes, offsets, models, rp_files, query_vector, neighbours, m, expected_bucket_size, freq_threshold, requested_amount, process, mem_tracking, transformer, rp_dim, timers, using_memmap):
+def query_twostep(data, indexes, offsets, models, rp_files, query_vector, neighbours, m, candidate_amount_limit, freq_threshold, requested_amount, process, mem_tracking, transformer, rp_dim, timers, using_memmap):
     '''
     Query the index for a single vector. Get the candidate set of vectors predicted by each of the R models.
     Then, filter the candidate set based on the frequency threshold.
@@ -303,7 +303,6 @@ def query_twostep(data, indexes, offsets, models, rp_files, query_vector, neighb
         _, candidate_buckets = torch.topk(bucket_probabilities, m)
         predicted_buckets[i, :] = candidate_buckets
     #TODO: figure out better scaling formula
-    candidate_amount_limit = m*expected_bucket_size*4
     candidate_ids, candidate_rp_data = get_candidates_for_query_vectorised_twostep(predicted_buckets, indexes, offsets, rp_files, freq_threshold, rp_dim, timers, candidate_amount_limit)
 
     #TODO: track memory during rp filtering if the candidate size is large enough, depending on rp_dim
@@ -315,16 +314,17 @@ def query_twostep(data, indexes, offsets, models, rp_files, query_vector, neighb
         max_cand_size = max_cand_size if cand_size <= max_cand_size else cand_size
 
     if cand_size <= requested_amount:
-        return candidate_ids, neighbours, 0, ut.recall_single(candidate_ids, neighbours), 0
+        return candidate_ids, neighbours, 0, 0, ut.recall_single(candidate_ids, neighbours), 0
     else:
+        rp_dist_comps = cand_size
         if candidate_rp_data is not None:
             reduced_query = apply_random_projection(query_vector, transformer)
-            candidate_ids = filter_candidates(candidate_rp_data, candidate_ids, reduced_query, m, candidate_amount_limit)
+            candidate_ids = filter_candidates(candidate_rp_data, candidate_ids, reduced_query, candidate_amount_limit)
             if len(candidate_ids) <= requested_amount:
-                return candidate_ids, neighbours, 0, ut.recall_single(candidate_ids, neighbours), 0
+                return candidate_ids, neighbours, 0, rp_dist_comps, ut.recall_single(candidate_ids, neighbours), 0
         final_neighbours, dist_comps, current_mem = reorder(data, query_vector, candidate_ids, requested_amount, process, using_memmap, track_mem)
         del candidate_ids, candidate_rp_data
-        return final_neighbours, neighbours, dist_comps, ut.recall_single(final_neighbours, neighbours), current_mem
+        return final_neighbours, neighbours, dist_comps, rp_dist_comps, ut.recall_single(final_neighbours, neighbours), current_mem
 
 def query_multiple_twostep(data, index, query_vectors, neighbours, config: Config, using_memmap):
     '''
@@ -332,7 +332,6 @@ def query_multiple_twostep(data, index, query_vectors, neighbours, config: Confi
     '''
     ((indexes, offsets, rp_files), models) = index
     size = len(query_vectors)
-    expected_bucket_size = len(data) // config.b
     print(f"Number of query vectors: {size}")
     print(f"Number of neighbour entries: {len(neighbours)}", flush=True)
     results = [[] for i in range(len(query_vectors))]
@@ -343,11 +342,11 @@ def query_multiple_twostep(data, index, query_vectors, neighbours, config: Confi
     for i, query_vector in enumerate(query_vectors):
         print(f"\r[PID: {os.getpid()}] querying {i+1} of {size}       ", end='', flush=True)
         start = time.time()
-        anns, true_nns, dist_comps, recall, current_mem = query_twostep(data, indexes, offsets, models, rp_files, query_vector, neighbours[i], config.m, expected_bucket_size, config.freq_threshold, config.nr_ann, process, config.mem_tracking, transformer, config.rp_dim, timers, using_memmap)
+        anns, true_nns, dist_comps, rp_dist_comps, recall, current_mem = query_twostep(data, indexes, offsets, models, rp_files, query_vector, neighbours[i], config.m, config.query_twostep_limit, config.freq_threshold, config.nr_ann, process, config.mem_tracking, transformer, config.rp_dim, timers, using_memmap)
         end = time.time()
         elapsed = end - start
         memory = current_mem if current_mem > memory else memory
-        results[i] = (anns, true_nns, dist_comps, elapsed, recall)
+        results[i] = (anns, true_nns, dist_comps, rp_dist_comps, elapsed, recall)
     print("\r")
     
     print(f"Time spent on getting start/end indices: {timers[0]}")
@@ -362,7 +361,7 @@ def query_multiple_twostep(data, index, query_vectors, neighbours, config: Confi
 
     return results, memory
 
-def process_query_batch_twostep(data, neighbours, query_vectors, candidate_buckets, indexes, offsets, rp_files, freq_threshold, requested_amount, m, expected_bucket_size, batch_process_start, process, max_cand_size, mem_tracking, transformer, rp_dim, timers, using_memmap):
+def process_query_batch_twostep(data, neighbours, query_vectors, candidate_buckets, indexes, offsets, rp_files, freq_threshold, requested_amount, m, candidate_amount_limit, batch_process_start, process, max_cand_size, mem_tracking, transformer, rp_dim, timers, using_memmap):
     ## input: candidate_buckets np array for a batch of queries
     ## output: the ANNs for the batch of queries, dist_comps per query, recall per query
     batch_results = [[] for i in range(len(query_vectors))]
@@ -370,7 +369,6 @@ def process_query_batch_twostep(data, neighbours, query_vectors, candidate_bucke
     base_time_per_query = (batch_process_end - batch_process_start) / len(query_vectors)
     
     #TODO: figure out better scaling formula
-    candidate_amount_limit = m*expected_bucket_size*4
     memory = 0
     for i, query in enumerate(query_vectors):
         query_start = time.time()
@@ -388,21 +386,22 @@ def process_query_batch_twostep(data, neighbours, query_vectors, candidate_bucke
 
         if cand_size <= requested_amount:
             query_end = time.time()
-            batch_results[i] = (candidate_ids, neighbours[i], 0, (query_end-query_start) + base_time_per_query), ut.recall_single(candidate_ids, neighbours[i])
+            batch_results[i] = (candidate_ids, neighbours[i], 0, 0, (query_end-query_start) + base_time_per_query, ut.recall_single(candidate_ids, neighbours[i]))
         else:
+            rp_dist_comps = cand_size
             if candidate_rp_data is not None:
                 reduced_query = apply_random_projection(query, transformer)
-                candidate_ids = filter_candidates(candidate_rp_data, candidate_ids, reduced_query, m, candidate_amount_limit)
+                candidate_ids = filter_candidates(candidate_rp_data, candidate_ids, reduced_query, candidate_amount_limit)
                 if len(candidate_ids) <= requested_amount:
                     query_end = time.time()
-                    batch_results[i] = (candidate_ids, neighbours[i], 0, (query_end-query_start) + base_time_per_query), ut.recall_single(candidate_ids, neighbours[i])
+                    batch_results[i] = (candidate_ids, neighbours[i], 0, rp_dist_comps, (query_end-query_start) + base_time_per_query), ut.recall_single(candidate_ids, neighbours[i])
                     del candidate_ids, candidate_rp_data
                     return batch_results, memory
             final_neighbours, dist_comps, current_mem = reorder(data, query, candidate_ids, requested_amount, process, using_memmap, track_mem)
             memory = current_mem if current_mem > memory else memory
             del candidate_ids, candidate_rp_data
             query_end = time.time()
-            batch_results[i] = (final_neighbours, neighbours[i], dist_comps, (query_end-query_start) + base_time_per_query, ut.recall_single(final_neighbours, neighbours[i]))
+            batch_results[i] = (final_neighbours, neighbours[i], dist_comps, rp_dist_comps, (query_end-query_start) + base_time_per_query, ut.recall_single(final_neighbours, neighbours[i]))
     return batch_results, memory
 
 def query_multiple_batched_twostep(data, index, vectors, neighbours, config: Config, using_memmap):
@@ -412,7 +411,6 @@ def query_multiple_batched_twostep(data, index, vectors, neighbours, config: Con
     ((indexes, offsets, rp_files), models) = index
 
     size = len(vectors)
-    expected_bucket_size = len(data) // config.b
     print(f"Number of query vectors: {size}")
     print(f"Number of neighbour entries: {len(neighbours)}", flush=True)
     nr_batches = math.ceil(size / config.query_batch_size)
@@ -439,7 +437,7 @@ def query_multiple_batched_twostep(data, index, vectors, neighbours, config: Con
                 bucket_probabilities = torch.sigmoid(model(batch_data))
                 _, candidate_buckets = torch.topk(bucket_probabilities, config.m, dim=1)
                 predicted_buckets_per_query[:, i, :] = candidate_buckets
-            batch_results, current_mem = process_query_batch_twostep(data, neighbours[batch_indices], batch_data, predicted_buckets_per_query, indexes, offsets, rp_files, config.freq_threshold, config.nr_ann, config.m, expected_bucket_size, batch_process_start, process, max_cand_size, config.mem_tracking, transformer, config.rp_dim, timers, using_memmap)
+            batch_results, current_mem = process_query_batch_twostep(data, neighbours[batch_indices], batch_data, predicted_buckets_per_query, indexes, offsets, rp_files, config.freq_threshold, config.nr_ann, config.m, config.query_twostep_limit, batch_process_start, process, max_cand_size, config.mem_tracking, transformer, config.rp_dim, timers, using_memmap)
             memory = current_mem if current_mem > memory else memory
             results[batch_idx] = batch_results
             batch_idx += 1
@@ -462,7 +460,7 @@ def apply_random_projection(query, transformer):
     reduced_query = transformer.fit_transform(query)
     return reduced_query
 
-def filter_candidates(candidate_rp_data, candidate_ids, reduced_query, m, candidate_limit):
+def filter_candidates(candidate_rp_data, candidate_ids, reduced_query, candidate_limit):
     neighbours = ut.get_nearest_neighbours_in_different_dataset(candidate_rp_data, reduced_query, candidate_limit)
     neighbours = neighbours[0]
     filtered_candidates = candidate_ids[neighbours]
