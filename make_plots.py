@@ -276,16 +276,19 @@ def make_plots(experiment_name):
     Include all plot functions that should be run here.
     '''
     # get results from query files
-    query_files = find_query_files(experiment_name)
-    query_results, query_averages = compile_query_results(query_files)
-    # plot_mem_vs_chunk_size(experiment_name)
-    # plot_vram_vs_chunk_size(experiment_name)
+    # query_files = find_query_files(experiment_name)
+    # query_results, query_averages = compile_query_results(query_files)
     # # TODO: get results from build and memory files
 
     # # make plots for whole experiment, add more plot functions as needed
+    plot_vram_vs_chunk_size(experiment_name)
+    plot_mem_vs_chunk_size(experiment_name)
     # plot_time_vs_chunk_size(experiment_name,'hp', "train")
     # plot_time_vs_chunk_size(experiment_name,'hp', "reass")
     # plot_time_vs_chunk_size(experiment_name,'hp', "build")
-    plot_individual_recall_vs_dist_comps(query_results, query_averages, experiment_name)
+    # plot_individual_recall_vs_dist_comps(query_results, query_averages, experiment_name)
     # plot_recall_vs_dist_comps_per_m(query_results, query_averages, experiment_name)
     # plot_recall_vs_dist_comps_per_m_per_dataset(query_results, query_averages, experiment_name)
+
+if __name__ == "__main__":
+    make_plots("compare_memory")
