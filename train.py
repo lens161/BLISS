@@ -66,9 +66,9 @@ def train_model(model, dataset, index, sample_size, bucket_sizes, neighbours, r,
                 optimizer.step()
                 batch_count += 1
                 epoch_loss_sum += loss.item()
-                current_mem = process.memory_full_info().uss / (1024 ** 2)
 
                 if config.mem_tracking:
+                    current_mem = process.memory_full_info().uss / (1024 ** 2)
                     ram = current_mem if current_mem > ram else ram
 
                 del loss, batch_data, batch_labels
