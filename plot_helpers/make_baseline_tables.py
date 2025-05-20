@@ -81,8 +81,9 @@ def format_latex_table(results_by_dataset):
 
     # Final LaTeX table string
     table_latex = r"""\begin{table}[ht]
+\centering
 \begin{tabular}{l|l|lll|lll}
-    \multicolumn{1}{c}{\textbf{dataset}} & \multicolumn{1}{c}{\textbf{m}} & \multicolumn{1}{c}{\textbf{\begin{tabular}[c]{@{}c@{}}recall\\ (10@10)\end{tabular}}} & \multicolumn{1}{c}{\textbf{QPS}} & \multicolumn{1}{c}{\textbf{\begin{tabular}[c]{@{}c@{}}\# dist\\ comps\end{tabular}}} & \multicolumn{1}{c}{\textbf{\begin{tabular}[c]{@{}c@{}}index\\ size\\ (MB)\end{tabular}}} & \multicolumn{1}{c}{\textbf{\begin{tabular}[c]{@{}c@{}}build\\ time\\ (hh:mm:ss) \end{tabular}}} & \multicolumn{1}{c}{\textbf{\begin{tabular}[c]{@{}c@{}}load\\ balance\end{tabular}}} \\
+    \multicolumn{1}{c}{\textbf{Dataset}} & \multicolumn{1}{c}{\textbf{m}} & \multicolumn{1}{c}{\textbf{\begin{tabular}[c]{@{}c@{}}Recall\\ (10@10)\end{tabular}}} & \multicolumn{1}{c}{\textbf{QPS}} & \multicolumn{1}{c}{\textbf{\begin{tabular}[c]{@{}c@{}}\# Dist\\ comps\end{tabular}}} & \multicolumn{1}{c}{\textbf{\begin{tabular}[c]{@{}c@{}}Index\\ size\\ (MB)\end{tabular}}} & \multicolumn{1}{c}{\textbf{\begin{tabular}[c]{@{}c@{}}Build\\ time\\ (hh:mm:ss) \end{tabular}}} & \multicolumn{1}{c}{\textbf{\begin{tabular}[c]{@{}c@{}}Load\\ balance\end{tabular}}} \\
 \hline
 """ + '\n\\hline\n'.join(table_rows) + r"""
 \end{tabular}
@@ -184,4 +185,4 @@ def make_baseline_stats_table(experiment_name, build_csv_dir="."):
     print(f"LaTeX table written to {output_path}")
 
 if __name__ == "__main__":
-    make_baseline_stats_table("100m_baseline_stats_hp")
+    make_baseline_stats_table("1m_baseline_stats")
