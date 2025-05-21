@@ -231,46 +231,50 @@ def plot_vram_vs_chunk_size(experiment_name):
     plt.savefig(f"{out_dir}/vram_vs_chunk_size_by_mode.png", dpi=300)
     plt.close()
 
-# def plot_recall_vs_dist_comps_per_m_per_dataset(results, averages, experiment_name):
-#     # Group data by dataset_name
-#     dataset_groups = {}
-#     for i, result in enumerate(results):
-#         dataset_name = averages[i]['dataset_name']
-#         avg_recall = averages[i]['avg_recall']
-#         avg_dist_comps = result['distance_computations'].mean()
-#         m = int(averages[i]['m'].iloc[0])
-        
-#         if dataset_name not in dataset_groups:
-#             dataset_groups[dataset_name] = []
-#         dataset_groups[dataset_name].append({'m': m, 'avg_recall': avg_recall, 'avg_dist_comps': avg_dist_comps})
-    
-#     # Define a list of colors for different datasets
-#     colors = ['b', 'g', 'r', 'c', 'm', 'y', 'k']  # Modify as needed if there are more datasets
+def plot_recall_vs_dist_comps_per_m_per_dataset(results, averages, experiment_name):
+    import matplotlib.pyplot as plt
 
-#     plt.figure(figsize=(8, 5))
-    
-#     # Iterate over the dataset groups and plot each one
-#     for idx, (dataset_name, group) in enumerate(dataset_groups.items()):
-#         group.sort(key=lambda x: x['avg_dist_comps'])
-#         x = [item['avg_dist_comps'] for item in group]
-#         y = [item['avg_recall'] for item in group]
-        
-#         # Use the color from the list or loop back through the colors
-#         color = colors[idx % len(colors)]
-        
-#         # Plot each dataset with its color and a specific marker
-#         plt.plot(x, y, marker='o', linestyle='-', color=color, label=dataset_name)
-    
-#     # Labels and title
-#     plt.xlabel('Number of Distance Computations')
-#     plt.ylabel('Recall')
-#     plt.title('Recall vs. Distance Computations')
-#     plt.legend(title="Dataset Name")
-#     plt.grid(True)
-#     plt.tight_layout()
+    # Mapping of full dataset names to custom legend labels
+    custom_labels = {
+        'sift-128-euclidean': 'SIFT',
+        'glove-100-angular': 'GloVe',
+        # Add more mappings as needed
+    }
 
-#     # Save the plot to a file
-#     plt.savefig(f"results/{experiment_name}/recall_vs_dist_comps_per_m.png", dpi=300)
+    # Group data by dataset_name
+    dataset_groups = {}
+    for i, result in enumerate(results):
+        dataset_name = averages[i]['dataset_name'].iloc[0]  # Get actual string
+        avg_recall = averages[i]['avg_recall']
+        avg_dist_comps = result['distance_computations'].mean()
+        m = int(averages[i]['m'].iloc[0])
+        
+        if dataset_name not in dataset_groups:
+            dataset_groups[dataset_name] = []
+        dataset_groups[dataset_name].append({'m': m, 'avg_recall': avg_recall, 'avg_dist_comps': avg_dist_comps})
+    
+    colors = ['b', 'r', 'g', 'c', 'm', 'y', 'k']
+
+    plt.figure(figsize=(8, 5))
+
+    for idx, (dataset_name, group) in enumerate(dataset_groups.items()):
+        group.sort(key=lambda x: x['avg_dist_comps'])
+        x = [item['avg_dist_comps'] for item in group]
+        y = [item['avg_recall'] for item in group]
+
+        color = colors[idx % len(colors)]
+        label = custom_labels.get(dataset_name, dataset_name)  # Default to full name if not mapped
+        
+        plt.plot(x, y, marker='o', linestyle='-', color=color, label=label)
+
+    plt.xlabel('Number of Distance Computations')
+    plt.ylabel('Recall')
+    plt.title('Recall vs. Distance Computations')
+    plt.legend(title="Dataset", loc='lower right')
+    plt.grid(True)
+    plt.tight_layout()
+
+    plt.savefig(f"results/{experiment_name}/recall_vs_dist_comps_per_m.png", dpi=300)
 
 
 def make_plots(experiment_name):
