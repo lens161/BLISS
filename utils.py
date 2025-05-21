@@ -439,8 +439,8 @@ def norm_ent(bucket_sizes):
     norm_entropy = shann_entropy/math.log(B)
     return norm_entropy
 
-def save_rp_memmap(dataset, inverted_index, SIZE, rp_dim, rp_path):
-    transformer = SparseRandomProjection(n_components=rp_dim, random_state=42)
+def save_rp_memmap(dataset, inverted_index, SIZE, rp_dim, rp_path, rp_seed):
+    transformer = SparseRandomProjection(n_components=rp_dim, random_state=rp_seed)
     mmp = np.memmap(rp_path, mode ="w+", shape=(SIZE, rp_dim), dtype=np.float32)
     if SIZE > 10_000_000:
         start = 0

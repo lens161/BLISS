@@ -337,7 +337,7 @@ def query_multiple_twostep(data, index, query_vectors, neighbours, config: Confi
     results = [[] for i in range(len(query_vectors))]
     timers = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
     memory = 0
-    transformer = SparseRandomProjection(n_components=config.rp_dim)
+    transformer = SparseRandomProjection(n_components=config.rp_dim, random_state=config.rp_seed)
     process = psutil.Process(os.getpid())
     for i, query_vector in enumerate(query_vectors):
         print(f"\r[PID: {os.getpid()}] querying {i+1} of {size}       ", end='', flush=True)
@@ -422,7 +422,7 @@ def query_multiple_batched_twostep(data, index, vectors, neighbours, config: Con
     
     queries_batched = BLISSDataset(vectors, device = torch.device("cpu"), mode='train')
     query_loader = DataLoader(queries_batched, batch_size=config.query_batch_size, shuffle=False, num_workers=8)
-    transformer = SparseRandomProjection(n_components=config.rp_dim)
+    transformer = SparseRandomProjection(n_components=config.rp_dim, random_state=config.rp_seed)
 
     batch_idx = 0
     memory = 0

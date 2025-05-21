@@ -101,7 +101,7 @@ def build_index(dataset: ds.Dataset, config: Config, trial=None):
         if config.query_twostep:
             rp_path = f"{model_directory}/{config.dataset_name}_{config.datasize}_rp{config.rp_dim}_r{r}.npy"
             dataset_helper = ut.get_dataset_obj(config.dataset_name, config.datasize)
-            ut.save_rp_memmap(dataset_helper, inverted_index, SIZE, config.rp_dim, rp_path)
+            ut.save_rp_memmap(dataset_helper, inverted_index, SIZE, config.rp_dim, rp_path, config.rp_seed)
             print(f"Saved rp data for index {r+1}")
         index_sizes_total += index_files_size
         del inverted_index, offsets
