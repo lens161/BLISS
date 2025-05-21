@@ -6,7 +6,7 @@ from config import Config
 from bliss import load_indexes_and_models
 
 def convert_to_sorted_random_projection(dataset, r, config: Config, index, model_directory, SIZE):
-    transformer = SparseRandomProjection(n_components=config.rp_dim, random_state=42)
+    transformer = SparseRandomProjection(n_components=config.rp_dim, random_state=config.rp_seed)
     mmp = np.memmap(f"models/{model_directory}/{config.dataset_name}_{config.datasize}_rp{config.rp_dim}_r{r}.npy", mode ="w+", shape=(SIZE, config.rp_dim), dtype=np.float32)
     if SIZE > 10_000_000:
         start = 0
