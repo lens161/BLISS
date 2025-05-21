@@ -2,11 +2,11 @@
  
 #SBATCH --job-name=clean_scratch # Job name
 #SBATCH --output=outputs/clean_scratch.out
-#SBATCH --cpus-per-task=8                               
+#SBATCH --cpus-per-task=1                               
 #SBATCH --time=24:00:00                               
 #SBATCH --gres=gpu                      # Need GPU
 #SBATCH --exclude=cn[3-19]
-#SBATCH --nodelist=desktop8
+#SBATCH --nodelist=desktop8             # NEEDS TO BE NODE WHERE ORIGINAL EXP RAN, SCRATCH FOLDER IS THERE
 #SBATCH --partition=scavenge            # Run on the scavenge queue
 #SBATCH --mail-type=BEGIN,FAIL,END      # Send an email when the job finishes
 #SBATCH --exclusive                     # get entire machine for task
