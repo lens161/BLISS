@@ -269,8 +269,12 @@ def get_candidates_for_query_vectorised_twostep(predicted_buckets, model_indexes
     e = time.time()
     timers[6] += (e-s)
 
-    if len(filtered_vals) <= candidate_amount_limit:
-        return filtered_vals, None
+    if isinstance(candidate_amount_limit, int):
+        if len(filtered_vals) <= candidate_amount_limit:
+            return filtered_vals, None
+    elif isinstance(candidate_amount_limit, tuple):
+        if len(filtered_vals) <= candidate_amount_limit[0]:
+            return filtered_vals, None
  
     s = time.time()
     candidate_data    = np.empty((total, rp_dim), dtype=np.float32)
@@ -461,6 +465,11 @@ def apply_random_projection(query, transformer):
     return reduced_query
 
 def filter_candidates(candidate_rp_data, candidate_ids, reduced_query, candidate_limit):
+    if isinstance(candidate_limit, float):
+        candidate_limit = round(candidate_limit*len(candidate_ids))
+    elif isinstance(candidate_limit, tuple):
+        candidate_limit = min(round(candidate_limit[1]*len(candidate_ids)), candidate_limit[0])
+    
     neighbours = ut.get_nearest_neighbours_in_different_dataset(candidate_rp_data, reduced_query, candidate_limit)
     neighbours = neighbours[0]
     filtered_candidates = candidate_ids[neighbours]

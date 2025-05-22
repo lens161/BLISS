@@ -68,12 +68,17 @@ def run_multiple_query_exp(experiment_name, configs):
         avg_results_and_params = pd.DataFrame([{'dataset_name':config.dataset_name, 'datasize':config.datasize, 'r': config.r, 'k': config.k, 'm': config.m, 'bs': config.batch_size, 'reass_mode': config.reass_mode, 
                                                'nr_ann': config.nr_ann, 'lr': config.lr, 'chunk_size': config.reass_chunk_size, 'e': config.epochs, 'i': config.iterations, 'avg_recall': avg_recall, 'qps': qps, 'memory': memory,
                                                'query_twostep': config.query_twostep, 'twostep_limit': config.query_twostep_limit}])
+        query_twostep_limit = config.query_twostep_limit
+        if isinstance(config.query_twostep_limit, tuple):
+            query_twostep_limit = f"({config.query_twostep_limit[0]}-{config.query_twostep_limit[1]})"
+            avg_results_and_params['twostep_limit'] = avg_results_and_params['twostep_limit'].apply(str)
+        
         foldername = f"results/{experiment_name}"
         if not os.path.exists("results"):
             os.mkdir("results")
         if not os.path.exists(f"results/{experiment_name}"):
             os.mkdir(foldername)
-        with pd.HDFStore(f"{foldername}/{config.dataset_name}_{config.datasize}_r{config.r}_k{config.k}_m{config.m}_qps{qps:.2f}_avg_rec{avg_recall:.3f}_bs={config.batch_size}_reass={config.reass_mode}_nr_ann={config.nr_ann}_lr={config.lr}_chunk_size={config.reass_chunk_size}_e={config.epochs}_i={config.iterations}_twostep={config.query_twostep}_limit={config.query_twostep_limit}.h5", mode='w') as store:
+        with pd.HDFStore(f"{foldername}/{config.dataset_name}_{config.datasize}_r{config.r}_k{config.k}_m{config.m}_qps{qps:.2f}_avg_rec{avg_recall:.3f}_bs={config.batch_size}_reass={config.reass_mode}_nr_ann={config.nr_ann}_lr={config.lr}_chunk_size={config.reass_chunk_size}_e={config.epochs}_i={config.iterations}_twostep={config.query_twostep}_limit={query_twostep_limit}.h5", mode='w') as store:
             store.put('individual_results', individual_results_df, format='table')
             store.put('averages', avg_results_and_params, format='table')
 
