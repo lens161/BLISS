@@ -200,7 +200,7 @@ def map_all_to_buckets_3(bucket_sizes, SIZE, model, config, memory_usage, k, ind
     for batch in full_data.get_dataset_iterator(bs=1_000_000):
         data_batched.data = torch.from_numpy(batch).float()
         with torch.no_grad():
-            for batch_data, _ in map_loader:
+            for batch_data, _ in map_loader: 
                 topk_per_vector = ut.get_topk_buckets_for_batch(batch_data, k, model, config.device)
                 topk_per_vector.numpy()
                 memory_current = ut.assign_to_buckets_vectorised_rm3(bucket_sizes, SIZE, index, chunk_size, offset, topk_per_vector, mem_tracking)

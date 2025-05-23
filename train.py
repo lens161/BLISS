@@ -83,7 +83,7 @@ def train_model(model, dataset, index, sample_size, bucket_sizes, neighbours, r,
             logging.info("Reassigning vectors to new buckets")
             model.eval()
             model.to(config.device)
-            reassign_loader = DataLoader(dataset, batch_size=config.batch_size, shuffle=False, num_workers=8)
+            reassign_loader = DataLoader(dataset, batch_size=config.reass_chunk_size, shuffle=False, num_workers=8)
             start = time.time()
             print(f"reassigning buckets using mode: {config.reass_mode}")
             if config.reass_mode == 0:
@@ -156,6 +156,7 @@ def reassign_1(model, index, bucket_sizes, config: Config, reassign_loader):
                     memory = current_mem if current_mem > memory else memory
             for i, item_index in enumerate(batch_indices):
                 ut.reassign_vector_to_bucket(index, bucket_sizes, candidate_buckets[i], item_index)
+            del batch_data, batch_indices
     return memory
 
 def reassign_2(model, index, bucket_sizes, config: Config, reassign_loader):
