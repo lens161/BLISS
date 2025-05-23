@@ -1,5 +1,4 @@
 import logging
-import matplotlib.pyplot as plt # type: ignore
 import numpy as np
 import os
 import pandas as pd
@@ -10,8 +9,6 @@ from make_plots import make_plots
 
 
 def run_experiment(config: Config, mode = 'query'):
-    # TODO: 
-    # - seperate query statistics from building statistics
     avg_recall, stats, total_query_time = run_bliss(config, mode= mode)
     return total_query_time, avg_recall, stats
 
@@ -95,7 +92,7 @@ if __name__ == "__main__":
     reass_modes = [0, 1, 2, 3]
     batch_sizes = [1024, 2048, 3072, 4096]
     iterations = [3, 4, 5]
-    EXP_NAME = "test_mem_tracking"
+    EXP_NAME = "test_train_cleanup"
 
     if not os.path.exists("logs"):
         os.mkdir("logs")
@@ -114,8 +111,7 @@ if __name__ == "__main__":
                  ]
     
     logging.info("[Experiment] Experiments started")
-    for rm in reass_modes:
-        configs_b.append(Config(dataset_name="bigann", batch_size=1024, b=8192, reass_mode=rm, reass_chunk_size=40_000, epochs=2, iterations=2, r=2, datasize=10, mem_tracking=True))
+    configs_b.append(Config(dataset_name="sift-128-euclidean", batch_size=1024, b=4096, r=1, epochs=2, iterations=2))
                 
     print(f"EXPERIMENT: {EXP_NAME}")
     logging.info(f"[Experiment] Building indexes")

@@ -1,8 +1,8 @@
 import math
 import numpy as np
 import time
-from sklearn.random_projection import SparseRandomProjection
 import torch
+from sklearn.random_projection import SparseRandomProjection
 from torch.utils.data import DataLoader
 
 import datasets as ds
@@ -112,8 +112,10 @@ def get_candidates_for_query_vectorised(predicted_buckets, model_indexes, model_
     return unique_candidates
 
 def process_query_batch(data, neighbours, query_vectors, candidate_buckets, indexes, offsets, freq_threshold, requested_amount, batch_process_start, using_memmap):
-    ## input: candidate_buckets np array for a batch of queries
-    ## output: the ANNs for the batch of queries, dist_comps per query, recall per query
+    """
+    Sequentially process a batch of queries on which we have already done the forward pass.
+    Similar to single querying, except that we have the predicted buckets in one array for all queries in the batch.
+    """
     batch_results = [[] for i in range(len(query_vectors))]
     batch_process_end = time.time()
     base_time_per_query = (batch_process_end - batch_process_start) / len(query_vectors)
@@ -144,7 +146,6 @@ def query_multiple_batched(data, index, vectors, neighbours, config: Config, usi
     print(f"Number of neighbour entries: {len(neighbours)}", flush=True)
     nr_batches = math.ceil(size / config.query_batch_size)
     results = [[] for i in range(nr_batches)]
-    # do forward passes on a batch of queries in all models and then process
     print(f"Processing queries in batches")
     
     queries_batched = BLISSDataset(vectors, device = torch.device("cpu"), mode='train')
@@ -180,9 +181,9 @@ def reorder(data, query_vector, candidates, requested_amount, using_memmap):
     return final_neighbours, dist_comps
 
 
-###################
-# TWOSTEP QUERYING
-###################
+####################
+# TWOSTEP QUERYING #
+####################
 
 def get_candidates_for_query_vectorised_twostep(predicted_buckets, model_indexes, model_offsets, model_rp_files, freq_threshold, rp_dim, candidate_amount_limit):
     r, m = predicted_buckets.shape
@@ -282,8 +283,10 @@ def query_multiple_twostep(data, index, query_vectors, neighbours, config: Confi
     return results
 
 def process_query_batch_twostep(data, neighbours, query_vectors, candidate_buckets, indexes, offsets, rp_files, freq_threshold, requested_amount, candidate_amount_limit, batch_process_start, transformer, rp_dim, using_memmap):
-    ## input: candidate_buckets np array for a batch of queries
-    ## output: the ANNs for the batch of queries, dist_comps per query, recall per query
+    """
+    Sequentially process a batch of queries on which we have already done the forward pass, with twostep filtering enabled.
+    Similar to single querying, except that we have the predicted buckets in one array for all queries in the batch.
+    """
     batch_results = [[] for i in range(len(query_vectors))]
     batch_process_end = time.time()
     base_time_per_query = (batch_process_end - batch_process_start) / len(query_vectors)
@@ -325,7 +328,6 @@ def query_multiple_batched_twostep(data, index, vectors, neighbours, config: Con
     nr_batches = math.ceil(size / config.query_batch_size)
     results = [[] for i in range(nr_batches)]
 
-    # do forward passes on a batch of queries in all models and then process
     print(f"Processing queries in batches")
     
     queries_batched = BLISSDataset(vectors, device = torch.device("cpu"), mode='train')

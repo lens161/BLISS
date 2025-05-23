@@ -26,21 +26,6 @@ from dataset_io import (
 
 BASEDIR = "data/"
 
-# class Dataset_1M():
-#     def prepare(self):
-#         """download datset file if not there"""
-
-#     def get_dataset(self):
-#         """get the datset (without queries and groundtruths)"""
-
-#     def get_queries(self):
-#         """get queries"""
-#     def get_groundtruths(self):
-#         """get grountruths"""
-#     def get_distance(self):
-#         """get metric"""
-
-
 class Dataset():
     def prepare(self):
         """

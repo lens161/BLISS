@@ -1,7 +1,5 @@
-import gc
 import logging
 import numpy as np
-import optuna
 import os
 import psutil  # type: ignore
 import time
@@ -16,12 +14,12 @@ from config import Config
 from query import query_multiple, query_multiple_batched, load_data_for_inference, query_multiple_batched_twostep, query_multiple_twostep
 from train import train_model
     
-def build_index(dataset: ds.Dataset, config: Config, trial=None):
+def build_index(dataset: ds.Dataset, config: Config):
     '''
     Main index build loop
     '''
         
-    print("bulding index...")
+    print("building index...")
     logging.info(f"Started building index")
     SIZE = dataset.nb
     DIM = dataset.d
@@ -75,16 +73,7 @@ def build_index(dataset: ds.Dataset, config: Config, trial=None):
         train_time_per_r.append(time.time() - start_training)
         model_sizes_total += model_file_size
         print(f"model {r+1} saved to {model_path}.")
-
-        # FOR OPTUNA: 
-        # prune trial when buckets are too unbalanced ie. normalised entropy of bucketsizes is too low
-        if trial is not None:
-            ne = ut.norm_ent(bucket_sizes) # get normalised entropy for current bucketsizes
-            trial.report(ne, step=1)
-            threshold = 0.8
-            if ne < threshold:
-                raise optuna.exceptions.TrialPruned(f"buckets too unbalanced normalised entropy = {ne}, min is {threshold}")
-        
+       
         model.eval()
         model.to(config.device)
         index = None
@@ -309,7 +298,7 @@ def load_indexes_and_models(config: Config, SIZE, DIM, b):
         index = ((indexes, offsets), q_models)
     return index
 
-def run_bliss(config: Config, mode, experiment_name, trial=None):
+def run_bliss(config: Config, mode, experiment_name):
     '''
     Run the BLISS algorithm. Mode determines whether an index is built or whether inference is run on an existing index.
     '''
@@ -322,7 +311,7 @@ def run_bliss(config: Config, mode, experiment_name, trial=None):
     DIM = dataset.d
     dataset.prepare()
     if mode == 'build':
-        index, train_time, final_assign_time, build_time, memory_final_assignment, memory_training, load_balance, index_sizes_total, model_sizes_total, load_balances = build_index(dataset, config, trial)
+        index, train_time, final_assign_time, build_time, memory_final_assignment, memory_training, load_balance, index_sizes_total, model_sizes_total, load_balances = build_index(dataset, config)
         return train_time, final_assign_time, build_time, memory_final_assignment, memory_training, load_balance, index_sizes_total, model_sizes_total, load_balances
     elif mode == 'query':
         # set b if it wasn't already set in config

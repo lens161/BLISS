@@ -4,10 +4,10 @@ import matplotlib.pyplot as plt # type: ignore
 import numpy as np
 import os
 import psutil
-from sklearn.random_projection import SparseRandomProjection
 import torch
+from faiss import IndexFlatL2
+from sklearn.random_projection import SparseRandomProjection
 from torch.amp import autocast
-from faiss import IndexFlatL2, IndexPQ, IndexIVFPQ, vector_to_array
 
 import datasets as ds
 from bliss_model import BLISS_NN
@@ -403,21 +403,6 @@ def set_torch_seed(seed, device):
         torch.cuda.manual_seed(seed)
     elif device == torch.device("mps"):
         torch.mps.manual_seed(seed)
-
-def train_ivfpq(training_data: np.ndarray, data = None, m = 8, nbits = 8, nlist=256):
-    '''
-    Train a PQ index. Training date is encoded into the provided number of bits.
-    If any additional data is passed, it is added to the pq index instead of only adding the train data.
-    '''
-    d = training_data.shape[1]
-    quantiser = IndexFlatL2(d)
-    ivf_pq = IndexIVFPQ(quantiser, d, nlist, m, nbits)
-    ivf_pq.train(training_data)
-    if data is not None:
-        ivf_pq.add(data)
-    else:
-        ivf_pq.add(training_data)
-    return (ivf_pq, m)
 
 def random_projection(X, target_dim):
     '''

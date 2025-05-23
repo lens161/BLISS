@@ -5,11 +5,11 @@ import sklearn.datasets
 import unittest
 from sklearn.model_selection import train_test_split as sklearn_train_test_split
 
-import utils as ut
 import bliss
-import query
 import datasets as ds
+import query
 import train
+import utils as ut
 from bliss_model import BLISS_NN, BLISSDataset
 
 def generate_random_array(size: int, dimensions: int, centers: int):

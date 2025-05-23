@@ -33,8 +33,3 @@ class Config:
         self.experiment_name = None
         self.mem_tracking = mem_tracking
         self.query_batch_size = query_batch_size
-    
-    def __str__(self):
-        return (f"Config [dataset_name: {self.dataset_name}, r: {self.r}, k: {self.k}, m: {self.m}, b: {self.b}, lr: {self.lr}, reass: {self.reass_mode}, freq_threshold: {self.freq_threshold}, "
-                f"epochs: {self.epochs}, iterations: {self.iterations}, batch_size: {self.batch_size}, nr_train_neighbours: {self.nr_train_neighbours}, nr_ann: {self.nr_ann}, datasize: {self.datasize}, device: {self.device}, "
-                f"experiment_name: {self.experiment_name}]")
