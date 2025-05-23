@@ -7,7 +7,7 @@ class Config:
     def __init__(self, dataset_name, r= 4, k= 2, m = 2, freq_threshold = 2, 
                  epochs = 5, iterations = 4, batch_size = 256, nr_train_neighbours = 100, 
                  nr_ann = 10, b = 0, lr = 0.001, reass_mode = 0, reass_chunk_size = 5000, 
-                 query_batch_size = 2048, pq = False, query_batched=True, datasize=1, 
+                 query_batch_size = 2048, query_batched=True, datasize=1, 
                  mem_tracking = False, query_twostep=False, query_twostep_limit=10000, rp_dim=8, rp_seed=42):
         self.dataset_name = dataset_name
         self.r = r
@@ -17,7 +17,6 @@ class Config:
         self.lr = lr
         self.reass_mode = reass_mode
         self.reass_chunk_size = reass_chunk_size
-        self.pq = pq
         self.query_twostep = query_twostep
         self.query_twostep_limit = query_twostep_limit
         self.rp_dim = rp_dim

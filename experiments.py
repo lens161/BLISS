@@ -47,7 +47,7 @@ def run_multiple_query_exp(experiment_name, configs):
     mode = 'query'
     for config in configs:
         individual_results = []
-        avg_recall, stats, total_query_time, memory = run_bliss(config, mode=mode, experiment_name=experiment_name)
+        avg_recall, stats, total_query_time = run_bliss(config, mode=mode, experiment_name=experiment_name)
         print(f"avg recall = {avg_recall}")
         if config.query_twostep:
             for (anns, true_nns, dist_comps, rp_dist_comps, elapsed, recall) in stats:
@@ -66,7 +66,7 @@ def run_multiple_query_exp(experiment_name, configs):
         qps = len(stats)/total_query_time
         individual_results_df = pd.DataFrame(individual_results)
         avg_results_and_params = pd.DataFrame([{'dataset_name':config.dataset_name, 'datasize':config.datasize, 'r': config.r, 'k': config.k, 'm': config.m, 'bs': config.batch_size, 'reass_mode': config.reass_mode, 
-                                               'nr_ann': config.nr_ann, 'lr': config.lr, 'chunk_size': config.reass_chunk_size, 'e': config.epochs, 'i': config.iterations, 'avg_recall': avg_recall, 'qps': qps, 'memory': memory,
+                                               'nr_ann': config.nr_ann, 'lr': config.lr, 'chunk_size': config.reass_chunk_size, 'e': config.epochs, 'i': config.iterations, 'avg_recall': avg_recall, 'qps': qps,
                                                'query_twostep': config.query_twostep, 'twostep_limit': config.query_twostep_limit}])
         query_twostep_limit = config.query_twostep_limit
         if isinstance(config.query_twostep_limit, tuple):

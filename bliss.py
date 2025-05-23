@@ -117,8 +117,7 @@ def build_index(dataset: ds.Dataset, config: Config, trial=None):
 def assign_initial_buckets(train_size, r, B):
     '''
     assign bucket labels to vectors (indeces in the nd.array) using a hash function.
-    the hash fucntion used here is the same as in the original code from the BLISS github.
-    TODO: add reference link
+    the hash fucntion used here is the same as in the original code from the BLISS github (https://github.com/gaurav16gupta/BLISS).
     '''
     index = np.zeros(train_size, dtype=np.int32) # from 0 to train_size-1
     bucket_sizes = np.zeros(B, dtype=np.int32)
@@ -333,7 +332,7 @@ def run_bliss(config: Config, mode, experiment_name, trial=None):
         logging.info("Loading models for inference")
         index = load_indexes_and_models(config, SIZE, DIM, b)
         logging.info("Reading query vectors and ground truths")
-        data, test, neighbours, using_memmap = load_data_for_inference(dataset, config, SIZE, DIM)
+        data, test, neighbours, using_memmap = load_data_for_inference(dataset, config, SIZE)
  
         print(f"creating tensor array from Test")
         test = torch.from_numpy(test).to(torch.float32)
@@ -342,14 +341,14 @@ def run_bliss(config: Config, mode, experiment_name, trial=None):
         start = time.time()
         qstart = time.time()
         if config.query_batched and config.query_twostep:
-            results, memory = query_multiple_batched_twostep(data, index, test, neighbours, config, using_memmap)
+            results = query_multiple_batched_twostep(data, index, test, neighbours, config, using_memmap)
         elif config.query_batched:
-            results, memory = query_multiple_batched(data, index, test, neighbours, config, using_memmap)
+            results = query_multiple_batched(data, index, test, neighbours, config, using_memmap)
         elif config.query_twostep:
-            results, memory = query_multiple_twostep(data, index, test, neighbours, config, using_memmap)
+            results = query_multiple_twostep(data, index, test, neighbours, config, using_memmap)
         else:
-            results, memory = query_multiple(data, index, test, neighbours, config, using_memmap)
-        print(f"querying pq={config.pq} took {time.time()-qstart}")
+            results = query_multiple(data, index, test, neighbours, config, using_memmap)
+        print(f"querying took {time.time()-qstart}")
         end = time.time()
 
         total_query_time = end - start
@@ -357,5 +356,5 @@ def run_bliss(config: Config, mode, experiment_name, trial=None):
         anns = [t[0] for t in results]
         RECALL = ut.recall(anns, neighbours)
         print(f"RECALL = {RECALL}", flush=True)
-        return RECALL, results, total_query_time, memory
+        return RECALL, results, total_query_time
     

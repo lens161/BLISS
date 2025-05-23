@@ -46,17 +46,16 @@ def get_parameters_and_stats(averages, i):
     chunk_size = int(averages[i]['chunk_size'].iloc[0])
     epochs = int(averages[i]['e'].iloc[0])
     iters = int(averages[i]['i'].iloc[0])
-    memory = float(averages[i]['memory'].iloc[0])
     query_twostep = bool(averages[i]['query_twostep'].iloc[0])
     twostep_limit = int(averages[i]['twostep_limit'].iloc[0])
-    return dataset_name, datasize, r, k, m, qps, avg_recall, bs, reass_mode, nr_ann, lr, chunk_size, epochs, iters, memory, query_twostep, twostep_limit
+    return dataset_name, datasize, r, k, m, qps, avg_recall, bs, reass_mode, nr_ann, lr, chunk_size, epochs, iters, query_twostep, twostep_limit
 
 def plot_individual_recall_vs_dist_comps(results, averages, experiment_name):
     '''
     Make a plot where recall is compared to nr of distance computations (nr of candidates when candidate set was too large and required true distance computations for reordering).
     '''
     for i, result in enumerate(results):
-        dataset_name, datasize, r, k, m, qps, avg_recall, bs, reass_mode, nr_ann, lr, chunk_size, epochs, iters, memory, query_twostep, twostep_limit = get_parameters_and_stats(averages, i)
+        dataset_name, datasize, r, k, m, qps, avg_recall, bs, reass_mode, nr_ann, lr, chunk_size, epochs, iters, query_twostep, twostep_limit = get_parameters_and_stats(averages, i)
 
         plt.figure(figsize=(8, 5))
         plt.scatter(result['distance_computations'], result['recall'], color='blue', s=20)
@@ -314,7 +313,6 @@ def make_plots(experiment_name):
     # get results from query files
     # query_files = find_query_files(experiment_name)
     # query_results, query_averages = compile_query_results(query_files)
-    # # TODO: get results from build and memory files
 
     # # make plots for whole experiment, add more plot functions as needed
     plot_vram_vs_chunk_size(experiment_name)
