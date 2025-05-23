@@ -306,7 +306,6 @@ def query_twostep(data, indexes, offsets, models, rp_files, query_vector, neighb
         bucket_probabilities = torch.sigmoid(model(query_vector))
         _, candidate_buckets = torch.topk(bucket_probabilities, m)
         predicted_buckets[i, :] = candidate_buckets
-    #TODO: figure out better scaling formula
     candidate_ids, candidate_rp_data = get_candidates_for_query_vectorised_twostep(predicted_buckets, indexes, offsets, rp_files, freq_threshold, rp_dim, timers, candidate_amount_limit)
 
     #TODO: track memory during rp filtering if the candidate size is large enough, depending on rp_dim
@@ -325,6 +324,7 @@ def query_twostep(data, indexes, offsets, models, rp_files, query_vector, neighb
             reduced_query = apply_random_projection(query_vector, transformer)
             candidate_ids = filter_candidates(candidate_rp_data, candidate_ids, reduced_query, candidate_amount_limit)
             if len(candidate_ids) <= requested_amount:
+                del candidate_ids, candidate_rp_data
                 return candidate_ids, neighbours, 0, rp_dist_comps, ut.recall_single(candidate_ids, neighbours), 0
         final_neighbours, dist_comps, current_mem = reorder(data, query_vector, candidate_ids, requested_amount, process, using_memmap, track_mem)
         del candidate_ids, candidate_rp_data
@@ -372,7 +372,6 @@ def process_query_batch_twostep(data, neighbours, query_vectors, candidate_bucke
     batch_process_end = time.time()
     base_time_per_query = (batch_process_end - batch_process_start) / len(query_vectors)
     
-    #TODO: figure out better scaling formula
     memory = 0
     for i, query in enumerate(query_vectors):
         query_start = time.time()
@@ -390,7 +389,7 @@ def process_query_batch_twostep(data, neighbours, query_vectors, candidate_bucke
 
         if cand_size <= requested_amount:
             query_end = time.time()
-            batch_results[i] = (candidate_ids, neighbours[i], 0, 0, (query_end-query_start) + base_time_per_query, ut.recall_single(candidate_ids, neighbours[i]))
+            batch_results[i] = (candidate_ids, neighbours[i], 0, 0, ((query_end-query_start) + base_time_per_query), ut.recall_single(candidate_ids, neighbours[i]))
         else:
             rp_dist_comps = cand_size
             if candidate_rp_data is not None:
@@ -398,14 +397,14 @@ def process_query_batch_twostep(data, neighbours, query_vectors, candidate_bucke
                 candidate_ids = filter_candidates(candidate_rp_data, candidate_ids, reduced_query, candidate_amount_limit)
                 if len(candidate_ids) <= requested_amount:
                     query_end = time.time()
-                    batch_results[i] = (candidate_ids, neighbours[i], 0, rp_dist_comps, (query_end-query_start) + base_time_per_query), ut.recall_single(candidate_ids, neighbours[i])
+                    batch_results[i] = (candidate_ids, neighbours[i], 0, rp_dist_comps, ((query_end-query_start) + base_time_per_query), ut.recall_single(candidate_ids, neighbours[i]))
                     del candidate_ids, candidate_rp_data
-                    return batch_results, memory
+                    continue
             final_neighbours, dist_comps, current_mem = reorder(data, query, candidate_ids, requested_amount, process, using_memmap, track_mem)
             memory = current_mem if current_mem > memory else memory
             del candidate_ids, candidate_rp_data
             query_end = time.time()
-            batch_results[i] = (final_neighbours, neighbours[i], dist_comps, rp_dist_comps, (query_end-query_start) + base_time_per_query, ut.recall_single(final_neighbours, neighbours[i]))
+            batch_results[i] = (final_neighbours, neighbours[i], dist_comps, rp_dist_comps, ((query_end-query_start) + base_time_per_query), ut.recall_single(final_neighbours, neighbours[i]))
     return batch_results, memory
 
 def query_multiple_batched_twostep(data, index, vectors, neighbours, config: Config, using_memmap):
@@ -468,7 +467,7 @@ def filter_candidates(candidate_rp_data, candidate_ids, reduced_query, candidate
     if isinstance(candidate_limit, float):
         candidate_limit = round(candidate_limit*len(candidate_ids))
     elif isinstance(candidate_limit, tuple):
-        candidate_limit = min(round(candidate_limit[1]*len(candidate_ids)), candidate_limit[0])
+        candidate_limit = max(round(candidate_limit[1]*len(candidate_ids)), candidate_limit[0])
     
     neighbours = ut.get_nearest_neighbours_in_different_dataset(candidate_rp_data, reduced_query, candidate_limit)
     neighbours = neighbours[0]
