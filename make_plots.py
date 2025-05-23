@@ -231,6 +231,36 @@ def plot_vram_vs_chunk_size(experiment_name):
     plt.savefig(f"{out_dir}/vram_vs_chunk_size_by_mode.png", dpi=300)
     plt.close()
 
+def ram_usage_latex_table(experiment_name):
+    """
+    Read the build-log CSV for the given experiment and hardware,
+    compute average RAM during training and final assignment per reass_mode,
+    and return a LaTeX table as a string.
+    """
+
+    csv_file = f"results/{experiment_name}/{experiment_name}_build.csv"
+    df = pd.read_csv(csv_file)
+
+    grouped = df.groupby('reass_mode').agg(
+        avg_ram_train = ('ram_training', 'mean'),
+        avg_ram_final = ('ram_final_ass', 'mean')
+    ).reset_index()
+
+    table  = "\\begin{tabular}{c r r}\n"
+    table += "  \\toprule\n"
+    table += "  Reassign Mode & Training RAM (MB) & Final Assign RAM (MB)\\\\\n"
+    table += "  \\midrule\n"
+    for _, row in grouped.iterrows():
+        mode = int(row['reass_mode'])
+        t_mem = row['avg_ram_train']
+        f_mem = row['avg_ram_final']
+        table += f"  {mode:^13d} & {t_mem:>17.2f} & {f_mem:>20.2f}\\\\\n"
+    table += "  \\bottomrule\n"
+    table += "\\end{tabular}\n"
+
+    print(table)
+    return table
+
 def plot_recall_vs_dist_comps_per_m_per_dataset(results, averages, experiment_name):
     import matplotlib.pyplot as plt
 
@@ -282,16 +312,20 @@ def make_plots(experiment_name):
     Include all plot functions that should be run here.
     '''
     # get results from query files
-    query_files = find_query_files(experiment_name)
-    query_results, query_averages = compile_query_results(query_files)
-    # plot_mem_vs_chunk_size(experiment_name)
-    # plot_vram_vs_chunk_size(experiment_name)
+    # query_files = find_query_files(experiment_name)
+    # query_results, query_averages = compile_query_results(query_files)
     # # TODO: get results from build and memory files
 
     # # make plots for whole experiment, add more plot functions as needed
+    plot_vram_vs_chunk_size(experiment_name)
+    plot_mem_vs_chunk_size(experiment_name)
+    ram_usage_latex_table(experiment_name)
     # plot_time_vs_chunk_size(experiment_name,'hp', "train")
     # plot_time_vs_chunk_size(experiment_name,'hp', "reass")
     # plot_time_vs_chunk_size(experiment_name,'hp', "build")
-    plot_individual_recall_vs_dist_comps(query_results, query_averages, experiment_name)
+    # plot_individual_recall_vs_dist_comps(query_results, query_averages, experiment_name)
     # plot_recall_vs_dist_comps_per_m(query_results, query_averages, experiment_name)
     # plot_recall_vs_dist_comps_per_m_per_dataset(query_results, query_averages, experiment_name)
+
+if __name__ == "__main__":
+    make_plots("compare_memory")

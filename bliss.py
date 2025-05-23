@@ -167,7 +167,7 @@ def map_all_to_buckets_1(map_loader, full_data, data_batched, k, index, bucket_s
                 for i, item_index in enumerate(batch_indices):
                     item_idx = item_index + offset
                     ut.reassign_vector_to_bucket(index, bucket_sizes, candidate_buckets[i], item_idx)
-    
+        del batch
         offset += len(batch)
     return memory_usage
 
@@ -207,6 +207,7 @@ def map_all_to_buckets_3(bucket_sizes, SIZE, model, config, memory_usage, k, ind
                 if mem_tracking:
                     memory_usage = memory_current if memory_current > memory_usage else memory_usage
                 offset += len(batch_data)
+        del batch
     return memory_usage
 
 def build_full_index(bucket_sizes, SIZE, model, config: Config):
@@ -260,6 +261,7 @@ def get_all_candidate_buckets(SIZE, model, k, device, full_data, data_batched, m
         data_batched.data = torch.from_numpy(batch).float()
         ut.get_all_topk_buckets(map_loader, k, candidate_buckets, model, offset, device)
         offset += len(batch)
+        del batch
     return candidate_buckets
 
 def invert_index(index, bucket_sizes, SIZE):
