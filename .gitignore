@@ -31,6 +31,7 @@ scrape.py
 
 # job files
 scripts/baseline_scripts/
+scripts/scratch_scripts/
 reass_mode.job
 baseline.job
 reass_mode_0.job
