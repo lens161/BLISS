@@ -1,4 +1,3 @@
-import logging
 import math
 import matplotlib.pyplot as plt # type: ignore
 import numpy as np
@@ -11,6 +10,7 @@ from torch.amp import autocast
 
 import datasets as ds
 from bliss_model import BLISS_NN
+from config import Config
 
 
 ######################################################################
@@ -55,14 +55,12 @@ def get_train_nearest_neighbours_from_file(dataset, amount, sample_size, dataset
     if not os.path.exists(f"data/{dataset_name}-size{datasize}-nbrs{amount}-sample{sample_size}.npy"):
         filename = f"data/{dataset_name}-size{datasize}-nbrs{amount}-sample{sample_size}.npy"
         print(f"no nbrs file found for {dataset_name} with amount={amount} and samplesize={sample_size}, calculating {amount} nearest neighbours")
-        logging.info("No neighbours file found, calculating ground truths of training sample")
         I = get_nearest_neighbours_within_dataset(dataset, amount)
         print("writing neighbours to nbrs file")
         np.save(filename, I)
 
     else:
         print(f"found nbrs file for {dataset_name} with amount={amount} and samplesize={sample_size}, reading true nearest neighbours from file")
-        logging.info("Reusing ground truths for training sample from file")
         filename = f"data/{dataset_name}-size{datasize}-nbrs{amount}-sample{sample_size}.npy"
         I = np.load(filename)
     return I
@@ -220,7 +218,6 @@ def get_all_topk_buckets(loader, k, candidate_buckets, map_model, offset, device
     '''
     Prepare a table with the top-k buckets for all vectors in a loader according to the model.
     '''
-    logging.info(f"Mapping all train vectors to buckets")
     start_idx = offset
     memory = 0
     with torch.no_grad():
@@ -252,6 +249,10 @@ def get_topk_buckets_for_batch(batch_data, k, map_model, device):
 
     return candidate_buckets
 
+######################################################################
+# Helpers for loading and saving models and indexes.
+######################################################################
+
 def get_dataset_obj(dataset_name, size):
     '''
     Return a dataset object 
@@ -272,21 +273,6 @@ def get_dataset_obj(dataset_name, size):
         return ds.Mnist_784()
     else:
         print("dataset not supported yet")
-
-def get_B(n):
-    '''
-    Calculated suggested B (nr of buckets) based on the size of the dataset. Recommended B is the first power of 2 larger than sqrt(n).
-    '''
-    if n > 0:
-        sq = math.sqrt(n)
-        B = 2 ** round(math.log(sq, 2))
-        return B
-    else:
-        raise Exception(f"cannot calculate B for empty dataset!")
-
-######################################################################
-# Helpers for loading and saving models and indexes.
-######################################################################
 
 def save_model(model, dataset_name, r, R, K, B, lr, batch_size, reass_mode, chunk_size, e, i):
     '''
@@ -326,6 +312,60 @@ def save_inverted_index(inverted_index, offsets, dataset_name, model_num, R, K, 
     index_size = (os.path.getsize(index_path) + os.path.getsize(offsets_path)) / 1024**2
     return index_path, index_size
 
+def load_indexes_and_models(config: Config, SIZE, DIM, b):
+    inverted_indexes_paths = []
+    offsets_paths = []
+    model_paths = []
+    rp_paths = []
+    for i in range (config.r):
+        inverted_indexes_paths.append(f"models/{config.dataset_name}_r{config.r}_k{config.k}_b{config.b}_lr{config.lr}_bs={config.batch_size}_reass={config.reass_mode}_chunk_size={config.reass_chunk_size}_e={config.epochs}_i={config.iterations}/index_model{i+1}_{config.dataset_name}_r{i+1}_k{config.k}_b{config.b}_lr{config.lr}.npy")
+        offsets_paths.append(f"models/{config.dataset_name}_r{config.r}_k{config.k}_b{config.b}_lr{config.lr}_bs={config.batch_size}_reass={config.reass_mode}_chunk_size={config.reass_chunk_size}_e={config.epochs}_i={config.iterations}/offsets_model{i+1}_{config.dataset_name}_r{i+1}_k{config.k}_b{config.b}_lr{config.lr}.npy")
+        model_paths.append(f"models/{config.dataset_name}_r{config.r}_k{config.k}_b{config.b}_lr{config.lr}_bs={config.batch_size}_reass={config.reass_mode}_chunk_size={config.reass_chunk_size}_e={config.epochs}_i={config.iterations}/model_{config.dataset_name}_r{i+1}_k{config.k}_b{config.b}_lr{config.lr}.pt")
+        if config.query_twostep:
+            rp_paths.append(f"models/{config.dataset_name}_r{config.r}_k{config.k}_b{config.b}_lr{config.lr}_bs={config.batch_size}_reass={config.reass_mode}_chunk_size={config.reass_chunk_size}_e={config.epochs}_i={config.iterations}/{config.dataset_name}_{config.datasize}_rp{config.rp_dim}_r{i+1}.npy")
+
+    indexes = np.zeros(shape = (config.r, SIZE), dtype=np.uint32)
+    offsets = np.zeros(shape = (config.r, config.b), dtype=np.uint32)
+    for i, (inv_path, off_path) in enumerate(zip(inverted_indexes_paths, offsets_paths)):
+        inds_load = np.load(inv_path)
+        ind = np.array(inds_load)
+        indexes[i] = ind
+        offs_load = np.load(off_path)
+        off = np.array(offs_load)
+        offsets[i] = off
+    
+    # load models and indexes into memory
+    q_models = [load_model(model_path, DIM, b) for model_path in model_paths]
+    if config.query_twostep:
+        rp_files = [np.memmap(rp_path, mode='r', shape=(SIZE, config.rp_dim), dtype=np.float32) for rp_path in rp_paths]
+        index = ((indexes, offsets, rp_files), q_models)
+    else:
+        index = ((indexes, offsets), q_models)
+    return index
+
+def load_data_for_inference(dataset: ds.Dataset, config: Config, SIZE):
+    '''
+    For a given dataset, load the load thedataset, test data and ground truths.
+    Data is loaded from an existing memmap (created during index building), so that we can return the memmap address when the dataset is too large to load into memory.
+    Test data (query vectors) and ground truths (true nearest neighbours of test) are read from the original dataset files.
+    '''
+    using_memmap = False
+    data = None
+    test = dataset.get_queries()
+    if SIZE <= 10_000_000:
+        data = dataset.get_dataset()
+        if dataset.distance() == "angular":
+                data = normalise_data(data)
+                test = normalise_data(test)
+    else:
+        data = dataset.get_dataset_memmap()
+        using_memmap = True
+
+    neighbours, _ = dataset.get_groundtruth()
+    neighbours = neighbours[:, :config.nr_ann]
+    
+    return data, test, neighbours, using_memmap
+
 ######################################################################
 # Helpers for plots created during index building and collecting statistics.
 ######################################################################
@@ -335,10 +375,8 @@ def make_loss_plot(learning_rate, iterations, epochs_per_iteration, k, B, experi
     Plot the total loss of the model after each epoch.
     '''
     foldername = f"results/{experiment_name}"
-    if not os.path.exists("results"):
-        os.mkdir("results")
     if not os.path.exists(foldername):
-        os.mkdir(foldername)
+        os.mkdir(foldername, exist_ok=True)
     plt.figure(figsize=(10, 5))
     plt.plot(all_losses, marker='.')
     plt.title('Training Loss Over Epochs')
@@ -376,33 +414,9 @@ def recall_single(results, neighbours):
     '''
     return len(set(results) & set(neighbours))/len(neighbours)
 
-
 ######################################################################
-# Other helper functions.
+# Two-step querying helpers
 ######################################################################
-
-def get_best_device():
-    '''
-    Get the best available torch device (gpu if available, otherwise cpu).
-    '''
-    if torch.cuda.is_available():
-        # covers both NVIDIA CUDA and AMD ROCm
-        return torch.device("cuda")
-    elif torch.backends.mps.is_available():
-        # covers apple silicon mps
-        return torch.device("mps") 
-    else:
-        return torch.device("cpu")
-    
-def set_torch_seed(seed, device):
-    '''
-    Set torch seed for ease of reproducibility during testing.
-    '''
-    torch.manual_seed(seed)
-    if device == torch.device("cuda"):
-        torch.cuda.manual_seed(seed)
-    elif device == torch.device("mps"):
-        torch.mps.manual_seed(seed)
 
 def random_projection(X, target_dim):
     '''
@@ -411,18 +425,6 @@ def random_projection(X, target_dim):
     original_dim = X.shape[1]
     R = np.random.randn(original_dim, target_dim) / np.sqrt(target_dim)
     return np.dot(X, R)
-
-def norm_ent(bucket_sizes):
-    '''
-    Get normalised entropy to check balancedness of buckets.
-    '''
-    B = len(bucket_sizes)
-    total = sum(bucket_sizes)
-    probs = np.zeros(B, dtype=np.float32)
-    probs = bucket_sizes/total
-    shann_entropy = - sum(probs[probs>0]*np.log(probs[probs>0]))
-    norm_entropy = shann_entropy/math.log(B)
-    return norm_entropy
 
 def save_rp_memmap(dataset, inverted_index, SIZE, rp_dim, rp_path, rp_seed):
     transformer = SparseRandomProjection(n_components=rp_dim, random_state=rp_seed)
@@ -442,3 +444,40 @@ def save_rp_memmap(dataset, inverted_index, SIZE, rp_dim, rp_path, rp_seed):
         indices = inverted_index[:]
         mmp[:] = reduced_vectors[indices]
     mmp.flush()
+
+######################################################################
+# Other helper functions.
+######################################################################
+
+def get_B(n):
+    '''
+    Calculated suggested B (nr of buckets) based on the size of the dataset. Recommended B is the first power of 2 larger than sqrt(n).
+    '''
+    if n > 0:
+        sq = math.sqrt(n)
+        B = 2 ** round(math.log(sq, 2))
+        return B
+    else:
+        raise Exception(f"cannot calculate B for empty dataset!")
+    
+def set_torch_seed(seed, device):
+    '''
+    Set torch seed for ease of reproducibility during testing.
+    '''
+    torch.manual_seed(seed)
+    if device == torch.device("cuda"):
+        torch.cuda.manual_seed(seed)
+    elif device == torch.device("mps"):
+        torch.mps.manual_seed(seed)
+
+def norm_ent(bucket_sizes):
+    '''
+    Get normalised entropy to check balancedness of buckets.
+    '''
+    B = len(bucket_sizes)
+    total = sum(bucket_sizes)
+    probs = np.zeros(B, dtype=np.float32)
+    probs = bucket_sizes/total
+    shann_entropy = - sum(probs[probs>0]*np.log(probs[probs>0]))
+    norm_entropy = shann_entropy/math.log(B)
+    return norm_entropy

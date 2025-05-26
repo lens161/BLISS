@@ -1,4 +1,3 @@
-import logging
 import numpy as np
 import os
 import psutil # type: ignore
@@ -48,7 +47,6 @@ def train_model(model, dataset, index, sample_size, bucket_sizes, neighbours, r,
             epoch_loss_sum = 0
             batch_count = 0
             print(f"training epoch ({i}, {epoch})")
-            logging.info(f"Training epoch ({i}, {epoch})")
             start = time.time()
             label_times = []
             for batch_data, batch_indices in train_loader:
@@ -80,7 +78,6 @@ def train_model(model, dataset, index, sample_size, bucket_sizes, neighbours, r,
             all_losses[current_epoch] = epoch_loss_sum
             current_epoch += 1
         if ((epoch+1) * (i+1) < config.epochs*config.iterations and sample_size != train_size) or sample_size == train_size:
-            logging.info("Reassigning vectors to new buckets")
             model.eval()
             model.to(config.device)
             reassign_loader = DataLoader(dataset, batch_size=config.batch_size, shuffle=False, num_workers=8)

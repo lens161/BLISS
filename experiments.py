@@ -1,4 +1,3 @@
-import logging
 import numpy as np
 import os
 import pandas as pd
@@ -39,6 +38,7 @@ def build_multiple_indexes_exp(experiment_name, configs):
         df.to_csv(csv_path, mode='a', header=False, index=False)
     else:
         df.to_csv(csv_path, mode='w', header=True, index=False)
+    print(f"Experiment results stored in {foldername}")
 
 def run_multiple_query_exp(experiment_name, configs):
     mode = 'query'
@@ -46,6 +46,7 @@ def run_multiple_query_exp(experiment_name, configs):
         individual_results = []
         avg_recall, stats, total_query_time = run_bliss(config, mode=mode, experiment_name=experiment_name)
         print(f"avg recall = {avg_recall}")
+        print(f"Compiling experiment results...")
         if config.query_twostep:
             for (anns, true_nns, dist_comps, rp_dist_comps, elapsed, recall) in stats:
                 individual_results.append({'ANNs': ','.join(map(str, anns)) if isinstance(anns, (list, np.ndarray)) else str(anns), 
@@ -71,52 +72,41 @@ def run_multiple_query_exp(experiment_name, configs):
             avg_results_and_params['twostep_limit'] = avg_results_and_params['twostep_limit'].apply(str)
         
         foldername = f"results/{experiment_name}"
-        if not os.path.exists("results"):
-            os.mkdir("results")
-        if not os.path.exists(f"results/{experiment_name}"):
-            os.mkdir(foldername)
+        if not os.path.exists(foldername):
+            os.mkdir(foldername, exist_ok=True)
         with pd.HDFStore(f"{foldername}/{config.dataset_name}_{config.datasize}_r{config.r}_k{config.k}_m{config.m}_qps{qps:.2f}_avg_rec{avg_recall:.3f}_bs={config.batch_size}_reass={config.reass_mode}_nr_ann={config.nr_ann}_lr={config.lr}_chunk_size={config.reass_chunk_size}_e={config.epochs}_i={config.iterations}_twostep={config.query_twostep}_limit={query_twostep_limit}.h5", mode='w') as store:
             store.put('individual_results', individual_results_df, format='table')
             store.put('averages', avg_results_and_params, format='table')
+        print(f"Experiment results stored in {foldername}")
 
-    return experiment_name, avg_recall, total_query_time, individual_results, avg_results_and_params
 
 if __name__ == "__main__":
     configs_q = [] # configs for building the index
     configs_b = [] # configs for querying
-    # range_M = 10
-    # range_K = 2
     range_threshold = 2
     k_values = [2]
     m_values = [5, 10, 15]
     reass_modes = [0, 1, 2, 3]
     batch_sizes = [1024, 2048, 3072, 4096]
     iterations = [3, 4, 5]
-    EXP_NAME = "test_train_cleanup"
-
-    if not os.path.exists("logs"):
-        os.mkdir("logs")
-
-    logging.basicConfig(
-        filename=f'logs/{EXP_NAME}.log',                    # Specify the log file name
-        level=logging.INFO,                                 # Set the logging level to INFO
-        format='%(asctime)s - %(levelname)s - %(message)s'  # Define the log message format
-    )
+    EXP_NAME = "example_experiment_sift"
 
     # add all dataset names that the experiments should be run on
     datasets = [
-                # "bigann",
-                # "glove-100-angular",
                 "sift-128-euclidean"
                  ]
     
-    logging.info("[Experiment] Experiments started")
-    configs_b.append(Config(dataset_name="sift-128-euclidean", batch_size=1024, b=4096, r=1, epochs=2, iterations=2))
+    # see config for default values; only necessary to set a parameter if default needs to be overwritten
+    # default for b = 0; if not set, b is set to closest power of 2 of sqrt(N) in run_bliss
+    for dataset in datasets:
+        configs_b.append(Config(dataset_name=dataset, batch_size=1024, b=4096, epochs=2, iterations=2))
+        for m in m_values:
+            configs_q.append(Config(dataset_name=dataset, batch_size=1024, b=4096, m=m))
                 
     print(f"EXPERIMENT: {EXP_NAME}")
-    logging.info(f"[Experiment] Building indexes")
+    print(f"Started building indexes for experiment {EXP_NAME}")
     build_multiple_indexes_exp(EXP_NAME, configs_b)
-    # logging.info(f"[Experiment] Starting query experiments")
+    # print(f"Started querying for experiment {EXP_NAME}")
     # run_multiple_query_exp(EXP_NAME, configs_q)
 
-    # make_plots(EXP_NAME)    
+    make_plots(EXP_NAME)

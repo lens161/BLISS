@@ -1,4 +1,4 @@
-from utils import get_best_device
+import torch
 
 class Config:
     '''
@@ -33,3 +33,16 @@ class Config:
         self.experiment_name = None
         self.mem_tracking = mem_tracking
         self.query_batch_size = query_batch_size
+
+def get_best_device():
+    '''
+    Get the best available torch device (gpu if available, otherwise cpu).
+    '''
+    if torch.cuda.is_available():
+        # covers both NVIDIA CUDA and AMD ROCm
+        return torch.device("cuda")
+    elif torch.backends.mps.is_available():
+        # covers apple silicon mps
+        return torch.device("mps") 
+    else:
+        return torch.device("cpu")

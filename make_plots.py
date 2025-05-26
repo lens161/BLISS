@@ -69,196 +69,9 @@ def plot_individual_recall_vs_dist_comps(results, averages, experiment_name):
         if not os.path.exists(f"results/{experiment_name}"):
             os.mkdir(foldername)
         
-        # reuse qps from filename and make plot
         plt.savefig(f"results/{experiment_name}/{dataset_name}_{datasize}_r{r}_k{k}_m{m}_qps{qps:.2f}_avg_rec{avg_recall:.3f}_bs={bs}_reass={reass_mode}_nr_ann={nr_ann}_lr={lr}_chunk_size={chunk_size}_e={epochs}_i={iters}_twostep={query_twostep}_limit={twostep_limit}.png", dpi=300)
         
-        # alternatively, calculate recall and qps from individual queries, but qps measurement is slightly off
-        # new_recall = result['recall'].mean()
-        # new_qps = len(result) / result['elapsed'].sum()
-        # plt.savefig(f"results/{experiment_name}/r{r}_k{k}_m{m}_qps{new_qps:.2f}_avg_rec{avg_recall:.3f}_bs={bs}_reass={reass_mode}_nr_ann={nr_ann}_lr={lr}.png", dpi=300)
         plt.close()
-
-def plot_recall_vs_dist_comps_per_m(results, averages, experiment_name):
-    stats = []
-    for i, result in enumerate(results):
-        avg_recall = averages[i]['avg_recall']
-        avg_dist_comps = result['distance_computations'].mean()
-        m = int(averages[i]['m'].iloc[0])
-        stats.append({'m': m, 'avg_recall': avg_recall, 'avg_dist_comps': avg_dist_comps})
-    
-    stats.sort(key=lambda x: x['avg_dist_comps'])
-    x = [result['avg_dist_comps'] for result in stats]
-    y = [result['avg_recall'] for result in stats]
-    plt.figure(figsize=(8, 5))
-    plt.plot(x, y, marker='x', linestyle='-', color='b', label='Recall vs Distance Computations')
-
-    # Labels and title
-    plt.xlabel('Number of Distance Computations')
-    plt.ylabel('Recall')
-    plt.title('Recall vs. Distance Computations')
-    plt.grid(True)
-    plt.tight_layout()
-    plt.savefig(f"results/{experiment_name}/recall_vs_dist_comps_per_m.png", dpi=300)
-    plt.close()
-
-def plot_time_vs_chunk_size(experiment_name, hardware = 'hp', time = 'build'):
-    """
-    Set hardware = 'hp' for hp nodes
-    Set hardware = 'desk' for desktops
-    Read a build-log CSV and plot chunk size vs total build time (in hours),
-    with separate lines for each reass_mode found in the data.
-    """
-
-    time_metric = 'minutes' if time == 'train' else 'hours'
-
-    if hardware == 'hp':
-        csv_file = f"results/{experiment_name}/{experiment_name}_build.csv"
-        out_dir = f"results/{experiment_name}"
-    elif hardware == 'desk':
-        csv_file = f"results/{experiment_name}_desk/{experiment_name}_build.csv"
-        out_dir = f"results/{experiment_name}_desk"
-    else:
-        print("no hardware type given. enter 'hp' or 'desk' ")
-
-
-    df = pd.read_csv(csv_file)
-
-    # convert seconds to hours
-    df['build_time'] = df['build_time'] / 3600
-    df['train_time'] = df['train_time_per_r'] / 60
-    df['reass_time'] = df['final_assign_time_per_r'] / 3600
-
-    os.makedirs(out_dir, exist_ok=True)
-
-    plt.figure(figsize=(8, 5))
-    for mode in sorted(df['reass_mode'].unique()):
-        subset = df[df['reass_mode'] == mode].sort_values('reass_chunk_size')
-        key = f'{time}_time'
-        plt.plot(
-            subset['reass_chunk_size'],
-            subset[key],
-            marker='x',
-            linestyle='-',
-            label=f"Mark {mode}"
-        )
-
-    name = time.capitalize()
-    if time == 'reass':
-        name = 'Final assignment'
-    plt.xlabel("Chunk size")
-    plt.ylabel(f"Total time ({time_metric})")
-    if hardware == 'desk' :
-        plt.title(f"{name} time vs chunk size (desktop)")
-    elif hardware == 'hp': 
-        plt.title(f"{name} time vs chunk size (high performance node)")
-    plt.grid(True)
-    plt.legend(title="Reassign mode")
-    plt.tight_layout()
-
-    plt.savefig(f"{out_dir}/{time}_time_vs_chunk_size_by_mode.svg", dpi=300)
-    plt.close()
-
-def plot_mem_vs_chunk_size(experiment_name):
-    """
-    Read a build-log CSV and plot chunk size vs total build time,
-    with separate lines for each reass_mode found in the data.
-    """
-    csv_file = f"results/{experiment_name}/{experiment_name}_build.csv"
-    df = pd.read_csv(csv_file)
-
-    out_dir = f"results/{experiment_name}"
-    os.makedirs(out_dir, exist_ok=True)
-
-    plt.figure(figsize=(8, 5))
-    for mode in sorted(df['reass_mode'].unique()):
-        subset = df[df['reass_mode'] == mode]
-        # sort by chunk size for a clean line
-        subset = subset.sort_values('reass_chunk_size')
-        plt.plot(
-            subset['reass_chunk_size'],
-            subset['ram_final_ass'],
-            marker='o',
-            linestyle='-',
-            label=f"Mark {mode}"
-        )
-
-    plt.xlabel("Chunk size")
-    plt.ylabel("RAM used during final assignemnt (MB)")
-    plt.title(f"Build time vs chunk size")
-    plt.grid(True)
-    plt.legend(title="Reassign mode")
-    plt.tight_layout()
-
-    plt.savefig(f"{out_dir}/ram_vs_chunk_size_by_mode.png", dpi=300)
-    plt.close()
-
-def plot_vram_vs_chunk_size(experiment_name):
-    """
-    Read a build-log CSV and plot chunk size vs total build time,
-    with separate lines for each reass_mode found in the data.
-    """
-    csv_file = f"results/{experiment_name}/{experiment_name}_build.csv"
-    df = pd.read_csv(csv_file)
-
-    out_dir = f"results/{experiment_name}"
-    os.makedirs(out_dir, exist_ok=True)
-
-    plt.figure(figsize=(8, 5))
-    for mode in sorted(df['reass_mode'].unique()):
-        subset = df[df['reass_mode'] == mode]
-        # sort by chunk size for a clean line
-        subset = subset.sort_values('reass_chunk_size')
-        if mode == 2:
-            ls = ':'
-        else: 
-            ls = '-'
-        plt.plot(
-            subset['reass_chunk_size'],
-            subset['vram_final_assignement'],
-            marker='o',
-            linestyle=ls,
-            label=f"Mark {mode}"
-        )
-
-    plt.xlabel("Chunk size")
-    plt.ylabel("VRAM used during final assignemnt (MB)")
-    plt.title(f"Build time vs chunk size")
-    plt.grid(True)
-    plt.legend(title="Reassign mode")
-    plt.tight_layout()
-
-    plt.savefig(f"{out_dir}/vram_vs_chunk_size_by_mode.png", dpi=300)
-    plt.close()
-
-def ram_usage_latex_table(experiment_name):
-    """
-    Read the build-log CSV for the given experiment and hardware,
-    compute average RAM during training and final assignment per reass_mode,
-    and return a LaTeX table as a string.
-    """
-
-    csv_file = f"results/{experiment_name}/{experiment_name}_build.csv"
-    df = pd.read_csv(csv_file)
-
-    grouped = df.groupby('reass_mode').agg(
-        avg_ram_train = ('ram_training', 'mean'),
-        avg_ram_final = ('ram_final_ass', 'mean')
-    ).reset_index()
-
-    table  = "\\begin{tabular}{c r r}\n"
-    table += "  \\toprule\n"
-    table += "  Reassign Mode & Training RAM (MB) & Final Assign RAM (MB)\\\\\n"
-    table += "  \\midrule\n"
-    for _, row in grouped.iterrows():
-        mode = int(row['reass_mode'])
-        t_mem = row['avg_ram_train']
-        f_mem = row['avg_ram_final']
-        table += f"  {mode:^13d} & {t_mem:>17.2f} & {f_mem:>20.2f}\\\\\n"
-    table += "  \\bottomrule\n"
-    table += "\\end{tabular}\n"
-
-    print(table)
-    return table
 
 def plot_recall_vs_dist_comps_per_m_per_dataset(results, averages, experiment_name):
     import matplotlib.pyplot as plt
@@ -296,14 +109,14 @@ def plot_recall_vs_dist_comps_per_m_per_dataset(results, averages, experiment_na
         
         plt.plot(x, y, marker='o', linestyle='-', color=color, label=label)
 
-    plt.xlabel('Number of Distance Computations')
+    plt.xlabel('Number of distance computations')
     plt.ylabel('Recall')
-    plt.title('Recall vs. Distance Computations')
+    plt.title('Recall vs. distance computations')
     plt.legend(title="Dataset", loc='lower right')
     plt.grid(True)
     plt.tight_layout()
 
-    plt.savefig(f"results/{experiment_name}/recall_vs_dist_comps_per_m.png", dpi=300)
+    plt.savefig(f"results/{experiment_name}/recall_vs_dist_comps_per_m.svg", dpi=300)
 
 
 def make_plots(experiment_name):
@@ -311,19 +124,13 @@ def make_plots(experiment_name):
     Include all plot functions that should be run here.
     '''
     # get results from query files
-    # query_files = find_query_files(experiment_name)
-    # query_results, query_averages = compile_query_results(query_files)
+    query_files = find_query_files(experiment_name)
+    query_results, query_averages = compile_query_results(query_files)
 
     # # make plots for whole experiment, add more plot functions as needed
-    plot_vram_vs_chunk_size(experiment_name)
-    plot_mem_vs_chunk_size(experiment_name)
-    ram_usage_latex_table(experiment_name)
-    # plot_time_vs_chunk_size(experiment_name,'hp', "train")
-    # plot_time_vs_chunk_size(experiment_name,'hp', "reass")
-    # plot_time_vs_chunk_size(experiment_name,'hp', "build")
-    # plot_individual_recall_vs_dist_comps(query_results, query_averages, experiment_name)
+    plot_individual_recall_vs_dist_comps(query_results, query_averages, experiment_name)
     # plot_recall_vs_dist_comps_per_m(query_results, query_averages, experiment_name)
-    # plot_recall_vs_dist_comps_per_m_per_dataset(query_results, query_averages, experiment_name)
+    plot_recall_vs_dist_comps_per_m_per_dataset(query_results, query_averages, experiment_name)
 
 if __name__ == "__main__":
-    make_plots("compare_memory")
+    make_plots("1m_combined_diff_ms")

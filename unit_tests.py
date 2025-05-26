@@ -11,6 +11,7 @@ import query
 import train
 import utils as ut
 from bliss_model import BLISS_NN, BLISSDataset
+from config import Config, get_best_device
 
 def generate_random_array(size: int, dimensions: int, centers: int):
     '''
@@ -112,7 +113,7 @@ class TestTrainMethods(unittest.TestCase):
         data = np.array([[1], [5], [88], [100], [125], [130], [132], [150], [273], [500]])
         index = np.array([0, 0, 2, 1, 0, 1, 1, 2, 2, 0])
         nbrs = ut.get_nearest_neighbours_within_dataset(data, 2)
-        device = ut.get_best_device()
+        device = get_best_device()
         labels = ut.make_ground_truth_labels(B, nbrs, index, 10, device)
         self.assertTrue(np.array_equal(labels[0], [1, 0, 1]))
         self.assertTrue(np.array_equal(labels[1], [1, 0, 1]))

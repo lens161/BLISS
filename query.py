@@ -11,29 +11,6 @@ from bliss_model import BLISSDataset
 from config import Config
 
 
-def load_data_for_inference(dataset: ds.Dataset, config: Config, SIZE):
-    '''
-    For a given dataset, load the load thedataset, test data and ground truths.
-    Data is loaded from an existing memmap (created during index building), so that we can return the memmap address when the dataset is too large to load into memory.
-    Test data (query vectors) and ground truths (true nearest neighbours of test) are read from the original dataset files.
-    '''
-    using_memmap = False
-    data = None
-    test = dataset.get_queries()
-    if SIZE <= 10_000_000:
-        data = dataset.get_dataset()
-        if dataset.distance() == "angular":
-                data = ut.normalise_data(data)
-                test = ut.normalise_data(test)
-    else:
-        data = dataset.get_dataset_memmap()
-        using_memmap = True
-
-    neighbours, _ = dataset.get_groundtruth()
-    neighbours = neighbours[:, :config.nr_ann]
-    
-    return data, test, neighbours, using_memmap
-
 def query(data, indexes, offsets, models, query_vector, neighbours, m, freq_threshold, requested_amount, using_memmap):
     '''
     Query the index for a single vector. Get the candidate set of vectors predicted by each of the R models.
