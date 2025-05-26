@@ -102,7 +102,7 @@ def build_index(dataset: ds.Dataset, config: Config):
 def assign_initial_buckets(train_size, r, B):
     '''
     assign bucket labels to vectors (indeces in the nd.array) using a hash function.
-    the hash fucntion used here is the same as in the original code from the BLISS github (https://github.com/gaurav16gupta/BLISS).
+    the hash function used here is the same as in the original code from the BLISS github (https://github.com/gaurav16gupta/BLISS).
     '''
     index = np.zeros(train_size, dtype=np.int32) # from 0 to train_size-1
     bucket_sizes = np.zeros(B, dtype=np.int32)
