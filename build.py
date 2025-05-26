@@ -119,7 +119,6 @@ def map_all_to_buckets_0(index, bucket_sizes, full_data, data_batched, data_load
     Baseline implementation using the same strategy as the BLISS original code (https://github.com/gaurav16gupta/BLISS).
     Gets all candidate buckets per vector at once and does the reassignment sequentially.
     '''
-    print("started map all", flush=True)
     memory_usage = 0
     candidate_buckets = get_all_candidate_buckets(len(index), model, k, device, full_data, data_batched, data_loader)
     if mem_tracking:
