@@ -14,7 +14,6 @@ def find_query_files(experiment_name):
     Build and memory log files are excluded.
     '''
     filepaths = glob.glob(f"results/{experiment_name}/*.h5") # find all .h5 files in folder
-    # filepaths = [f for f in filepaths if not f.endswith('build.csv') and not f.endswith('memory_log.csv')] # filter out non-query files: temporarily disabled
     return filepaths
 
 def compile_query_results(files):
@@ -74,7 +73,6 @@ def plot_individual_recall_vs_dist_comps(results, averages, experiment_name):
         plt.close()
 
 def plot_recall_vs_dist_comps_per_m_per_dataset(results, averages, experiment_name):
-    import matplotlib.pyplot as plt
 
     # Mapping of full dataset names to custom legend labels
     custom_labels = {
@@ -129,7 +127,6 @@ def make_plots(experiment_name):
 
     # # make plots for whole experiment, add more plot functions as needed
     plot_individual_recall_vs_dist_comps(query_results, query_averages, experiment_name)
-    # plot_recall_vs_dist_comps_per_m(query_results, query_averages, experiment_name)
     plot_recall_vs_dist_comps_per_m_per_dataset(query_results, query_averages, experiment_name)
 
 if __name__ == "__main__":
