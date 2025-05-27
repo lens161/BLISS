@@ -70,8 +70,8 @@ def plot_split_barplots(metrics_by_compression, baseline, dataset_name, output_d
     if num_subplots == 1:
         axes = [axes]  # Ensure iterable
 
-    recall_color = "#E76F51"
-    qps_color = "#105A51"
+    recall_color = 'C3'  # red
+    qps_color = 'C9'     # cyan
 
     for ax, comp in zip(axes, compressions):
         metrics = metrics_by_compression[comp]
@@ -90,8 +90,8 @@ def plot_split_barplots(metrics_by_compression, baseline, dataset_name, output_d
         # Add baseline lines
         if baseline:
             base_recall, base_qps = baseline
-            baseline_recall_color = "#D62828"  # strong red
-            baseline_qps_color = "#053649"     # dark blue-teal
+            baseline_recall_color = recall_color  # use same red for baseline recall line
+            baseline_qps_color = qps_color        # use same yellow for baseline QPS line
 
             ax1.axhline(base_recall, color=baseline_recall_color, linestyle='--', linewidth=2, label='Baseline Recall')
             ax2.axhline(base_qps, color=baseline_qps_color, linestyle='--', linewidth=2, label='Baseline QPS')
@@ -151,7 +151,7 @@ def plot_split_barplots(metrics_by_compression, baseline, dataset_name, output_d
 
 
 if __name__ == "__main__":
-    exp_type = "twostep_pct"
+    exp_type = "twostep_fixed"
     root_dir = f"results/{exp_type}"  # Contains dataset subfolders
     output_dir = "plots"
 

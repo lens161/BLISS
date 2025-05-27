@@ -1,6 +1,28 @@
 import matplotlib.pyplot as plt
 import os
 import pandas as pd
+import glob
+
+COLORMAP={
+    0: "blue",
+    1: "orange",
+    2: "green",
+    3: "red"
+}
+
+def compile_query_results(files):
+    '''
+    Collect results from a set of csv files in one dataframe.
+    '''
+    all_results = []
+    all_averages = []
+    for file in files:
+        with pd.HDFStore(file, mode='r') as store:
+            averages = store['averages']
+            individual_results = store['individual_results']
+            all_averages.append(averages)
+            all_results.append(individual_results)
+    return all_results, all_averages
 
 def recall_dist_comps_latex_table(experiment_name):
     """
@@ -81,7 +103,7 @@ def plot_time_vs_chunk_size(experiment_name, hardware = 'hp', time = 'build'):
         csv_file = f"results/{experiment_name}/{experiment_name}_build.csv"
         out_dir = f"results/{experiment_name}"
     elif hardware == 'desk':
-        csv_file = f"results/{experiment_name}_desk/{experiment_name}_build.csv"
+        csv_file = f"results/{experiment_name}_desk/{experiment_name}_desk_build.csv"
         out_dir = f"results/{experiment_name}_desk"
     else:
         print("no hardware type given. enter 'hp' or 'desk' ")
@@ -103,6 +125,7 @@ def plot_time_vs_chunk_size(experiment_name, hardware = 'hp', time = 'build'):
         plt.plot(
             subset['reass_chunk_size'],
             subset[key],
+            color = COLORMAP.get(mode),
             marker='x',
             linestyle='-',
             label=f"Mark {mode}"
@@ -143,6 +166,7 @@ def plot_mem_vs_chunk_size(experiment_name):
         plt.plot(
             subset['reass_chunk_size'],
             subset['ram_final_ass'],
+            color = COLORMAP.get(mode),
             marker='o',
             linestyle='-',
             label=f"Mark {mode}"
@@ -181,6 +205,7 @@ def plot_vram_vs_chunk_size(experiment_name):
         plt.plot(
             subset['reass_chunk_size'],
             subset['vram_final_assignement'],
+            color = COLORMAP.get(mode),
             marker='o',
             linestyle=ls,
             label=f"Mark {mode}"
@@ -409,11 +434,11 @@ def make_plots(experiment_name):
     # ram_usage_latex_table(experiment_name)
     # plot_vram_train_vs_final(experiment_name)
     # recall_dist_comps_latex_table(experiment_name)
-    plot_mem_vram_final_ass(experiment_name)
-    plot_mem_vram_final_ass_sep(experiment_name)
+    plot_time_vs_chunk_size(experiment_name, "hp", "train")
+    # plot_mem_vram_final_ass_sep(experiment_name)
     # plot_time_vs_chunk_size(experiment_name,'hp', "train")
     # plot_time_vs_chunk_size(experiment_name,'hp', "reass")
     # plot_time_vs_chunk_size(experiment_name,'hp', "build")
 
 if __name__ == "__main__":
-    make_plots("compare_memory_new")
+    make_plots("compare_time")
