@@ -15,9 +15,6 @@ from urllib.request import urlopen
 from scipy.sparse import csr_matrix
 
 
-
-
-
 def download(src, dst=None, max_size=None):
     """ download an URL, possibly cropped """
     if os.path.exists(dst):
