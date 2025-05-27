@@ -95,7 +95,7 @@ def plot_recall_vs_dist_comps_per_m_per_dataset(results, averages, experiment_na
     
     colors = ['b', 'r', 'g', 'c', 'm', 'y', 'k']
 
-    plt.figure(figsize=(8, 5))
+    plt.figure(figsize=(8, 3))
 
     for idx, (dataset_name, group) in enumerate(dataset_groups.items()):
         group.sort(key=lambda x: x['avg_dist_comps'])
@@ -105,7 +105,7 @@ def plot_recall_vs_dist_comps_per_m_per_dataset(results, averages, experiment_na
         color = colors[idx % len(colors)]
         label = custom_labels.get(dataset_name, dataset_name)  # Default to full name if not mapped
         
-        plt.plot(x, y, marker='o', linestyle='-', color=color, label=label)
+        plt.plot(x, y, marker='x', linestyle='-', color=color, label=label)
 
     plt.xlabel('Number of distance computations')
     plt.ylabel('Recall')

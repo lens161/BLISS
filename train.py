@@ -34,7 +34,8 @@ def train_model(model, dataset, index, sample_size, bucket_sizes, neighbours, r,
     process = psutil.Process(os.getpid())
     ram = 0
     vram = 0 
-    load_balances = []
+    initial_load_balance = (1 / np.std(bucket_sizes))
+    load_balances = [initial_load_balance]
 
     if config.device.type == "cuda":
         torch.cuda.reset_peak_memory_stats(config.device)

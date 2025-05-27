@@ -77,54 +77,63 @@ def plot_batch_size_dual_y(df, directory, m, metric='recall'):
 
     # --- Left Y-axis: Load Balance ---
     color1 = 'tab:blue'
-    ax1.set_xlabel('Batch size', fontsize=22, labelpad=15)  # Increased font size
-    ax1.set_ylabel('Load balance', color=color1, fontsize=22, labelpad=15)  # Increased font size
+    ax1.set_xlabel('Batch size', fontsize=22, labelpad=15)
+    ax1.set_ylabel('Load balance', color=color1, fontsize=22, labelpad=15)
 
     # Convert Load Balance to scientific notation
     ax1.ticklabel_format(style='sci', axis='y', scilimits=(0, 0))
 
     line1, = ax1.plot(df['batch_size'], df['load_balance'], color=color1, marker='x', linestyle='--',
-                      label='Load balance', linewidth=3, markersize=10)  # Increased line thickness and marker size
-    ax1.tick_params(axis='y', labelcolor=color1, labelsize=16)  # Increased font size for Y-axis
-    ax1.tick_params(axis='x', labelsize=16)  # Increased font size for X-axis
+                      label='Load balance', linewidth=3, markersize=10)
+    ax1.tick_params(axis='y', labelcolor=color1, labelsize=16)
+    ax1.tick_params(axis='x', labelsize=16)
+
+    # Set left y-axis limits: start at 0, upper limit dynamic
+    load_balance_max = df['load_balance'].max()
+    if pd.notna(load_balance_max):
+        ax1.set_ylim(0, load_balance_max * 1.1)  # 10% padding on top
 
     # --- Right Y-axis: Recall, QPS, or Query Time ---
     ax2 = ax1.twinx()
 
     if metric == 'qps':
-        color2 = 'tab:red'
+        color2 = 'tab:olive'
         metric_label = 'QPS'
         metric_data = df['qps']
-        legend_label = 'QPS'  # Legend for QPS
+        legend_label = 'QPS'
         title_label = 'QPS'
     elif metric == 'query_time':
-        color2 = 'tab:red'  # Set to red for query time as well
-        metric_label = 'Query time (ms/query)'  # Full label for the Y-axis
+        color2 = 'tab:green'
+        metric_label = 'Query time (ms/query)'
         metric_data = df['query_time_ms']
-        legend_label = 'Query time'  # Legend for query time
+        legend_label = 'Query time'
         title_label = 'query time'
     else:  # Default to 'recall'
-        color2 = 'tab:red'
+        color2 = 'tab:red' 
         metric_label = 'Recall'
         metric_data = df['recall']
-        legend_label = 'Recall'  # Legend for recall
+        legend_label = 'Recall'
         title_label = 'recall'
 
-    ax2.set_ylabel(metric_label, color=color2, fontsize=22, labelpad=15)  # Increased font size
-    line2, = ax2.plot(df['batch_size'], metric_data, color=color2, marker='o', label=legend_label,  # Corrected legend label
-                      linewidth=3, markersize=10)  # Increased line thickness and marker size
-    ax2.tick_params(axis='y', labelcolor=color2, labelsize=16)  # Increased font size for Y-axis
+    ax2.set_ylabel(metric_label, color=color2, fontsize=22, labelpad=15)
+    line2, = ax2.plot(df['batch_size'], metric_data, color=color2, marker='o', label=legend_label,
+                      linewidth=3, markersize=10)
+    ax2.tick_params(axis='y', labelcolor=color2, labelsize=16)
+
+    # Set right y-axis limits: start at 0, upper limit dynamic
+    metric_max = metric_data.max()
+    if pd.notna(metric_max):
+        ax2.set_ylim(0, metric_max * 1.1)  # 10% padding on top
 
     # --- Legend ---
     lines = [line1, line2]
     labels = [line.get_label() for line in lines]
-    ax2.legend(lines, labels, loc='center right', fontsize=14)  # Increased font size for legend
+    ax2.legend(lines, labels, loc='lower right', fontsize=14)
 
     # --- Title & Save ---
-    fig.suptitle(f'Balance and {title_label} vs batch size (m={m})', fontsize=24)  # Increased font size
+    fig.suptitle(f'Balance and {title_label} vs batch size (m={m})', fontsize=24)
     fig.tight_layout()
 
-    # Remove grid
     ax1.grid(False)
 
     filename = f"batch_size_vs_load_balance_and_{metric.lower()}_m_{m}.svg"
@@ -135,7 +144,7 @@ def plot_batch_size_dual_y(df, directory, m, metric='recall'):
 
 # --- Main Usage ---
 if __name__ == "__main__":
-    directory = "results/glove_diff_batchsizes_v6"  # Adjust as needed
+    directory = "results/glove_diff_batchsizes_v7"  # Adjust as needed
     m = 15
 
     # Plot Recall version
