@@ -1,109 +1,112 @@
-import logging
-import matplotlib.pyplot as plt # type: ignore
+import numpy as np
 import os
 import pandas as pd
 
 from bliss import run_bliss
 from config import Config
+from make_plots import make_plots
 
 
 def run_experiment(config: Config, mode = 'query'):
-    # TODO: 
-    # - seperate query statistics from building statistics
     avg_recall, stats, total_query_time = run_bliss(config, mode= mode)
     return total_query_time, avg_recall, stats
+
 def build_multiple_indexes_exp(experiment_name, configs):
     mode = 'build'
     stats = []
     for config in configs:
-        r = config.r
-        k = config.k
-        epochs = config.epochs
-        iterations = config.iterations
-        time_per_r, build_time, memory_usage, load_balance = run_bliss(config, mode=mode, experiment_name=experiment_name)
-        stats.append({'R':r, 'k':k, 'epochs_per_it':epochs, 'iterations':iterations, 'build_time':build_time, 
-                      'mem':memory_usage, 'load_balance':load_balance, 'shuffle':config.shuffle, 'global_reass': config.global_reass})
-        print(time_per_r)
-    foldername = f"results/{experiment_name}"
-    if not os.path.exists("results"):
-        os.mkdir("results")
-    if not os.path.exists(f"results/{experiment_name}"):
-        os.mkdir(foldername)
+        r, k, epochs, iterations, b, lr, reass_chunk_size, batch_size, reass_mode, freq_threshold = config.r, config.k, config.epochs, config.iterations, config.b, config.lr, config.reass_chunk_size, config.batch_size, config.reass_mode, config.freq_threshold
+
+        train_time, final_assign_time, build_time, memory_final_assignment, memory_training, normalised_entropy, index_sizes_total, model_sizes_total, load_balances = run_bliss(config, mode=mode, experiment_name=experiment_name)
+
+                        # Hyperparameters:
+        stats.append({'R':r, 'k':k, 'epochs_per_it':epochs, 'iterations':iterations, 
+                      'b':b, 'lr':lr,'batch_size':batch_size, 'freq_threshold':freq_threshold,
+                      'reass_mode': reass_mode, 'reass_chunk_size':reass_chunk_size,
+                        # Measurements/Results:
+                      'build_time':build_time, 'train_time_per_r':train_time, 'final_assign_time_per_r':final_assign_time,
+                      'ram_training':memory_training[0], 'vram_training':memory_training[1], 
+                      'ram_final_ass':memory_final_assignment[0],'vram_final_assignement':memory_final_assignment[1], 
+                      'load_balance':normalised_entropy, 
+                      'index_sizes_total': index_sizes_total,'model_sizes_total': model_sizes_total, 'load_balances': load_balances})
     df = pd.DataFrame(stats)
-    df.to_csv(f"{foldername}/{experiment_name}_build.csv", index=False)
+        
+    foldername = f"results/{experiment_name}"
+    os.makedirs(foldername, exist_ok=True)
+    csv_path = os.path.join(foldername, f"{experiment_name}_build.csv")
+    if os.path.isfile(csv_path):
+        df.to_csv(csv_path, mode='a', header=False, index=False)
+    else:
+        df.to_csv(csv_path, mode='w', header=True, index=False)
+    print(f"Experiment results stored in {foldername}")
 
 def run_multiple_query_exp(experiment_name, configs):
     mode = 'query'
     for config in configs:
-        r = config.r
-        k = config.k
-        m =config.m
-        results = []
+        individual_results = []
         avg_recall, stats, total_query_time = run_bliss(config, mode=mode, experiment_name=experiment_name)
         print(f"avg recall = {avg_recall}")
-        for (anns, dist_comps, elapsed, recall) in stats:
-            results.append({'ANNs': anns, 
-                            'distance_computations': dist_comps, 
-                            'elapsed': elapsed,
-                            'recall': recall})
+        print(f"Compiling experiment results...")
+        if config.query_twostep:
+            for (anns, true_nns, dist_comps, rp_dist_comps, elapsed, recall) in stats:
+                individual_results.append({'ANNs': ','.join(map(str, anns)) if isinstance(anns, (list, np.ndarray)) else str(anns), 
+                                'true_nns': ','.join(map(str, true_nns)) if isinstance(true_nns, (list, np.ndarray)) else str(true_nns),
+                                'distance_computations': dist_comps,
+                                'reduced_distance_computations': rp_dist_comps, 
+                                'elapsed': elapsed, 'recall': recall})
+        else:
+            for (anns, true_nns, dist_comps, elapsed, recall) in stats:
+                individual_results.append({'ANNs': ','.join(map(str, anns)) if isinstance(anns, (list, np.ndarray)) else str(anns), 
+                                'true_nns': ','.join(map(str, true_nns)) if isinstance(true_nns, (list, np.ndarray)) else str(true_nns),
+                                'distance_computations': dist_comps,
+                                'elapsed': elapsed, 'recall': recall})
+            
         qps = len(stats)/total_query_time
-        df = pd.DataFrame(results)
-        plt.figure(figsize=(8, 5))
-        plt.scatter(df['distance_computations'], df['recall'], color='blue', s=20)
-        plt.xlabel("Distance Computations")
-        plt.ylabel(f"Recall ({config.nr_ann}@{config.nr_ann})")
-        plt.title(f"Distance Computations vs Recall R={r} k={k} m={m}")
-        plt.grid(True)
+        individual_results_df = pd.DataFrame(individual_results)
+        avg_results_and_params = pd.DataFrame([{'dataset_name':config.dataset_name, 'datasize':config.datasize, 'r': config.r, 'k': config.k, 'm': config.m, 'bs': config.batch_size, 'reass_mode': config.reass_mode, 
+                                               'nr_ann': config.nr_ann, 'lr': config.lr, 'chunk_size': config.reass_chunk_size, 'e': config.epochs, 'i': config.iterations, 'avg_recall': avg_recall, 'qps': qps,
+                                               'query_twostep': config.query_twostep, 'twostep_limit': config.query_twostep_limit}])
+        query_twostep_limit = config.query_twostep_limit
+        if isinstance(config.query_twostep_limit, tuple):
+            query_twostep_limit = f"({config.query_twostep_limit[0]}-{config.query_twostep_limit[1]})"
+            avg_results_and_params['twostep_limit'] = avg_results_and_params['twostep_limit'].apply(str)
+        
         foldername = f"results/{experiment_name}"
-        if not os.path.exists("results"):
-            os.mkdir("results")
-        if not os.path.exists(f"results/{experiment_name}"):
-            os.mkdir(foldername)
-        df.to_csv(f"{foldername}/r{r}_k{k}_m{m}_qps{qps:.2f}_avg_rec{avg_recall:.3f}_shf={config.shuffle}_gr={config.global_reass}_nr_ann={config.nr_ann}.csv", index=False)
-        plt.savefig(f"{foldername}/r{r}_k{k}_m{m}_qps{qps:.2f}_avg_rec{avg_recall:.3f}_shf={config.shuffle}_gr={config.global_reass}_nr_ann={config.nr_ann}.png", dpi=300)
+        if not os.path.exists(foldername):
+            os.mkdir(foldername, exist_ok=True)
+        with pd.HDFStore(f"{foldername}/{config.dataset_name}_{config.datasize}_r{config.r}_k{config.k}_m{config.m}_qps{qps:.2f}_avg_rec{avg_recall:.3f}_bs={config.batch_size}_reass={config.reass_mode}_nr_ann={config.nr_ann}_lr={config.lr}_chunk_size={config.reass_chunk_size}_e={config.epochs}_i={config.iterations}_twostep={config.query_twostep}_limit={query_twostep_limit}.h5", mode='w') as store:
+            store.put('individual_results', individual_results_df, format='table')
+            store.put('averages', avg_results_and_params, format='table')
+        print(f"Experiment results stored in {foldername}")
 
-    return experiment_name, avg_recall, total_query_time, results
 
 if __name__ == "__main__":
     configs_q = [] # configs for building the index
     configs_b = [] # configs for querying
-    # range_M = 10
-    # range_K = 2
     range_threshold = 2
     k_values = [2]
-    m_values = [2]
-    EXP_NAME = "test_refactor_p4"
-
-    if not os.path.exists("logs"):
-        os.mkdir("logs")
-
-    logging.basicConfig(
-        filename=f'logs/{EXP_NAME}.log',               # Specify the log file name
-        level=logging.INFO,               # Set the logging level to INFO
-        format='%(asctime)s - %(levelname)s - %(message)s'  # Define the log message format
-    )
+    m_values = [5, 10, 15]
+    reass_modes = [0, 1, 2, 3]
+    batch_sizes = [1024, 2048, 3072, 4096]
+    iterations = [3, 4, 5]
+    EXP_NAME = "example_experiment_sift"
 
     # add all dataset names that the experiments should be run on
     datasets = [
-                # "bigann",
-                # "glove-100-angular",
                 "sift-128-euclidean"
                  ]
     
-    logging.info("[Experiment] Experiments started")
-        # check that datasize in config is set to correct value. (default = 1)
+    # see config for default values; only necessary to set a parameter if default needs to be overwritten
+    # default for b = 0; if not set, b is set to closest power of 2 of sqrt(N) in run_bliss
     for dataset in datasets:
-        conf_4 = Config(dataset_name=dataset, batch_size=2048, b= 1024, epochs=2, iterations=2)
-        # conf_8 = Config(dataset_name=dataset, batch_size=2048, b=8192, datasize=10)
-        configs_b.append(conf_4)
-        # configs_b.append(conf_8)
+        configs_b.append(Config(dataset_name=dataset, batch_size=1024, b=4096, epochs=2, iterations=2))
         for m in m_values:
-            conf_q4 = Config(dataset_name=dataset, batch_size=2048, m=m, b=1024, epochs=2, iterations=2)
-            # conf_q8 = Config(dataset_name=dataset, batch_size=2048, m=m, b=8192, datasize=10)
-            configs_q.append(conf_q4)
-            # configs_q.append(conf_q8)
-    
-    logging.info(f"[Experiment] Building indexes")
-    # build_multiple_indexes_exp(EXP_NAME, configs_b)
-    logging.info(f"[Experiment] Starting query experiments")
-    run_multiple_query_exp(EXP_NAME, configs_q)
+            configs_q.append(Config(dataset_name=dataset, batch_size=1024, b=4096, m=m))
+                
+    print(f"EXPERIMENT: {EXP_NAME}")
+    print(f"Started building indexes for experiment {EXP_NAME}")
+    build_multiple_indexes_exp(EXP_NAME, configs_b)
+    # print(f"Started querying for experiment {EXP_NAME}")
+    # run_multiple_query_exp(EXP_NAME, configs_q)
+
+    make_plots(EXP_NAME)

@@ -1,14 +1,16 @@
-import csv
 import math
 import matplotlib.pyplot as plt # type: ignore
 import numpy as np
 import os
+import psutil
 import torch
-from faiss import IndexFlatL2, IndexPQ, vector_to_array
-from pandas import read_csv
+from faiss import IndexFlatL2
+from sklearn.random_projection import SparseRandomProjection
+from torch.amp import autocast
 
 import datasets as ds
 from bliss_model import BLISS_NN
+from config import Config
 
 
 ######################################################################
@@ -20,11 +22,20 @@ def get_nearest_neighbours_within_dataset(dataset, amount):
     Find the true nearest neighbours of vectors within a dataset. To avoid returning a datapoint as its own neighbour, we search for amount+1 neighbours and then filter out
     the first vector (ordered by distance so the vector itself should be the first point).
     '''
-    nbrs = IndexFlatL2(dataset.shape[1])
-    nbrs.add(dataset)
-    _, I = nbrs.search(dataset, amount+1)
-    I = I[:, 1:]
-    return I
+    nbrs = np.zeros((len(dataset), amount), dtype=np.int32)
+    nbrs_index = IndexFlatL2(dataset.shape[1])
+    nbrs_index.add(dataset)
+    chunk_size = 100_000
+    chunks = math.ceil(len(dataset) / chunk_size)
+    start = 0
+    for i in range(0, chunks):
+        end = min(len(dataset), start+chunk_size)
+        _, I = nbrs_index.search(dataset[start:end], amount+1)
+        I = I[:, 1:]
+        I = I.astype(np.int32)
+        nbrs[start:end] = I
+        start = end
+    return nbrs
 
 def get_nearest_neighbours_in_different_dataset(dataset, queries, amount):
     '''
@@ -33,23 +44,25 @@ def get_nearest_neighbours_in_different_dataset(dataset, queries, amount):
     nbrs = IndexFlatL2(dataset.shape[1])
     nbrs.add(dataset)
     _, I = nbrs.search(queries, amount)
+    I = np.asarray(I, dtype=np.int32)
     return I
 
-def get_train_nearest_neighbours_from_file(dataset, amount, sample_size, dataset_name):
+def get_train_nearest_neighbours_from_file(dataset, amount, sample_size, dataset_name, datasize):
     '''
     Helper to read/write nearest neighbour of train data to file so we can test index building without repeating preprocessing each time.
     Should not be used in actual algorithm or experiments where timing the preprocessing is important.
     '''
-    if not os.path.exists(f"data/{dataset_name}-nbrs{amount}-sample{sample_size}.csv"):
+    if not os.path.exists(f"data/{dataset_name}-size{datasize}-nbrs{amount}-sample{sample_size}.npy"):
+        filename = f"data/{dataset_name}-size{datasize}-nbrs{amount}-sample{sample_size}.npy"
         print(f"no nbrs file found for {dataset_name} with amount={amount} and samplesize={sample_size}, calculating {amount} nearest neighbours")
         I = get_nearest_neighbours_within_dataset(dataset, amount)
         print("writing neighbours to nbrs file")
-        I = np.asarray(I)
-        np.savetxt(f"data/{dataset_name}-nbrs{amount}-sample{sample_size}.csv", I, delimiter=",", fmt='%.0f')
+        np.save(filename, I)
+
     else:
         print(f"found nbrs file for {dataset_name} with amount={amount} and samplesize={sample_size}, reading true nearest neighbours from file")
-        filename = f"data/{dataset_name}-nbrs{amount}-sample{sample_size}.csv"
-        I = read_csv(filename, dtype=int, header=None).to_numpy()
+        filename = f"data/{dataset_name}-size{datasize}-nbrs{amount}-sample{sample_size}.npy"
+        I = np.load(filename)
     return I
 
 ######################################################################
@@ -64,50 +77,181 @@ def normalise_data(data):
     data = data / norms
     return data
 
-def get_training_sample_from_memmap(memmap_path, mmp_shape, sample_size, SIZE, DIM):
+def get_training_sample(dataset: ds.Dataset, sample_size, SIZE, DIM):
+    '''
+    Get a training sample of sample_size, given a dataset. The sample is taken by selecting random indices.
+    If the dataset is too large to load at once, it is loaded in chunks, and random indices are selected
+    per chunk.
+    '''
+    if sample_size == SIZE:
+        return dataset.get_dataset(), np.arange(0, SIZE)
+    sample = np.zeros((sample_size, DIM))
+    sample_indices = np.zeros(sample_size)
+    chunk_size = 1_000_000
+    chunk_sample_size = sample_size // chunk_size
+    index = 0
+    for i, batch in enumerate(dataset.get_dataset_iterator(bs=chunk_size)):
+        random_order = np.arange(len(batch))
+        np.random.seed(i)
+        np.random.shuffle(random_order)
+        chunk_sample_indices = np.sort(random_order[:chunk_sample_size])
+        sample_indices[index : index+len(batch)] = chunk_sample_indices
+        sample[index : index+len(batch)] = batch[chunk_sample_indices]
+        index += len(batch)
+    return sample, sample_indices
+
+def get_training_sample_from_memmap(dataset: ds.Dataset, sample_size, SIZE, DIM, dataset_name, datasize):
     '''
     Given a dataset (as a memmap), sample data for model training.
     For small datasets, the full dataset is used to train.
     For large datasets, a random sample is taken across the dataset. It is assumed the sample size is small enough to load the sample into memory.
     '''
-    sample = np.zeros(shape=(sample_size, DIM))
-    mmp = np.memmap(memmap_path, mode = 'r', shape = mmp_shape, dtype=np.float32)
-    if sample_size!=SIZE:
-        random_order = np.arange(SIZE)
-        np.random.seed(42)
-        np.random.shuffle(random_order)
-        sample_indexes = np.sort(random_order[:sample_size])
-        sample[:] = mmp[sample_indexes, :]
+    sample = np.zeros(shape=(sample_size, DIM), dtype=np.float32)
+    sample_filename = f"data/{dataset_name}_size{datasize}_sample{sample_size}.npy"
+    if os.path.exists(sample_filename):
+        sample = np.load(sample_filename)
     else:
-        sample[:] = mmp
-    return sample
+        if sample_size!=SIZE:
+            dataset_mmp = dataset.get_dataset_memmap()
+            random_order = np.arange(SIZE)
+            np.random.seed(42)
+            np.random.shuffle(random_order)
+            sample_indexes = np.sort(random_order[:sample_size])
+            sample[:] = dataset_mmp[sample_indexes, :].copy()
+            np.save(sample_filename, sample)
+        else:
+            data = dataset.get_dataset()
+            if dataset.distance() == "angular":
+                data = normalise_data(data)
+            sample[:] = data
+    return torch.from_numpy(sample)
 
-def make_ground_truth_labels(B, neighbours, index, sample_size, device):
+def make_ground_truth_labels(B, neighbours, index, sample_size):
     '''
+    DEPRECATED!
     Create ground truth labels for training sample, based on the set of nearest neighbours of each training vector. 
     A label is a B-dimensional vector, where each digit is either 0 (false) if that bucket does not contain any
     nearest neighbours of a vector, and 1 (true) if the bucket contains at least one nearest neighbour of that vector.
     '''
+    # start = time.time()
     labels = np.zeros((sample_size, B), dtype=bool)
-    for i in range(sample_size):
-        for neighbour in neighbours[i]:
-            bucket = index[neighbour]
-            labels[i, bucket] = True
-    if device != torch.device("cpu"):
-        labels = torch.from_numpy(labels).float()
-    return labels
+    # for each vector i create an array of amount of neighbours
+    vectors = np.concatenate([np.full(len(n), i) for i, n in enumerate(neighbours)])
+    # build column indices by applying the mapping to each neighbour array.
+    buckets = np.concatenate([index[n] for n in neighbours])
+    # set bucket entries to True.
+    labels[vectors, buckets] = True
+    return torch.from_numpy(labels).float()
 
-def reassign_vector_to_bucket(probability_vector, index, bucket_sizes, k, item_index):
+def get_labels(neighbours, lookup, b, device=torch.device("cuda")):
+    '''
+    Create new labels tensor and set positions of per vector true buckets to one  
+    '''
+    batch_size = neighbours.shape[0]
+    labels = torch.zeros((batch_size, b), dtype=torch.float32, device=device)
+    # get buckets at neighbour indexes from lookup
+    bucket_ids = lookup[neighbours]
+    # add ones in label matrix at indices of buckets that have neighbours
+    labels.scatter_(
+        dim=1,
+        index=bucket_ids,
+        src=torch.ones_like(bucket_ids, dtype=torch.float32, device=device)
+    )
+    return labels 
+
+def reassign_vector_to_bucket(index, bucket_sizes, candidates, item_index):
     '''
     Reassign a vector to the least occupied of the top-k buckets predicted by the model.
     '''
-    value, indices_of_topk_buckets = torch.topk(probability_vector, k)
-    # get sizes of candidate buckets
-    candidate_sizes = bucket_sizes[indices_of_topk_buckets]
-    # get bucket at index of smallest bucket from bucket_sizes
-    best_bucket = indices_of_topk_buckets[np.argmin(candidate_sizes)]
+    candidate_sizes = bucket_sizes[candidates]
+    best_bucket = candidates[np.argmin(candidate_sizes)]
     index[item_index] = best_bucket
-    bucket_sizes[best_bucket] +=1  
+    bucket_sizes[best_bucket] += 1
+
+def assign_to_buckets_vectorised(bucket_sizes, SIZE, index, chunk_size, i, topk_per_vector, memory_tracking=False):
+    '''
+    Reassign a chunk of vectors to a new bucket. The vectors are reassigned to the least
+    occupied of the top-k buckets predicted by the model, but as multiple vectors are reassigned at once,
+    there is no guarantee that the selected bucket is the least occupied if multiple vectors
+    are getting reassigned to the same bucket in a single batch.
+    '''
+    memory_usage = 0
+    candidate_sizes_per_vector = bucket_sizes[topk_per_vector]    
+    vectors = np.arange(topk_per_vector.shape[0])
+    sizes = np.argmin(candidate_sizes_per_vector, axis=1)
+    # get the least ocupied of each candidate set 
+    least_occupied = topk_per_vector[vectors, sizes]
+    if memory_tracking:
+        process = psutil.Process(os.getpid())
+        memory_usage = process.memory_full_info().uss / (1024 ** 2)
+    index[i : min(i + chunk_size, SIZE)] = least_occupied
+
+    bucket_increments = np.bincount(least_occupied, minlength=len(bucket_sizes))
+    bucket_sizes[:] = np.add(bucket_sizes, bucket_increments)
+    return memory_usage
+
+# copy for rm 3 just to be shure using length of least occupied does not fuck up the other modes
+def assign_to_buckets_vectorised_rm3(bucket_sizes, SIZE, index, chunk_size, i, topk_per_vector, memory_tracking=False):
+    '''
+    Reassign a chunk of vectors to a new bucket. The vectors are reassigned to the least
+    occupied of the top-k buckets predicted by the model, but as multiple vectors are reassigned at once,
+    there is no guarantee that the selected bucket is the least occupied if multiple vectors
+    are getting reassigned to the same bucket in a single batch.
+    '''
+    memory_usage = 0
+    candidate_sizes_per_vector = bucket_sizes[topk_per_vector]    
+    vectors = np.arange(topk_per_vector.shape[0])
+    sizes = np.argmin(candidate_sizes_per_vector, axis=1)
+    # get the least ocupied of each candidate set 
+    least_occupied = topk_per_vector[vectors, sizes]
+    end = len(least_occupied)
+    if memory_tracking:
+        process = psutil.Process(os.getpid())
+        memory_usage = process.memory_full_info().uss / (1024 ** 2)
+    index[i : i+end] = least_occupied
+
+    bucket_increments = np.bincount(least_occupied, minlength=len(bucket_sizes))
+    bucket_sizes[:] = np.add(bucket_sizes, bucket_increments)
+    return memory_usage
+
+def get_all_topk_buckets(loader, k, candidate_buckets, map_model, offset, device):
+    '''
+    Prepare a table with the top-k buckets for all vectors in a loader according to the model.
+    '''
+    start_idx = offset
+    memory = 0
+    with torch.no_grad():
+        for batch_data, _, in loader:
+            batch_size = len(batch_data)
+            batch_candidate_buckets = get_topk_buckets_for_batch(batch_data, k, map_model, device)
+            batch_candidate_buckets.numpy()
+            candidate_buckets[start_idx : start_idx + batch_size, :] = batch_candidate_buckets
+            start_idx += batch_size
+
+def get_topk_buckets_for_batch(batch_data, k, map_model, device):
+    '''
+    Prepare a table with the top-k buckets for a batch of vectors according to the model.
+    '''
+    batch_data = batch_data.to(device)
+    # only do autocast (mixed precision) on cuda devices
+    if device == torch.device("cuda"):
+        with torch.no_grad(), autocast("cuda"):
+            logits = map_model(batch_data)
+            bucket_probabilities = torch.sigmoid(logits)
+    else:
+        with torch.no_grad():
+            logits = map_model(batch_data)
+            bucket_probabilities = torch.sigmoid(logits)
+
+    bucket_probabilities_cpu = bucket_probabilities.cpu()
+    _, candidate_buckets = torch.topk(bucket_probabilities_cpu, k, dim=1)
+    del bucket_probabilities, bucket_probabilities_cpu
+
+    return candidate_buckets
+
+######################################################################
+# Helpers for loading and saving models and indexes.
+######################################################################
 
 def get_dataset_obj(dataset_name, size):
     '''
@@ -115,8 +259,12 @@ def get_dataset_obj(dataset_name, size):
     '''
     if dataset_name == "bigann":
         return ds.BigANNDataset(size)
-    elif dataset_name == "deep1b":
+    elif dataset_name == "Deep1B":
         return ds.Deep1BDataset(size)
+    elif dataset_name == "Yandex":
+        return ds.Text2Image1B(size)
+    elif dataset_name == "MSSpaceV":
+        return ds.MSSPACEV1B(size)
     elif dataset_name == "sift-128-euclidean":
         return ds.Sift_128()
     elif dataset_name == "glove-100-angular":
@@ -126,33 +274,17 @@ def get_dataset_obj(dataset_name, size):
     else:
         print("dataset not supported yet")
 
-def get_B(n):
-    '''
-    Calculated suggested B (nr of buckets) based on the size of the dataset. Recommended B is the first power of 2 larger than sqrt(n).
-    '''
-    if n > 0:
-        sq = math.sqrt(n)
-        B = 2 ** round(math.log(sq, 2))
-        return B
-    else:
-        raise Exception(f"cannot calculate B for empty dataset!")
-
-######################################################################
-# Helpers for loading and saving models and indexes.
-######################################################################
-
-def save_model(model, dataset_name, r, R, K, B, lr, shuffle, global_reass):
+def save_model(model, dataset_name, r, R, K, B, lr, batch_size, reass_mode, chunk_size, e, i):
     '''
     Save a (trained) model in the models folder and return the path.
     '''
     model_name = f"model_{dataset_name}_r{r}_k{K}_b{B}_lr{lr}"
-    directory = f"models/{dataset_name}_r{R}_k{K}_b{B}_lr{lr}_shf={shuffle}_gr={global_reass}/"
+    directory = f"models/{dataset_name}_r{R}_k{K}_b{B}_lr{lr}_bs={batch_size}_reass={reass_mode}_chunk_size={chunk_size}_e={e}_i={i}/"
     MODEL_PATH = os.path.join(directory, f"{model_name}.pt")
-    
     os.makedirs(directory, exist_ok=True)
-    
     torch.save(model.state_dict(), MODEL_PATH)
-    return MODEL_PATH
+    file_size = os.path.getsize(MODEL_PATH) / 1024**2
+    return MODEL_PATH, file_size, directory
 
 def load_model(model_path, dim, b):
     '''
@@ -164,56 +296,94 @@ def load_model(model_path, dim, b):
     model.eval()
     return model
 
-def save_inverted_index(inverted_index, offsets, dataset_name, model_num, R, K, B, lr, shuffle, global_reass):
+def save_inverted_index(inverted_index, offsets, dataset_name, model_num, R, K, B, lr, batch_size, reass_mode, chunk_size, e, i):
     '''
     Save an inverted index (for a specific dataset and parameter setting combination) in the models folder and return the path.
     '''
     index_name = f"index_model{model_num}_{dataset_name}_r{model_num}_k{K}_b{B}_lr{lr}"
     offsets_name = f"offsets_model{model_num}_{dataset_name}_r{model_num}_k{K}_b{B}_lr{lr}"
-    directory = f"models/{dataset_name}_r{R}_k{K}_b{B}_lr{lr}_shf={shuffle}_gr={global_reass}/"
+    directory = f"models/{dataset_name}_r{R}_k{K}_b{B}_lr{lr}_bs={batch_size}_reass={reass_mode}_chunk_size={chunk_size}_e={e}_i={i}/"
     if not os.path.exists(directory):
         os.makedirs(directory, exist_ok=True)
     index_path = os.path.join(directory, f"{index_name}.npy")
     offsets_path = os.path.join(directory, f"{offsets_name}.npy")
     np.save(index_path, inverted_index)
     np.save(offsets_path, offsets)
-    return index_path
+    index_size = (os.path.getsize(index_path) + os.path.getsize(offsets_path)) / 1024**2
+    return index_path, index_size
+
+def load_indexes_and_models(config: Config, SIZE, DIM, b):
+    inverted_indexes_paths = []
+    offsets_paths = []
+    model_paths = []
+    rp_paths = []
+    for i in range (config.r):
+        inverted_indexes_paths.append(f"models/{config.dataset_name}_r{config.r}_k{config.k}_b{config.b}_lr{config.lr}_bs={config.batch_size}_reass={config.reass_mode}_chunk_size={config.reass_chunk_size}_e={config.epochs}_i={config.iterations}/index_model{i+1}_{config.dataset_name}_r{i+1}_k{config.k}_b{config.b}_lr{config.lr}.npy")
+        offsets_paths.append(f"models/{config.dataset_name}_r{config.r}_k{config.k}_b{config.b}_lr{config.lr}_bs={config.batch_size}_reass={config.reass_mode}_chunk_size={config.reass_chunk_size}_e={config.epochs}_i={config.iterations}/offsets_model{i+1}_{config.dataset_name}_r{i+1}_k{config.k}_b{config.b}_lr{config.lr}.npy")
+        model_paths.append(f"models/{config.dataset_name}_r{config.r}_k{config.k}_b{config.b}_lr{config.lr}_bs={config.batch_size}_reass={config.reass_mode}_chunk_size={config.reass_chunk_size}_e={config.epochs}_i={config.iterations}/model_{config.dataset_name}_r{i+1}_k{config.k}_b{config.b}_lr{config.lr}.pt")
+        if config.query_twostep:
+            rp_paths.append(f"models/{config.dataset_name}_r{config.r}_k{config.k}_b{config.b}_lr{config.lr}_bs={config.batch_size}_reass={config.reass_mode}_chunk_size={config.reass_chunk_size}_e={config.epochs}_i={config.iterations}/{config.dataset_name}_{config.datasize}_rp{config.rp_dim}_r{i+1}.npy")
+
+    indexes = np.zeros(shape = (config.r, SIZE), dtype=np.uint32)
+    offsets = np.zeros(shape = (config.r, config.b), dtype=np.uint32)
+    for i, (inv_path, off_path) in enumerate(zip(inverted_indexes_paths, offsets_paths)):
+        inds_load = np.load(inv_path)
+        ind = np.array(inds_load)
+        indexes[i] = ind
+        offs_load = np.load(off_path)
+        off = np.array(offs_load)
+        offsets[i] = off
+    
+    # load models and indexes into memory
+    q_models = [load_model(model_path, DIM, b) for model_path in model_paths]
+    if config.query_twostep:
+        rp_files = [np.memmap(rp_path, mode='r', shape=(SIZE, config.rp_dim), dtype=np.float32) for rp_path in rp_paths]
+        index = ((indexes, offsets, rp_files), q_models)
+    else:
+        index = ((indexes, offsets), q_models)
+    return index
+
+def load_data_for_inference(dataset: ds.Dataset, config: Config, SIZE):
+    '''
+    For a given dataset, load the load thedataset, test data and ground truths.
+    Data is loaded from an existing memmap (created during index building), so that we can return the memmap address when the dataset is too large to load into memory.
+    Test data (query vectors) and ground truths (true nearest neighbours of test) are read from the original dataset files.
+    '''
+    using_memmap = False
+    data = None
+    test = dataset.get_queries()
+    if SIZE <= 10_000_000:
+        data = dataset.get_dataset()
+        if dataset.distance() == "angular":
+                data = normalise_data(data)
+                test = normalise_data(test)
+    else:
+        data = dataset.get_dataset_memmap()
+        using_memmap = True
+
+    neighbours, _ = dataset.get_groundtruth()
+    neighbours = neighbours[:, :config.nr_ann]
+    
+    return data, test, neighbours, using_memmap
 
 ######################################################################
 # Helpers for plots created during index building and collecting statistics.
 ######################################################################
 
-def make_loss_plot(learning_rate, iterations, epochs_per_iteration, k, B, experiment_name, all_losses, shuffle, global_reass):
+def make_loss_plot(learning_rate, iterations, epochs_per_iteration, k, B, experiment_name, all_losses, shuffle, reass_mode):
     '''
     Plot the total loss of the model after each epoch.
     '''
     foldername = f"results/{experiment_name}"
-    if not os.path.exists("results"):
-        os.mkdir("results")
     if not os.path.exists(foldername):
-        os.mkdir(foldername)
+        os.mkdir(foldername, exist_ok=True)
     plt.figure(figsize=(10, 5))
     plt.plot(all_losses, marker='.')
     plt.title('Training Loss Over Epochs')
     plt.xlabel('Epoch (accumulated over iterations)')
     plt.ylabel('Average Loss')
     plt.grid(True)
-    plt.savefig(f"{foldername}/training_loss_lr={learning_rate}_I={iterations}_E={epochs_per_iteration}_k{k}_B{B}_shf={shuffle}_gr={global_reass}.png")
-
-def log_mem(function_name, mem_usage, filepath):
-    '''
-    Log memory usage to a file.
-    '''
-    file_exists = os.path.isfile(filepath)
-    with open(filepath, mode='a', newline='') as csv_file:
-        fieldnames = ['function', 'memory_usage_mb']
-        writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
-        if not file_exists:
-            writer.writeheader()
-        writer.writerow({
-            'function': function_name,
-            'memory_usage_mb': mem_usage
-        })
+    plt.savefig(f"{foldername}/training_loss_lr={learning_rate}_I={iterations}_E={epochs_per_iteration}_k{k}_B{B}_shf={shuffle}_reass={reass_mode}.png")
 
 def calc_load_balance(bucket_size_stats):
     '''
@@ -229,23 +399,66 @@ def calc_load_balance(bucket_size_stats):
     avg_load_balance = np.mean(load_balance_per_model)
     return avg_load_balance
 
+def recall(results, neighbours):
+    '''
+    Calculate mean recall for a set of queries.
+    '''
+    recalls = np.zeros(len(results), dtype=np.float32)
+    for i, (ann, nn) in enumerate(zip(results, neighbours)):
+        recalls[i] = recall_single(ann, nn)
+    return np.mean(recalls)
+
+def recall_single(results, neighbours):
+    '''
+    Calculate recall for an individual query.
+    '''
+    return len(set(results) & set(neighbours))/len(neighbours)
+
+######################################################################
+# Two-step querying helpers
+######################################################################
+
+def random_projection(X, target_dim):
+    '''
+    Make a random projection of a set of input vectors, by multiplying with a random vector of the target dimension.
+    '''
+    original_dim = X.shape[1]
+    R = np.random.randn(original_dim, target_dim) / np.sqrt(target_dim)
+    return np.dot(X, R)
+
+def save_rp_memmap(dataset, inverted_index, SIZE, rp_dim, rp_path, rp_seed):
+    transformer = SparseRandomProjection(n_components=rp_dim, random_state=rp_seed)
+    mmp = np.memmap(rp_path, mode ="w+", shape=(SIZE, rp_dim), dtype=np.float32)
+    if SIZE > 10_000_000:
+        start = 0
+        reduced_vectors = np.empty((SIZE, rp_dim), dtype=np.float32)
+        for batch in dataset.get_dataset_iterator(bs=1_000_000):
+            end = len(batch) + start
+            reduced_vectors[start : end] = transformer.fit_transform(batch)
+            start = end
+        indices = inverted_index[:]
+        mmp[:] = reduced_vectors[indices]
+    else:
+        data = dataset.get_dataset()
+        reduced_vectors = transformer.fit_transform(data)
+        indices = inverted_index[:]
+        mmp[:] = reduced_vectors[indices]
+    mmp.flush()
 
 ######################################################################
 # Other helper functions.
 ######################################################################
 
-def get_best_device():
+def get_B(n):
     '''
-    Get the best available torch device (gpu if available, otherwise cpu).
+    Calculated suggested B (nr of buckets) based on the size of the dataset. Recommended B is the first power of 2 larger than sqrt(n).
     '''
-    if torch.cuda.is_available():
-        # covers both NVIDIA CUDA and AMD ROCm
-        return torch.device("cuda")
-    elif torch.backends.mps.is_available():
-        # covers apple silicon mps
-        return torch.device("mps") 
+    if n > 0:
+        sq = math.sqrt(n)
+        B = 2 ** round(math.log(sq, 2))
+        return B
     else:
-        return torch.device("cpu")
+        raise Exception(f"cannot calculate B for empty dataset!")
     
 def set_torch_seed(seed, device):
     '''
@@ -257,23 +470,14 @@ def set_torch_seed(seed, device):
     elif device == torch.device("mps"):
         torch.mps.manual_seed(seed)
 
-def quantise(data:np, sample = None, m= 8, nbits = 8):
-    '''quantises the data and return codes and the quantised vectors'''
-    n, d = data.shape
-
-    pq_index = IndexPQ(d, m , nbits)
-
-    # if sample is not None:
-    #     pq_index.train(data)
-    # else:
-    pq_index.train(data)
-
-    pq_index.add(data)
-
-    pq_codes = vector_to_array(pq_index.codes).reshape(n, m)
-
-    # quantised_data = np.empty_like(data)
-    # for i in range(n):
-    #     quantised_data[i] = pq_index.reconstruct(i)
-
-    return pq_codes
+def norm_ent(bucket_sizes):
+    '''
+    Get normalised entropy to check balancedness of buckets.
+    '''
+    B = len(bucket_sizes)
+    total = sum(bucket_sizes)
+    probs = np.zeros(B, dtype=np.float32)
+    probs = bucket_sizes/total
+    shann_entropy = - sum(probs[probs>0]*np.log(probs[probs>0]))
+    norm_entropy = shann_entropy/math.log(B)
+    return norm_entropy

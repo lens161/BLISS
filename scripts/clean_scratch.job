@@ -1,0 +1,46 @@
+#!/bin/bash
+ 
+#SBATCH --job-name=clean_scratch # Job name
+#SBATCH --output=outputs/clean_scratch.out
+#SBATCH --cpus-per-task=1                               
+#SBATCH --time=24:00:00                               
+#SBATCH --gres=gpu                      # Need GPU
+#SBATCH --exclude=cn[3-19]
+#SBATCH --nodelist=desktop8             # NEEDS TO BE NODE WHERE ORIGINAL EXP RAN, SCRATCH FOLDER IS THERE
+#SBATCH --partition=scavenge            # Run on the scavenge queue
+#SBATCH --mail-type=BEGIN,FAIL,END      # Send an email when the job finishes
+#SBATCH --exclusive                     # get entire machine for task
+
+echo "Running on $(hostname):" 
+module load Anaconda3
+eval "$(conda shell.bash hook)"
+conda activate bliss                        
+ 
+# Define directories
+JOB_ID=1148                                       # id of job folder that needs to be copied and removed
+OUTPUT_FILE="scratch_yandex100m_twostep_prints.out"   # put name of original experiment here to also copy output file
+SCRATCH_DIR="/scratch/$JOB_ID"
+RESULTS_DIR="/home/niav/BLISS/results"
+OUTPUTS_DIR="/home/niav/BLISS/outputs"
+LOGS_DIR="/home/niav/BLISS/logs"
+
+# Change to the scratch directory
+cd $SCRATCH_DIR
+
+# Copy results back to the output directory
+echo "Contents of scratch directory before copy:"
+ls -l $SCRATCH_DIR
+echo "Copying experiment results to /home"
+cp $OUTPUT_FILE $OUTPUTS_DIR/
+cp -r $SCRATCH_DIR/results/* $RESULTS_DIR/
+cp -r $SCRATCH_DIR/logs/* $LOGS_DIR/
+
+# if you are unsure about whether copying will be successful, remove lines below and send via separate script
+
+rm -rf $SCRATCH_DIR
+
+if [ -d "$SCRATCH_DIR" ]; then
+    echo "Warning: $SCRATCH_DIR was not removed!"
+else
+    echo "Scratch directory $SCRATCH_DIR successfully removed."
+fi

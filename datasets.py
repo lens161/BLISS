@@ -7,12 +7,7 @@
 import gzip
 import shutil
 import math
-import numpy
 import os
-import random
-import sys
-import struct
-import time
 from urllib.request import Request, urlopen
 import traceback
 import h5py
@@ -30,21 +25,6 @@ from dataset_io import (
 
 
 BASEDIR = "data/"
-
-# class Dataset_1M():
-#     def prepare(self):
-#         """download datset file if not there"""
-
-#     def get_dataset(self):
-#         """get the datset (without queries and groundtruths)"""
-
-#     def get_queries(self):
-#         """get queries"""
-#     def get_groundtruths(self):
-#         """get grountruths"""
-#     def get_distance(self):
-#         """get metric"""
-
 
 class Dataset():
     def prepare(self):
@@ -291,6 +271,12 @@ class DatasetCompetitionFormat(Dataset):
         for j0 in range(i0, i1, bs):
             j1 = min(j0 + bs, i1)
             yield sanitize(x[j0:j1])
+    
+    def get_dataset_memmap(self):
+        filename = self.get_dataset_fn()
+        x = xbin_mmap(filename, dtype=self.dtype, maxn=self.nb)
+        assert x.shape == (self.nb, self.d)
+        return x
 
     def get_data_in_range(self, start, end):
         assert start >= 0

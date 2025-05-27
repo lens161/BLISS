@@ -1,0 +1,16 @@
+#!/bin/bash
+
+#SBATCH --job-name=optimise_lr_sift     # Job name
+#SBATCH --output=outputs/job.%j.out     # Name of output file (%j expands to jobId)
+#SBATCH --cpus-per-task=16              # Schedule 96 cores
+#SBATCH --time=48:00:00                 # Max run time (hh:mm:ss)
+#SBATCH --gres=gpu                      # Need GPU
+#SBATCH --partition=acltr               # Run on the scavenge queue
+#SBATCH --mail-type=BEGIN,FAIL,END      # Send an email when the job finishes
+
+echo "Running on $(hostname):"
+
+module load Anaconda3
+eval "$(conda shell.bash hook)"
+conda activate bliss
+python optimise3.py
