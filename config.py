@@ -5,7 +5,7 @@ class Config:
     Class to set configuration for an experiment. Most parameters have default values which can be overwritten.
     '''
     def __init__(self, dataset_name, r= 4, k= 2, m = 2, freq_threshold = 2, 
-                 epochs = 5, iterations = 4, batch_size = 256, nr_train_neighbours = 100, 
+                 epochs = 5, iterations = 4, batch_size = 1024, nr_train_neighbours = 100, 
                  nr_ann = 10, b = 0, lr = 0.001, reass_mode = 0, reass_chunk_size = 5000, 
                  query_batch_size = 2048, query_batched=True, datasize=1, 
                  mem_tracking = False, query_twostep=False, query_twostep_limit=10000, rp_dim=8, rp_seed=42):
