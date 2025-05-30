@@ -23,7 +23,7 @@ However always override the following:
 
 Simply create a config object (or multiple) with the desired hyper-parameters and run it/them with the provided build and query functions from experiments.py. Or design your own experimental pipeline if required.
 
-## Acknoledgements
+## Acknowledgements
 
 This Project is inspired by the paper "BLISS: A Billion scale Index using Iterative Re-partitioning" and the corresponding implementation by the author: https://github.com/gaurav16gupta/BLISS
 
