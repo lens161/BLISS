@@ -19,7 +19,7 @@ dataset_name: e.g. "sift-128-euclidean", "glove-100-angular", etc. Many datasets
 All hyper-parameters live in config.py’s Config class and have defaults that should be optimal for most cases. They can be overridden for experimentation. Most 1B datasets require axel or azcopy to be downloded. 
 
 However always override the following:
-- datasize -> should be set to the 1 for 1M Datasets or to 10, 100 or 1000 for 10M, 100M and 1B respectively.
+- datasize -> should be set to 1 for 1M Datasets or to 10, 100 or 1000 for 10M, 100M and 1B respectively.
 
 Simply create a config object (or multiple) with the desired hyper-parameters and run it/them with the provided build and query functions from experiments.py. Or design your own experimental pipeline if required.
 
